@@ -617,5 +617,38 @@ code qui les suit (0x02, 0x05, 0x1D, 0x1E, 0x8C, 0x156, 0x167, 0x17A). Vérifica
 communes) se désassemblent sans erreur, en suivant sauts et appels depuis chaque script, sans
 chevauchement ni commande inconnue.
 
+**Paramètres de valeur** (0x02158F80) : un nombre < 0x4000 est une constante, de 0x4000 à 0x7FFF
+une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (contexte du script,
+0x02158F70). 0x02159AB0 lit un tel paramètre et donne sa valeur, 0x02159A88 donne la variable.
+
+**Commandes comprises** (rôle tiré de leur code et vérifié dans les scripts de Renouet) :
+
+| Commande | Paramètres | Rôle |
+| --- | --- | --- |
+| 00, 01 | | rien |
+| 02, 1D | | fin du script (0x02011290 ; 1D nettoie avant) |
+| 03 | valeur | attente en images |
+| 04, 05 | s32 / | appel, retour |
+| 08, 09 | u16 / valeur | empiler une constante, une valeur |
+| 0A | variable | dépiler dans une variable |
+| 10 | valeur | empiler l'état d'un drapeau (0x02014304) |
+| 11 | u16 | comparer les deux valeurs du sommet : 0 <, 1 ==, 2 >, 3 <=, 4 >=, 5 !=, 6 ou, 7 et |
+| 19, 1A | variable, u16 / variable, variable | comparer (résultat 0, 1, 2 gardé en +0E de la machine) |
+| 1E | s32 | saut |
+| 1F, 20 | u8, s32 | saut, appel conditionnel : code 0xFF = dépiler, sauter si différent de 1 (« si ... alors ») ; codes 0-5 : table 0x0217056C appliquée au résultat gardé |
+| 23, 24 | valeur | mettre, enlever un drapeau (0x02014330, 0x02014358) |
+| 28, 29 | variable, u16 / variable, variable | donner une valeur, copier |
+| 2E, 2F, 30 | | figer le jeu, tout relâcher, relâcher le PNJ |
+| 32 | | attendre une touche |
+| 3C | valeurs : fichier, message, personnage, ?, ? | message dans la bulle d'un personnage (0x021B0B4C) |
+| 3D | valeurs : fichier, message, ?, ? | message du PNJ à qui l'on parle |
+| 3E, 3F | | fermer le message, toutes les fenêtres |
+| 43, 44 | u16 message, u16 style / | panneau (attend une touche), le fermer |
+| 74 | | le PNJ se tourne vers le héros |
+| A6 | valeur | effet sonore n° N du SDAT (1351 = `SEQ_SE_MESSAGE`) |
+
+Fichier de textes `0x400` : celui du script en cours (zone ou plage commune) ; c'est le premier
+paramètre de 0x3C et 0x3D dans 3 881 cas sur 3 884.
+
 Exemples : 0x1E saut (s32 relatif à la fin du paramètre), 0x1F saut conditionnel (u8 condition,
 s32), 0x04 appel (s32), 0x05 retour, 0x02 fin, 0x03 attente (u16).

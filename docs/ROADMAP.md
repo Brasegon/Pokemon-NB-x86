@@ -88,7 +88,10 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 - [ ] Chargement des morceaux de carte en arrière-plan (aujourd'hui : un court arrêt au passage)
 - [x] PNJ affichés d'après les événements (sprite, case, direction), qui bloquent leur case
 - [ ] PNJ : déplacements, apparition selon les drapeaux de l'histoire
-- [ ] **Moteur de scripts** (`a/0/5/7`) : machine virtuelle qui exécute le bytecode des événements.
+- [x] Commandes de script retrouvées dans le code (609, paramètres prouvés : 472 fichiers sur 472)
+- [x] Machine virtuelle : mécanique, variables, drapeaux, messages ; on parle aux PNJ et on lit les
+      panneaux avec les scripts et les textes du jeu
+- [ ] **Moteur de scripts** (`a/0/5/7`) : le reste des commandes (mouvements, objets, combats...).
 	  C'est le cœur du portage. Les commandes inconnues s'étudient dans le code ARM9/overlays, avec
 	  Ghidra et un loader NDS
 - [ ] Drapeaux et variables d'histoire

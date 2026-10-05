@@ -22,6 +22,7 @@ const SEASON_NAMES := ["Printemps", "Été", "Automne", "Hiver"]
 var field: FieldMap
 var player: FieldPlayer
 var camera: FieldCamera
+var scripts: FieldScripts
 var zone := -1
 ## Décalage de l'heure choisi au clavier (F4), en minutes.
 var time_shift := 0.0
@@ -36,6 +37,7 @@ var _banner_label: GameLabel
 var _banner_tween: Tween
 var _fade: ColorRect
 var _warping := false
+var _dialogue: DialogueBox
 
 
 func _ready() -> void:
@@ -72,6 +74,8 @@ func _ready() -> void:
 		player.sprite.modulate = field.sprite_tint
 
 	_build_hud()
+	scripts = FieldScripts.create(field, player, _dialogue)
+	add_child(scripts)
 	_enter_zone(field.zone_at(START_TILE))
 
 
@@ -116,6 +120,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_show_banner(SEASON_NAMES[field.season])
 			get_viewport().set_input_as_handled()
 			return
+	# Valider devant un PNJ ou un panneau : son script.
+	if event.is_action_pressed("valider") and not _warping and not scripts.is_running() and not player.is_moving():
+		if scripts.try_talk():
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed("menu"):
 		# Le viewport est gardé avant de changer de scène (qui retire aussitôt celle-ci de l'arbre).
 		var viewport := get_viewport()
@@ -129,6 +138,7 @@ func _on_player_moved(tile: Vector2i) -> void:
 	if current != zone:
 		_enter_zone(current)
 		field.set_light_zone(current)
+	scripts.check_triggers(tile)
 
 
 ## Passage par une porte : fondu au noir, chargement de la zone de destination, héros posé sur la
@@ -218,6 +228,10 @@ func _build_hud() -> void:
 	_banner.position = Vector2(8, -40)
 	root.add_child(_banner)
 
+	_dialogue = DialogueBox.new()
+	SceneHelpers.place_dialogue_box(_dialogue, 18)
+	root.add_child(_dialogue)
+
 	_fade = ColorRect.new()
 	_fade.color = Color(0, 0, 0, 0)
 	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -226,7 +240,7 @@ func _build_hud() -> void:
 
 	var help := GameLabel.new()
 	help.font_id = GameTheme.FontId.MEDIUM
-	help.text = "Flèches : marcher   Maj : courir   F3 : collisions   F4 : heure   F5 : saison   Échap : menu"
+	help.text = "Flèches : marcher   Maj : courir   Entrée : parler   F3 : collisions   F4 : heure   F5 : saison   Échap : menu"
 	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 6)
 	help.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(help)

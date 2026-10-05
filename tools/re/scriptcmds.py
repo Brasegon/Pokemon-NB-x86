@@ -12,6 +12,7 @@ contiennent la machine et la position dans le script, et additionne les octets c
 
     python scriptcmds.py              table des commandes (adresse, overlay, paramètres)
     python scriptcmds.py 3 4 0x62     détail de quelques commandes
+    python scriptcmds.py --gdscript > ../../engine/script/script_params.gd
 """
 import struct
 import sys
@@ -228,7 +229,33 @@ def commands(rom=None):
     return result
 
 
+def gdscript(rows):
+    """Classe GDScript ScriptParams : taille des paramètres et commandes de fin, pour que le moteur
+    sache sauter une commande qu'il n'exécute pas encore."""
+    sizes = [sum(s for s, _ in items) if addr else -1 for _, addr, _, items, _ in rows]
+    ends = [n for n, addr, _, _, ends in rows if addr and ends]
+    lines = [
+        "class_name ScriptParams",
+        "extends RefCounted",
+        "## Paramètres des %d commandes de script du terrain, retrouvés dans le code du jeu." % len(rows),
+        "## Généré par `python tools/re/scriptcmds.py --gdscript` (ne pas modifier à la main) :",
+        "## voir docs/FORMATS.md, « Scripts du terrain ».",
+        "",
+        "## Taille des paramètres de chaque commande, en octets (-1 : commande absente de la table).",
+        "const SIZES: Array[int] = [",
+    ]
+    for i in range(0, len(sizes), 24):
+        lines.append("\t" + ", ".join(str(v) for v in sizes[i:i + 24]) + ",")
+    lines.append("]")
+    lines.append("## Commandes qui terminent le code qui les suit (fin, retour d'appel, saut sans condition).")
+    lines.append("const ENDS: Array[int] = [%s]" % ", ".join(str(n) for n in ends))
+    return "\n".join(lines) + "\n"
+
+
 def main():
+    if sys.argv[1:] == ["--gdscript"]:
+        sys.stdout.write(gdscript(commands()))
+        return
     rows = commands()
     wanted = [int(a, 0) for a in sys.argv[1:]]
     for n, addr, overlay, items, ends in rows:

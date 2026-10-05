@@ -114,6 +114,30 @@ func is_waiting() -> bool:
 	return _waiting or _done
 
 
+## Vrai quand tout le texte est passé, attentes comprises : soit la boîte est fermée, soit tout est
+## affiché et le texte ne finit pas par une attente (un script attend alors la touche lui-même).
+func is_complete() -> bool:
+	if _done:
+		return true
+	if _step < _steps.size():
+		return false
+	var last: Variant = _steps[_steps.size() - 1] if not _steps.is_empty() else null
+	return not (last is int and last in [TextFlow.Kind.WAIT_CLEAR, TextFlow.Kind.WAIT_SCROLL])
+
+
+func is_closed() -> bool:
+	return _done
+
+
+## Ferme la boîte tout de suite, sans émettre finished (un script la referme).
+func close() -> void:
+	_steps.clear()
+	_step = 0
+	_waiting = false
+	_done = true
+	visible = false
+
+
 ## Ce que fait la touche Valider : finir la page en cours, ou passer à la suite.
 func advance() -> void:
 	if _done:
