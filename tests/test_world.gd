@@ -231,17 +231,33 @@ func _test_scripts() -> void:
 	_check(map.npc_by_id(0) != null and map.npc_by_id(1) == null, "chambre : Tcheren là, Bianca pas encore arrivée")
 	scripts.enter_zone()
 	_check(scripts.is_running() and scripts.current == 5, "l'intro démarre toute seule (script 5)")
-	var frames := 0
-	while scripts.is_running() and frames < 4000:
-		box.advance()
-		scripts._process(1.0 / 30.0)
-		frames += 1
+	var frames := _play(scripts, box)
 	print("   Intro : %d images, commandes sautées : %s" % [frames, scripts.vm.skipped])
 	_check(not scripts.is_running() and scripts.work.get_var(0x4081) == 1, "l'intro se termine : variable 0x4081 = 1")
 	_check(map.npc_by_id(1) != null and not scripts.work.get_flag(501), "Bianca est arrivée (drapeau 501 enlevé, commande 0x6B)")
+
+	# Le cadeau (PNJ n° 2, script 9) : choix du starter, deux combats, la chambre en désordre.
+	scripts.vm.skipped.clear()
+	_check(scripts.run(9, map.npc_by_id(2)), "le cadeau lance le script 9")
+	frames = _play(scripts, box)
+	print("   Cadeau : %d images, commandes sautées : %s" % [frames, scripts.vm.skipped])
+	_check(not scripts.is_running() and scripts.work.get_var(0x4081) == 2, "le script du cadeau se termine : variable 0x4081 = 2")
 	scripts.queue_free()
 	box.queue_free()
 	map.queue_free()
+
+
+## Joue le script en cours jusqu'à sa fin (au plus 6000 images du terrain) : fait avancer les
+## messages et répond « OUI » aux questions. Renvoie le nombre d'images.
+func _play(scripts: FieldScripts, box: DialogueBox) -> int:
+	var frames := 0
+	while scripts.is_running() and frames < 6000:
+		box.advance()
+		if scripts.yes_no.visible:
+			scripts._answer_yes_no(0)
+		scripts._process(1.0 / 30.0)
+		frames += 1
+	return frames
 
 
 func _check(condition: bool, label: String) -> bool:

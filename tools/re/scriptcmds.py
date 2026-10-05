@@ -24,6 +24,10 @@ from nds import Rom
 
 TABLE, COUNT = 0x021705BC, 609
 READ_U16, READ_U32 = 0x02011330, 0x0201134C
+# Lecteurs de plus haut niveau (overlay 10), qui lisent un u16 : une valeur (constante < 0x4000 ou
+# contenu d'une variable, 0x02159AB0) ou le numéro d'une variable que la commande va écrire
+# (0x02159A88, qui renvoie son adresse par 0x02158F80).
+READ_VALUE, READ_VAR = 0x02159AB0, 0x02159A88
 VM_JUMP, VM_CALL = 0x020113B0, 0x020113B4
 # Fin de la machine et retour d'appel : les commandes qui les appellent terminent le code qui suit.
 VM_END, VM_RETURN = 0x02011290, 0x020113C4
@@ -88,8 +92,8 @@ class Analyzer:
 
     def reads(self, addr, vm_regs):
         """Liste des lectures [(taille, sorte)] d'une fonction dont la machine est dans vm_regs.
-        sorte : "u8", "u16", "u32", ou "saut"/"appel" pour un décalage lu puis utilisé par
-        VM_JUMP/VM_CALL."""
+        sorte : "u8", "u16", "u32", "valeur" ou "variable" (u16 lus par READ_VALUE ou READ_VAR), ou
+        "saut"/"appel" pour un décalage lu puis utilisé par VM_JUMP/VM_CALL."""
         key = (addr, tuple(sorted(vm_regs)))
         if key in self.cache:
             return self.cache[key]
@@ -128,6 +132,9 @@ class Analyzer:
                 holders = [r for r in ARGUMENT_REGS if regs.get(r) == "vm"]
                 if target == READ_U16 and "r0" in holders:
                     items.append((2, "u16"))
+                    pos += 2
+                elif target in (READ_VALUE, READ_VAR) and "r0" in holders:
+                    items.append((2, "valeur" if target == READ_VALUE else "variable"))
                     pos += 2
                 elif target == READ_U32 and "r0" in holders:
                     items.append((4, "u32"))

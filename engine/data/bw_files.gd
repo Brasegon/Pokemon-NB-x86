@@ -43,6 +43,12 @@ const INDOOR_BUILDINGS := "a/2/3/0" ## vérifié (lots « AB »)
 ## Index des fichiers de TEXT_SYSTEM (vérifiés sur la ROM IRAF).
 const TEXT_TYPE_NAMES := 199
 const TEXT_ITEM_NAMES := 54
+## Noms des poches du sac (OBJETS, MÉDICAMENTS...).
+const TEXT_POCKET_NAMES := 55
+## Noms des objets au pluriel (« Poké Balls »).
+const TEXT_ITEM_PLURALS := 280
+## Menus du terrain : « OUI », « NON »... (0x02190450 l'ouvre pour le menu Oui / Non).
+const TEXT_FIELD_MENUS := 233
 const TEXT_SPECIES_NAMES := 70
 const TEXT_LOCATION_NAMES := 89
 const TEXT_ABILITY_NAMES := 182

@@ -690,16 +690,32 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 10 | valeur | empiler l'état d'un drapeau (0x02014304) |
 | 11 | u16 | comparer les deux valeurs du sommet : 0 <, 1 ==, 2 >, 3 <=, 4 >=, 5 !=, 6 ou, 7 et |
 | 19, 1A | variable, u16 / variable, variable | comparer (résultat 0, 1, 2 gardé en +0E de la machine) |
+| 1C | u16 | appel d'un autre script (commun ou de la zone) : 0x02158940 crée une machine pour lui, 0x02159540 attend sa fin ; les variables temporaires sont partagées (390/1 passe l'objet et la quantité au script commun 2805 « recevoir un objet » par 0x8000 et 0x8001) |
 | 1E | s32 | saut |
+| 21 | u16 | script en attente, rangé dans la sauvegarde (+0x12 du bloc de 0x02012B38) : 0x0218A6D8 le lance dès que le terrain le peut, avant les scènes du type 1, et l'efface |
 | 1F, 20 | u8, s32 | saut, appel conditionnel : code 0xFF = dépiler, sauter si différent de 1 (« si ... alors ») ; codes 0-5 : table 0x0217056C appliquée au résultat gardé |
 | 23, 24 | valeur | mettre, enlever un drapeau (0x02014330, 0x02014358) |
 | 28, 29 | variable, u16 / variable, variable | donner une valeur, copier |
+| 2A | variable, valeur | donner une valeur (constante ou contenu d'une variable) |
 | 2E, 2F, 30 | | figer le jeu, tout relâcher, relâcher le PNJ |
 | 32 | | attendre une touche |
+| 34 | valeur message, u16 cadre | message dans la fenêtre simple (0x021B0384 la crée ; cadre 1 ou 0x13) ; attend la fin du texte |
+| 36, 39 | | fermer la fenêtre simple (0x021B0420), l'autre fenêtre simple (0x021B1044) |
+| 38, 4A | valeur message, u8 cadre | message dans une autre fenêtre simple (0x021B0FA8) |
 | 3C | valeurs : fichier, message, personnage, ?, ? | message dans la bulle d'un personnage (0x021B0B4C) |
 | 3D | valeurs : fichier, message, ?, ? | message du PNJ à qui l'on parle |
 | 3E, 3F | | fermer le message, toutes les fenêtres |
 | 43, 44 | u16 message, u16 style / | panneau (attend une touche), le fermer |
+| 47 | variable | menu Oui / Non (tâche 0x021B0024) : « OUI » et « NON » sont les messages 0 et 1 du fichier système 233 (0x02190450), avec les valeurs 0 et 1 (table 0x021D3DF8) ; Annuler donne 1 |
+| 48, 49 | valeurs : fichier, message, message pour une fille, personnage, ?, ? | comme 3C ; 48 prend le second message si le héros est une fille (octet +0x1D du profil, 0x02008550), 49 ne s'en sert pas |
+| 4B | | attendre Valider ou Annuler (son 0x547 `SEQ_SE_MESSAGE`) |
+| 4C | u8 mot | mot n° x des messages = nom du héros (0x0201EFD0) |
+| 4D, 4F | u8 mot, valeur | nom d'objet (fichier système 54, par 0x0201EEEC) |
+| 4E | u8 mot, valeur objet, valeur nombre, u8 | nom d'objet, au pluriel (fichier 280, 0x0201EF00) si le nombre dépasse 1 |
+| 50 | u8 mot, valeur objet | nom de la capacité d'une CT ou d'une CS (objets 328-425 et 618-620, table 0x0209EA38 de l'ARM9) : pas encore |
+| 51, 52, 56 | u8 mot, valeur | nom de capacité (fichier 203), de poche du sac (fichier 55), de type (fichier 199) |
+| 53, 54 | u8 mot, valeur | espèce, surnom d'un Pokémon de l'équipe (0x0201EE50, 0x0201EEA0) : pas encore |
+| 57 | u8 mot, valeur | nom d'espèce (0x0201EE2C) |
 | 26, 27 | variable, valeur | ajouter, soustraire |
 | 64, 65 | valeur personnage, s32 / | lancer une liste de mouvements (« fin des paramètres + décalage ») ; attendre qu'elles soient finies |
 | 68 | variable, variable | case du héros (x, z) |
@@ -707,6 +723,11 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 6D | valeurs : PNJ, x, y, z, direction | placer un PNJ présent (0x0216E014), sans changer son entrée des événements |
 | 74 | | le PNJ se tourne vers le héros |
 | A6 | valeur | effet sonore n° N du SDAT (1351 = `SEQ_SE_MESSAGE`) |
+
+**Mots variables** : les messages contiennent des commandes de texte `01xx` dont l'argument est un
+numéro de mot (`{0100:0}` : le nom du héros rangé dans le mot 0). Les commandes 4C à 57 remplissent
+ces mots (0x0201ED50) ; 0x0201ED9C y met le message n° x d'un fichier des textes système. Les mots
+appartiennent au contexte du script (0x02158F14) et disparaissent avec lui.
 
 Fichier de textes `0x400` : celui du script en cours (zone ou plage commune) ; c'est le premier
 paramètre de 0x3C et 0x3D dans 3 881 cas sur 3 884. Personnages des commandes (0x021B1608) :
