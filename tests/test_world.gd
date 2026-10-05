@@ -320,6 +320,7 @@ func _test_scripts() -> void:
 	_check(scripts.state.party.size() == 1 and scripts.state.party[0].species == 498 and scripts.state.party[0].level == 5,
 		"Gruikui (n° 498) rejoint l'équipe, niveau 5 (commande 0x10C)")
 	_check(scripts.work.get_var(0x4030) == 1, "variable 0x4030 = 1 : le starter choisi est le deuxième")
+	_check(scripts.work.get_var(0x4037) == 2096, "commande 0xDA : variable 0x4037 = 2096 (table de l'overlay 10)")
 	_check(scripts.state.money == 3000, "argent de départ : 3000 (commande 0xF9 du script 9600)")
 	_test_story(map, hero, scripts, box)
 	scripts.queue_free()

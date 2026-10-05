@@ -307,6 +307,21 @@ func receive_pokedex() -> void:
 	state.has_pokedex = true
 
 
+## Fiche n° id de la table de la commande 0xDA (overlay 10, 0x02170F40) : [variable, valeur].
+const VAR_TABLE := 0x02170F40
+const VAR_TABLE_ENTRIES := 10
+
+
+func var_table_entry(id: int) -> Array:
+	var code: PackedByteArray = _rom.overlay(ScriptFiles.OVERLAY)
+	var at: int = VAR_TABLE - _rom.overlay_address(ScriptFiles.OVERLAY)
+	for i in VAR_TABLE_ENTRIES:
+		var p := at + i * 6
+		if p >= 0 and p + 6 <= code.size() and code[p + 1] == id:
+			return [code.decode_u16(p + 2), code.decode_u16(p + 4)]
+	return []
+
+
 ## Bâtiment d'un genre près de la case (x, z) (commande 0x127) : son numéro, ou 0.
 func find_building(kind: int, x: int, z: int) -> int:
 	var building := field.find_building(kind, Vector2i(x, z))

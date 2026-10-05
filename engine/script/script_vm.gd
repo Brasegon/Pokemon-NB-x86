@@ -374,6 +374,17 @@ func _step() -> bool:
 			# Poche du sac de l'objet (paramètre 5 de ses données, 0x02020F80).
 			var item := _value()
 			work.set_var(_u16(), ItemData.pocket(item))
+		0xDA:
+			# Variable de la table 0x02170F40 (overlay 10 : 10 fiches de 6 octets, numéro en +1,
+			# variable en +2, valeur en +4 ; 0x02159EA4, 0x02159EC8) : sa valeur si le 2e
+			# paramètre est mis, sinon 0. Le 3e déclenche une mise à jour de la carte (0x02159B34)
+			# qu'on n'a pas encore suivie.
+			var id := _value()
+			var on := _value()
+			_value()
+			var entry: Array = host.var_table_entry(id)
+			if not entry.is_empty():
+				work.set_var(entry[0], entry[1] if on != 0 else 0)
 		0xE0:
 			# Version du jeu : 0x0215A9F0 écrit 20 (0x14), le numéro de Pokémon Blanc.
 			work.set_var(_u16(), GAME_VERSION)
