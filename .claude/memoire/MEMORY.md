@@ -1,0 +1,4 @@
+- [Projet portage Pokémon Blanc](projet-portage-pokemon-blanc.md) — moteur natif Godot 4.7 lisant la ROM IRAF, écran unique PC (pas de double écran), projet école 1 an+
+- [Outils Godot locaux](godot-outils-locaux.md) — chemins des exe Godot, lancer tests/captures en CLI
+- [Un seul agent](un-seul-agent.md) — pas d'agents parallèles, avancer tâche par tâche
+- [Recherche phase 3 scripts](recherche-phase3-scripts.md) — format des scripts N&B vérifié sur la ROM, sources, à reporter dans docs/ après la phase 2
