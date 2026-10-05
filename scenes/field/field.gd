@@ -118,6 +118,8 @@ func remember_location() -> void:
 
 
 func _process(delta: float) -> void:
+	var occupied: Array[Vector2i] = [player.tile]
+	field.update_npcs(delta, occupied, not scripts.is_running() and not _warping and _pause == null)
 	_light_timer += delta
 	if _light_timer >= LIGHT_REFRESH:
 		_light_timer = 0.0

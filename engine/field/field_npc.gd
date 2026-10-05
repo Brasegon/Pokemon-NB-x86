@@ -8,6 +8,8 @@ var data: Dictionary
 var tile := Vector2i.ZERO
 var facing := CharacterSprite.Direction.DOWN
 var sprite: CharacterSprite
+## Ses déplacements autonomes (code de mouvement des événements).
+var movement: NpcMovement
 
 
 ## PNJ d'après son entrée des événements ; textures = null le laisse sans sprite (objet 3D ou
@@ -22,6 +24,7 @@ static func create(entry: Dictionary, textures: NSBTX) -> FieldNpc:
 		npc.add_child(npc.sprite)
 	npc.add_child(CharacterSprite.make_shadow())
 	npc.face(clampi(entry.direction, 0, 3) as CharacterSprite.Direction)
+	npc.movement = NpcMovement.create(entry)
 	return npc
 
 

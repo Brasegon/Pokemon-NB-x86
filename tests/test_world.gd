@@ -95,6 +95,25 @@ func _test_warps() -> void:
 			with_sprite += 1
 	_check(map.npcs.size() == 6 and with_sprite == 6, "6 PNJ à Renouet sans drapeau, avec leur sprite")
 	_check(map.is_blocked(map.npcs[0].tile), "un PNJ bloque sa case")
+	# Déplacements autonomes : tables de l'overlay 21, puis l'habitant n° 0 (code 3, étendue ±2 en x)
+	# se promène sans quitter son étendue.
+	_check(NpcMovement.waits() == PackedInt32Array([16, 32, 48, 64]) and NpcMovement.direction_set(0xB) == [0, 1, 2, 3]
+		and NpcMovement.direction_set(0xC) == [0, 1], "attentes de 16 à 64 images, ensembles de directions (overlay 21)")
+	var walker := map.npc_by_id(0)
+	_check(walker.movement.kind == NpcMovement.Kind.WANDER and walker.movement.range_x == 2 and walker.movement.range_z == 0,
+		"habitant n° 0 : promenade, étendue ±2 en x")
+	walker.movement._rng.seed = 7
+	var visited := {}
+	var occupied: Array[Vector2i] = [Vector2i(782, 749)]
+	for i in 30 * 60:
+		map.update_npcs(1.0 / 30.0, occupied, true)
+		visited[walker.tile] = true
+	var inside := true
+	for tile: Vector2i in visited:
+		inside = inside and absi(tile.x - 783) <= 2 and tile.y == 760
+	_check(visited.size() > 1 and inside, "en une minute, il visite %d cases, toutes dans son étendue" % visited.size())
+	var bianca := map.npc_by_id(3)
+	_check(bianca.movement.kind == NpcMovement.Kind.FACE and bianca.facing == CharacterSprite.Direction.DOWN, "Bianca (code 15) regarde vers le bas")
 	# Les portes sont des bâtiments de genre 1 (table 0x021D3D54) avec deux animations NSBCA.
 	var rules: BuildingRules = _rom.building_rules()
 	_check(rules != null and rules.kind_of(1) == 1 and rules.kind_of(11) == 8 and rules.sound(1, 0) == 1669,

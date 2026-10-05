@@ -309,6 +309,15 @@ func spawn_npc(entry: Dictionary) -> FieldNpc:
 	return npc
 
 
+## Déplacements autonomes des PNJ : un pas commencé se termine toujours ; new_moves autorise de
+## nouveaux mouvements (pas pendant un script, une porte ou un menu). occupied : cases interdites
+## (celle du héros).
+func update_npcs(delta: float, occupied: Array[Vector2i], new_moves: bool) -> void:
+	for npc in npcs:
+		if npc.movement and (new_moves or npc.movement.is_walking()):
+			npc.movement.update(delta, npc, self, occupied)
+
+
 ## PNJ présent de numéro id (champ 00 des événements), ou null.
 func npc_by_id(id: int) -> FieldNpc:
 	for npc in npcs:

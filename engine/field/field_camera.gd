@@ -152,7 +152,10 @@ func _place(point: Vector3) -> void:
 
 
 func _player_point() -> Vector3:
-	var point := (target.global_position if target else Vector3.ZERO)
+	# Hors de l'arbre (pendant l'initialisation d'un test), seule la position locale existe.
+	var point := Vector3.ZERO
+	if target:
+		point = target.global_position if target.is_inside_tree() else target.position
 	for area in areas:
 		point.x = clampf(point.x, area.position.x, area.end.x)
 		point.z = clampf(point.z, area.position.y, area.end.y)

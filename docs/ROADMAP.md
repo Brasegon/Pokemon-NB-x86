@@ -95,7 +95,9 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 - [ ] Chargement des morceaux de carte en arrière-plan (aujourd'hui : un court arrêt au passage)
 - [x] PNJ affichés d'après les événements (sprite, case, direction), qui bloquent leur case
 - [x] PNJ : apparition selon les drapeaux de l'histoire
-- [ ] PNJ : déplacements autonomes (codes de mouvement des événements)
+- [x] PNJ : déplacements autonomes (codes de mouvement des événements) : regarder autour, se promener
+      dans son étendue, regarder dans une direction ; les motifs de rotation et les rails restent
+      à faire
 - [x] Commandes de script retrouvées dans le code (609, paramètres prouvés : 472 fichiers sur 472)
 - [x] Machine virtuelle : mécanique, variables, drapeaux, messages ; on parle aux PNJ et on lit les
       panneaux avec les scripts et les textes du jeu

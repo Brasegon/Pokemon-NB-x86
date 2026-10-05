@@ -61,6 +61,8 @@ static func parse(bytes: PackedByteArray) -> ZoneEvents:
 		events.npcs.append({"id": bytes.decode_u16(p), "sprite": bytes.decode_u16(p + 2),
 			"movement": bytes.decode_u16(p + 4), "flag": bytes.decode_u16(p + 8),
 			"script": bytes.decode_u16(p + 10), "direction": bytes.decode_u16(p + 12),
+			"params": [bytes.decode_u16(p + 14), bytes.decode_u16(p + 16), bytes.decode_u16(p + 18)],
+			"range_x": bytes.decode_s16(p + 20), "range_z": bytes.decode_s16(p + 22),
 			"rail": bytes.decode_u32(p + 24), "x": bytes.decode_u16(p + 28), "z": bytes.decode_u16(p + 30),
 			"y": bytes.decode_s32(p + 32)})
 		p += 36

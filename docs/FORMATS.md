@@ -848,6 +848,20 @@ Fichier de textes `0x400` : celui du script en cours (zone ou plage commune) ; c
 paramètre de 0x3C et 0x3D dans 3 881 cas sur 3 884. Personnages des commandes (0x021B1608) :
 `0xFF` le héros, `0xF1` celui à qui l'on parle, `0xF2` un compagnon, sinon le numéro d'un PNJ.
 
+**Déplacements autonomes des PNJ** (`npc_movement.gd`). 0x0216CF54 recopie les 36 octets d'un
+PNJ dans le personnage : 00 numéro, 04 code de mouvement (+0x0E, 0x0216D52C), 06 ?, 08 drapeau,
+0A script, 0C direction, 0E à 12 trois paramètres, 14 et 16 étendue en x et en z (s16 : ± cases
+autour de l'origine, -1 sans limite). 0x0216E390 prend la description du code dans la table de
+0x021D5D94 (overlay 21, plus de 80 entrées : fonctions de création, de mise à jour, de fin).
+Familles retrouvées : 0 et 1 immobiles (1 483 PNJ sur 2 257) ; 2, 6 à 13, 45, 46 (mise à jour
+0x0219A0F0) regardent au hasard dans un ensemble de directions (table 0x021D5088 : 0x00 les
+quatre, 0x01 haut et gauche...), après une attente de 16, 32, 48 ou 64 images (table
+0x021D4F34) ; 3, 4, 5 et 67 (0x0219A258, création 0x0219A230) pareil (ensembles 0x0B, 0x0C,
+0x0D), puis un pas (action 0x0C + direction) si 0x0216385C ne trouve rien : étendue (bit 1,
+0x02163C2C), terrain (bit 2, 0x02163C94), dénivelé (bit 8)... ; 14 à 17 (0x0219A4EC) tournés vers le
+haut, le bas, la gauche ou la droite (0x0216D570). Les autres codes (motifs de rotation, rails...)
+restent immobiles pour l'instant.
+
 **Début de partie** : le script 9600 (premier de la plage 9600-9699, fichier 866) met 131 drapeaux
 et règle quelques valeurs de départ (dont 3000 d'argent) ; on n'a pas encore retrouvé l'appel dans
 le code, mais ses drapeaux donnent exactement la chambre du début du jeu.
