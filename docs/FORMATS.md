@@ -785,6 +785,7 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | B5 à B8 | valeurs : objet, quantité ; variable | sac : ajouter (0x02007E50), retirer (0x02007F1C), y a-t-il la place (0x02007E3C), en a-t-on assez (0x02007F68) ; 1 ou 0 dans la variable. Au plus 999 du même objet, 1 dans la poche des CT et CS (0x02007DF8) |
 | B9 | valeur objet, variable | nombre d'exemplaires dans le sac (0x02007FB8) |
 | BB | valeur objet, variable | poche de l'objet (paramètre 5 de ses données, 0x02020F80) |
+| DA | valeurs : numéro, oui, carte | une variable de la table 0x02170F40 (overlay 10 : 10 fiches de 6 octets ; numéro en +1, variable en +2, valeur en +4 ; variables 0x4031 à 0x403A, qu'aucun script ne lit) : sa valeur si « oui », sinon 0 (0x02159EC8) ; « carte » lance une mise à jour par 0x02159B34, pas encore suivie |
 | E0 | variable | version du jeu : 20 (0x14) dans Pokémon Blanc |
 | E1 | variable | sexe du héros (0x02008550) |
 | F9 | valeur | ajouter de l'argent (0x0200C278, plafond 9 999 999) |
@@ -837,8 +838,7 @@ Comme le jeu (0x0218A6D8, à chaque image), le moteur regarde le script en atten
 de la zone à la fin de chaque script, dans la zone où le script a laissé le héros.
 
 Encore sautées sur ce chemin : 0x21C (deux valeurs rangées dans un champ de bits
-de la sauvegarde, 0x0200E3E8), 0xDA (donne aux variables 0x4031 à 0x403A une valeur de la table
-0x02170F40 ; aucun script ne les lit), 0xD9 (une valeur de 1 à 17 rangée dans la sauvegarde,
+de la sauvegarde, 0x0200E3E8), 0xD9 (une valeur de 1 à 17 rangée dans la sauvegarde,
 0x02012900), 0xE7 (un bit de l'octet +0x45 du profil, 0x0200C2F0), 0x19F et 0x240 (des numéros
 26 à 52 associés aux objets rares par la table 0x021DAA70, pour 0x021C1C3C), 0x241 (indicateur
 0x20 d'un personnage, 0x0216DB10), 0x252 (0x021BC52C), 0x24F et 0x250 (fonctions d'un overlay
