@@ -367,7 +367,17 @@ func _test_story(map: FieldMap, hero: FieldPlayer, scripts: FieldScripts, box: D
 	map.update_around(Vector2i(788, 739))
 	hero.place(Vector2i(788, 739), CharacterSprite.Direction.UP)
 	_check(scripts.check_triggers(Vector2i(788, 739)), "déclencheur de la sortie nord de Renouet")
+	# 0x241 garde Tcheren (250) et Bianca (240) au passage sur la Route 1 : ils sont là quand la
+	# démonstration de la professeure commence, et elle les retire à la fin (0x6C).
+	var on_route := {}
+	var watch := func(id: int) -> void:
+		if id == 1 and map.events_zone == 317 and on_route.is_empty():
+			on_route.merge({"cheren": map.npc_by_id(250) != null, "bianca": map.npc_by_id(240) != null})
+	scripts.script_started.connect(watch)
 	_story_step(scripts, box, "Sortie de Renouet")
+	scripts.script_started.disconnect(watch)
+	_check(on_route.get("cheren", false) and on_route.get("bianca", false) and map.npc_by_id(250) == null and map.npc_by_id(240) == null,
+		"Tcheren et Bianca suivent le héros sur la Route 1 (commande 0x241), puis s'en vont (0x6C)")
 	# La scène mène le héros sur la Route 1, où le script mis en attente (0x21) démarre : la
 	# démonstration de capture de la professeure.
 	_check(map.events_zone == 317 and scripts.work.get_var(0x4080) == 3, "le héros est sur la Route 1, 0x4080 = 3")

@@ -86,6 +86,10 @@ func load_zone(zone: int) -> bool:
 	if parsed == null:
 		return false
 	clear()
+	# Une autre carte : tous ses personnages viendront de ses événements (set_events_zone).
+	_remove_npcs(false)
+	events_zone = -1
+	events = null
 	matrix = parsed
 	matrix_index = header.matrix
 	default_zone = zone
@@ -295,9 +299,7 @@ func set_events_zone(zone: int) -> void:
 ## PNJ de la zone, comme 0x0216CE3C au chargement (0x021894B0) : chacun est créé, sauf si son
 ## drapeau est mis et que son script n'est pas 0xFFFF (0x0216E3A8, 0x0216E3BC).
 func _spawn_npcs() -> void:
-	for npc in npcs:
-		npc.queue_free()
-	npcs.clear()
+	_remove_npcs(true)
 	if events == null:
 		return
 	for entry: Dictionary in events.npcs:
@@ -345,6 +347,15 @@ func npc_by_id(id: int) -> FieldNpc:
 		if npc.data.id == id:
 			return npc
 	return null
+
+
+## Retire les PNJ. Au changement de zone, le jeu garde ceux qui portent le bit 0x20 de leur état
+## (0x0216DEAC, appelée par 0x02189360), que met la commande 0x241.
+func _remove_npcs(keep_marked: bool) -> void:
+	for npc in npcs.duplicate():
+		if not (keep_marked and npc.kept_on_zone_change):
+			npcs.erase(npc)
+			npc.queue_free()
 
 
 ## Retire un PNJ (commande de script 0x6C).

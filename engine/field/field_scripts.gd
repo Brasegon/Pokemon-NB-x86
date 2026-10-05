@@ -462,6 +462,14 @@ func remove_npc(id: int) -> void:
 	field.remove_npc(id)
 
 
+## Commande 0x241 : le personnage restera au changement de zone (bit 0x20 de son état, mis par
+## 0x0216DB10). Tcheren et Bianca suivent ainsi le héros de Renouet à la Route 1.
+func keep_on_zone_change(id: int) -> void:
+	var npc := _character(id) as FieldNpc
+	if npc:
+		npc.kept_on_zone_change = true
+
+
 ## Commande 0x6D : pose un personnage au centre d'une case, tourné dans une direction. Le jeu le
 ## cherche avec 0x0216DE24, comme le héros (numéro 0xFF), puis le pose avec 0x0216E014 ; le moteur
 ## le met sur le sol de la case (le jeu prend la hauteur y, en cases). Les entrées des événements

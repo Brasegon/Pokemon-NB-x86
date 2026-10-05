@@ -508,6 +508,9 @@ func _step() -> bool:
 			return false
 		0x1D0:
 			host.receive_pokedex()
+		0x241:
+			# Le personnage restera au changement de zone (0x0216DB10 : bit 0x20 de son état).
+			host.keep_on_zone_change(_value())
 		_:
 			return _skip(op)
 	return true

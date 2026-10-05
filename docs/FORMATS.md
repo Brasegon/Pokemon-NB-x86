@@ -822,6 +822,7 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 1AD, 1AE, 1AF | | autour d'une application : fondu depuis le noir (écrans 3, de 16 à 0), vers le noir (de 0 à 16), depuis le blanc (écrans 0xC) ; vitesse -1 (tâche 0x021B2EB8) |
 | 1B1 | | attendre la fin de ce fondu (0x021899C4) |
 | 1D0 | | Pokédex reçu (bit 0 du mot +4 de ses données, 0x0200CA28) |
+| 241 | valeur | le personnage restera au changement de zone : 0x0216DB10 met le bit 0x20 de son état. En passant d'une zone à l'autre (0x02189360), 0x0216DEAC retire tous les personnages sauf ceux qui le portent. Ainsi Tcheren (250) et Bianca (240), créés par les scripts 12 et 13 de Renouet, suivent le héros sur la Route 1, où la professeure les retire (0x6C) |
 | 25F | | fin de la marque de la musique d'événement (0x02159108(0xD)) : elle continue |
 
 **Mots variables** : les messages contiennent des commandes de texte `01xx` dont l'argument est un
