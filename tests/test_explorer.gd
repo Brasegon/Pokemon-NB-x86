@@ -9,7 +9,10 @@ const CASES := [
 	["a/0/0/4", 24, true],  # cellules (NCER)
 	["a/0/0/4", 38, true],  # palette (NCLR)
 	["titledemo.narc", 0, true],  # écran (NSCR)
-	["titledemo.narc", 5, false],  # modèle 3D : vidage hexadécimal pour l'instant
+	["titledemo.narc", 5, true],  # modèle 3D (NSBMD) : planche de ses textures
+	["a/0/1/4", 2, true],  # textures 3D des cartes de Renouet (NSBTX)
+	["a/0/6/9", 0, false],  # animation de textures (NSBTA) : résumé
+	["a/0/0/8", 0, false],  # morceau de carte : sections, bâtiments, collisions
 	["a/0/0/3", 0, false],  # textes
 	["a/0/0/7", 9, true],  # icône de Bulbizarre (palette partagée en #0)
 ]

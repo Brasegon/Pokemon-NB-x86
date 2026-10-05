@@ -38,15 +38,37 @@ func _initialize() -> void:
 
 	_go(DEV_MENU)
 	# Chaque entrée du menu de développement, puis retour au menu avec Annuler.
-	for entry in [[1, "res://scenes/demo/dialogue_demo.tscn"], [2, "res://scenes/demo/pokemon_viewer.tscn"],
-			[3, "res://scenes/demo/sound_test.tscn"], [4, "res://scenes/options/options_menu.tscn"]]:
+	for entry in [[2, "res://scenes/demo/dialogue_demo.tscn"], [3, "res://scenes/demo/pokemon_viewer.tscn"],
+			[5, "res://scenes/demo/sound_test.tscn"], [6, "res://scenes/options/options_menu.tscn"]]:
 		_press_times("bas", entry[0])
 		_press("valider")
 		_expect(entry[1])
 		_press("annuler")
 		_expect(DEV_MENU)
-	# Options -> Touches -> retour -> retour.
+	# Le terrain : quelques pas dans Renouet (contre un mur, en courant), puis Menu. Annuler ne
+	# quitte pas le terrain : c'est aussi le bouton B, qui sert à courir sur une manette.
+	_press_times("bas", 1)
+	_press("valider", 30)
+	_expect("res://scenes/field/field.tscn")
+	_hold("droite", 40)
+	_hold("haut", 30)
+	_hold("courir", 0)
+	_hold("gauche", 30)
+	_release("courir")
+	_press("annuler")
+	_expect("res://scenes/field/field.tscn")
+	_press("menu")
+	_expect(DEV_MENU)
+	# Visionneuse de modèles : modèle suivant, collection suivante, retour.
 	_press_times("bas", 4)
+	_press("valider", 30)
+	_expect("res://scenes/demo/model_viewer.tscn")
+	for action in ["droite", "droite", "bas", "droite", "bas", "gauche", "haut"]:
+		_press(action, 10)
+	_press("annuler")
+	_expect(DEV_MENU)
+	# Options -> Touches -> retour -> retour.
+	_press_times("bas", 6)
 	_press("valider")
 	_expect("res://scenes/options/options_menu.tscn")
 	_press_times("bas", 5)
@@ -62,16 +84,16 @@ func _initialize() -> void:
 	_expect("res://scenes/title/title_screen.tscn")
 	_press("valider", 45)
 	_expect(DEV_MENU)
-	# Dans la démo des dialogues (2e entrée) : avancer le texte, changer de ligne et de fichier.
-	_press("bas", 1)
+	# Dans la démo des dialogues (3e entrée) : avancer le texte, changer de ligne et de fichier.
+	_press_times("bas", 2)
 	_press("valider")
 	_expect("res://scenes/demo/dialogue_demo.tscn")
 	for action in ["valider", "valider", "bas", "droite", "gauche", "haut"]:
 		_press(action)
 	_press("menu")
 	_expect(DEV_MENU)
-	# À la souris : clic sur la 3e entrée du menu (« Pokémon animés »).
-	_click_menu_item(2)
+	# À la souris : clic sur la 4e entrée du menu (« Pokémon animés »).
+	_click_menu_item(3)
 	_expect("res://scenes/demo/pokemon_viewer.tscn")
 	_press("annuler")
 	_expect(DEV_MENU)
@@ -117,6 +139,17 @@ func _click_menu_item(index: int) -> void:
 			click.pressed = pressed
 			click.position = point
 			root.push_input(click, true), SETTLE_FRAMES])
+
+
+## Maintient une action pendant `frames` images (comme une touche gardée enfoncée).
+func _hold(action: String, frames: int) -> void:
+	_steps.append([func() -> void: Input.action_press(action), frames])
+	if frames > 0:
+		_release(action)
+
+
+func _release(action: String) -> void:
+	_steps.append([func() -> void: Input.action_release(action), 1])
 
 
 func _press_times(action: String, count: int) -> void:

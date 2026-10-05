@@ -52,21 +52,39 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 - [ ] Retrouver le cadre de dialogue d'origine : introuvable parmi les 415 écrans et les petites
 	  archives de tuiles de la ROM. Piste : afficher la VRAM d'un émulateur (melonDS, DeSmuME)
       pendant un dialogue, puis chercher ces tuiles dans la ROM. Un cadre redessiné le remplace.
-- [ ] Écran titre : le Reshiram en 3D et la cinématique d'ouverture viendront avec la phase 2 ;
-	  en attendant, Reshiram est le sprite animé de combat
+- [x] Écran titre : la ROM ne contient pas de Reshiram en 3D (l'écran titre de N&B est en 2D) ;
+	  Reshiram reste le sprite animé de combat
+- [ ] Cinématique d'ouverture : ses modèles (`a/1/6/0`, `cdemo_*`) s'affichent dans la visionneuse,
+	  reste à reconstituer la mise en scène (caméras, enchaînements) — phase 6
 
-## Phase 2 — La 3D : afficher une carte
+## Phase 2 — La 3D : afficher une carte ✅
 
-- [ ] Modèles NSBMD et textures NSBTX → `ArrayMesh` Godot (listes de commandes du GPU de la DS)
-- [ ] Matériaux (transparence, couleurs de sommets, éclairage DS), animations NSBTA/NSBTP/NSBCA
-- [ ] Conteneurs de cartes « WB » (`a/0/0/8`) : modèle, collisions, hauteurs
-- [ ] Matrices de cartes (`a/0/0/9`) pour assembler les morceaux d'une zone
-- [ ] Caméra façon N&B élargie au 16:9 (plus de décor visible sur les côtés), premiers pas dans Renouet
+- [x] Modèles NSBMD et textures NSBTX → `ArrayMesh` Godot : commandes de rendu (SBC) et listes de
+      commandes du GPU interprétées comme sur DS (649 cartes vérifiées triangle par triangle)
+- [x] Matériaux : transparence, couleurs de sommets, faces visibles, répétition et miroir des
+      textures, éclairage DS à 4 lumières calculé par shader
+- [x] Animations NSBTA (eau qui coule), NSBTP (changements de texture), NSBCA (squelettes : l'éolienne
+      du labo), plus le format maison des cartes (`a/0/7/0`, écume de la mer)
+- [x] Conteneurs de cartes « WB », « GC », « NG », « RD » (`a/0/0/8`) : modèle, permissions (cases
+      bloquées), bâtiments posés avec leurs portes et leurs animations
+- [x] Matrices de cartes (`a/0/0/9`), en-têtes de zones, zones de textures et lots de bâtiments :
+      la carte d'Unys se charge par morceaux autour du joueur
+- [x] Éclairage selon l'heure de l'ordinateur (`a/0/6/1`, matin, jour, soir, nuit) et textures des
+      quatre saisons, comme l'horloge de la DS
+- [x] Caméra façon N&B élargie au 16:9 (même hauteur de vue que la DS, plus de décor sur les côtés)
+- [x] Premiers pas dans Renouet : marche et course case par case, collisions, sprite animé du héros,
+      passage sur la Route 1 (panneau du lieu, musique de la zone)
+- [x] Visionneuse de modèles 3D et aperçu des textures 3D dans l'explorateur de ROM
+- [ ] Hauteurs : la « référence de terrain » des permissions (identifiant de plan + petit arbre)
+      n'est pas décodée ; le sol est lu sur le modèle 3D, ce qui suffit pour marcher
+- [ ] Panneaux (billboards) des modèles, brouillard, contours (edge marking) et ombrage toon
 
 ## Phase 3 — Le monde
 
-- [ ] En-têtes de zones : carte, musique, météo, scripts
-- [ ] Déplacement sur grille, collisions, escaliers, portes, changements de zone
+- [ ] En-têtes de zones : météo, scripts, textes (carte, musique et nom du lieu : fait en phase 2)
+- [ ] Escaliers, rebords à sauter, portes (animations NSBCA « porte » des bâtiments), entrée dans les
+      maisons (événements de zone `a/1/2/5`), comportements des cases (herbe, eau)
+- [ ] Chargement des morceaux de carte en arrière-plan (aujourd'hui : un court arrêt au passage)
 - [ ] PNJ et sprites du monde extérieur
 - [ ] **Moteur de scripts** (`a/0/5/7`) : machine virtuelle qui exécute le bytecode des événements.
 	  C'est le cœur du portage. Les commandes inconnues s'étudient dans le code ARM9/overlays, avec

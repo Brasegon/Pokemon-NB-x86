@@ -228,7 +228,221 @@ Durées en tics : 48 tics par noire.
 | `a/1/6/4` | écran des copyrights (écran 2, tuiles 1, palette 0) |
 | `a/1/6/1` | « GAME FREAK PRÉSENTE » (1), « POKÉMON VERSION NOIRE » (2), « ... BLANCHE » (3) ; tuiles 4, palette 0 |
 | `a/2/0/2` | illustration de Reshiram et Zekrom |
-| `titledemo.narc` | reste de Pokémon Diamant (logo japonais), inutilisé |
+| `titledemo.narc` | reste de Pokémon Diamant (logo japonais, modèles 3D `title_air` / `title_iar`), inutilisé |
+
+Aucun modèle 3D de Reshiram dans la ROM : l'écran titre de N&B est en 2D. Les modèles de la
+cinématique d'ouverture sont dans `a/1/6/0` (`cdemo_*`, décors et cartes de sprites animés en NSBCA
+et NSBTA, visibles dans la visionneuse de modèles).
 
 Musiques : `SEQ_BGM_OPENING_TITLE_W` (ouverture) et `SEQ_BGM_TITLE` (écran titre). Bruitages des
 menus : `SEQ_SE_SELECT1`, `SEQ_SE_DECIDE1`, `SEQ_SE_CANCEL1`.
+
+
+## Formats 3D Nitro (`engine/nds/g3d/`)
+
+En-tête commun de 16 octets : magique **à l'endroit** (`BMD0`, `BTX0`, `BCA0`, `BTA0`, `BTP0`...),
+BOM `FEFF`, version, taille, taille d'en-tête (`0x10`), nombre de blocs ; suivi de la **position de
+chaque bloc** (u32), contrairement aux formats 2D où les blocs se suivent. Nombres à virgule fixe :
+fx32 et fx16 avec 12 bits après la virgule (1.0 = 4096).
+
+### Dictionnaire (`G3DFile.read_dict`)
+
+Presque toutes les listes nommées (modèles, nœuds, matériaux, formes, textures, animations) :
+
+| Position | Contenu |
+| --- | --- |
+| 00 / 01 / 02 | révision (u8), nombre d'entrées (u8), taille (u16) |
+| 06 | position (depuis le dictionnaire) de l'en-tête des entrées ; avant : un arbre de recherche inutile ici |
+| en-tête | taille d'une entrée (u16), position des noms (u16), puis les données des entrées |
+| noms | 16 octets par entrée, complétés par des zéros |
+
+### NSBMD (`nsbmd.gd`, `g3d_model.gd`)
+
+Bloc `MDL0` : dictionnaire des modèles (entrée = position du modèle depuis le bloc). Bloc `TEX0`
+facultatif (textures intégrées, même format que NSBTX). Modèle (positions depuis son début) :
+
+| Position | Contenu |
+| --- | --- |
+| 04 / 08 / 0C / 10 | commandes de rendu (SBC), matériaux, formes, matrices inverses de liaison |
+| 17 / 18 / 19 | nombres de nœuds, de matériaux, de formes |
+| 1C | échelle des positions (fx32) : les sommets sont stockés divisés par elle (64 pour les cartes) |
+| 24-2A | nombres de sommets, de polygones, de triangles, de quadrilatères |
+| 40 | dictionnaire des nœuds |
+
+**Nœud** : indicateurs (u16) puis premier élément de la rotation (fx16), et selon les indicateurs
+une translation (3 fx32), une rotation (8 fx16 de plus, ligne par ligne) et une échelle (3 fx32).
+Indicateurs : bit 0 sans translation, 1 sans rotation, 2 sans échelle, 3 rotation « pivot » (2 fx16
+A et B seulement : un 1 à la case n° bits 4-7, signé par le bit 8, et les 4 cases restantes valent
+`[[A, B], [±B, ±A]]`, signes donnés par les bits 9 et 10). La DS multiplie des vecteurs lignes : les
+lignes de ses matrices sont les axes des bases Godot.
+
+**Matériau** (positions depuis son début) : 04 `DIF_AMB` (diffus, bit 15 = le diffus sert de couleur
+de sommet, ambiant), 08 `SPE_EMI` (spéculaire, émission), 0C `POLYGON_ATTR` (bits 0-3 lumières,
+4-5 mode : modulation, décalcomanie, toon, ombre ; bit 6 face arrière, bit 7 face avant, bit 11
+translucide qui écrit la profondeur, bits 16-20 opacité de 0 à 31), 14 paramètres de texture
+(bits 16-19 répétition et miroir en S et T, bits 30-31 source des coordonnées), 1E indicateurs
+(bit 0 matrice de texture, bits 1-3 échelle 1, rotation nulle, translation nulle), puis les éléments
+de la matrice de texture présents. Les textures et palettes sont liées aux matériaux **par noms**
+(deux dictionnaires : nom de texture -> liste de matériaux).
+
+**Forme** : indicateurs, position et taille de sa **liste de commandes du GPU**.
+
+**Commandes de rendu (SBC)** : un octet de commande (bits 5-7 = variante) et ses arguments.
+
+| Code | Effet |
+| --- | --- |
+| `01` | fin |
+| `02` | visibilité d'un nœud (nœud, 0/1) : les formes d'un nœud caché ne sont pas dessinées |
+| `03` | reprendre la matrice n° x de la pile |
+| `04` | choisir le matériau |
+| `05` | dessiner la forme |
+| `06` (`26`, `46`, `66`) | nœud, parent, indicateurs ; `+20` : ranger la matrice dans la pile, `+40` : en reprendre une avant |
+| `07` / `08` | panneaux (billboards) |
+| `09` | mélange pondéré de matrices (sommets liés à plusieurs nœuds) |
+| `0B` / `2B` | échelle des positions (appliquée directement aux sommets) |
+
+**Listes du GPU** : des mots de 32 bits contenant 4 numéros de commande, suivis des paramètres de ces
+commandes. Le moteur gère :
+
+| Code | Paramètres | Effet |
+| --- | --- | --- |
+| `14` | 1 | reprendre une matrice de la pile (sommets liés à un nœud) |
+| `20` | 1 | couleur de sommet (BGR555) |
+| `21` | 1 | normale : 3 x 10 bits signés, 9 bits après la virgule |
+| `22` | 1 | coordonnées de texture : 2 x s16, 4 bits après la virgule, en texels |
+| `23` | 2 | sommet : 3 x fx16 |
+| `24` | 1 | sommet : 3 x 10 bits signés, 6 bits après la virgule |
+| `25` / `26` / `27` | 1 | sommet : deux coordonnées fx16 (XY, XZ, YZ), la 3e inchangée |
+| `28` | 1 | sommet relatif au précédent : 3 x 10 bits signés / 4096 |
+| `40` / `41` | 1 / 0 | début (0 triangles, 1 quadrilatères, 2 bande de triangles, 3 bande de quadrilatères) / fin |
+
+Dans une bande de quadrilatères, les sommets v0 v1 v2 v3 forment le quadrilatère v0 v1 v3 v2. La DS
+considère comme face avant les triangles qui tournent dans le sens inverse des aiguilles d'une
+montre, Godot ceux qui tournent dans le sens des aiguilles : l'ordre des sommets est inversé. Le
+nombre de triangles produits vaut exactement triangles + 2 x quadrilatères annoncés pour les 649
+cartes (`test_3d`), sauf quand des nœuds sont cachés (Centre Pokémon).
+
+### NSBTX (`nsbtx.gd`)
+
+Bloc `TEX0` (positions depuis le bloc) : 0E dictionnaire des textures, 14 données ; 24 données des
+textures compressées 4x4, 28 leurs index de palette ; 30 taille des palettes (>> 3), 34
+dictionnaire des palettes, 38 données. Entrée de texture : le registre `TEXIMAGE_PARAM` (position
+>> 3, largeur et hauteur `8 << n`, format, couleur 0 transparente). Entrée de palette : position >> 3.
+
+| Format | Pixel |
+| --- | --- |
+| 1 A3I5 | 5 bits de couleur, 3 bits d'opacité (ramenés à 5 bits : a x 4 + a / 2) |
+| 2 / 3 / 4 | 4, 16 ou 256 couleurs (2, 4 ou 8 bits, pixel de gauche dans les bits de poids faible) |
+| 5 compressé 4x4 | par bloc de 4x4 : 32 bits d'index et 16 bits de palette (bits 14-15 : mode) |
+| 6 A5I3 | 3 bits de couleur, 5 bits d'opacité |
+| 7 direct | BGR555, bit 15 = opaque |
+
+N&B n'utilise que les formats 1 à 4 et 6 (aucune texture 4x4 ni directe dans toute la ROM : le
+décodeur 4x4 est vérifié sur un bloc fabriqué). La palette d'une texture porte son nom suivi de `_pl`.
+
+### Animations
+
+**NSBTA** (bloc `SRT0`, animation « M\0AT ») : 04 nombre d'images, 08 dictionnaire des matériaux ;
+5 pistes de 8 octets par matériau (échelle S et T, rotation, translation S et T). Mot
+d'informations : bits 0-15 dernière image interpolée, bit 28 valeurs fx16, bit 29 constante (le
+2e mot est alors la valeur), bits 30-31 une valeur toutes les 2 ou 4 images (puis une par image
+après la dernière image interpolée). La rotation est stockée en (sinus, cosinus).
+
+**NSBTP** (bloc `PAT0`, « M\0PT ») : 04 nombre d'images, 06 nombre de textures, 07 de palettes,
+08 / 0A positions de leurs noms, 0C dictionnaire des matériaux (nombre de clés, position) ; clé =
+image (u16), texture (u8), palette (u8).
+
+**NSBCA** (bloc `JNT0`, « J\0AC ») : 04 nombre d'images, 06 nombre de nœuds, 0C table des rotations
+« pivot » (3 x u16 : informations, A, B), 10 table « Rot5 » (5 x u16), 14 position de la description
+de chaque nœud. Description : indicateurs (bits 24-31 = nœud ; identité, translation / rotation /
+échelle identité, « valeur du modèle » ou constante), puis les pistes nécessaires. Piste non constante :
+informations (bits 0-15 première image, 16-28 dernière image interpolée, bit 29 fx16, bits 30-31 pas)
+et position des valeurs. Les échelles vont par paires (échelle, inverse). Rotation n° x : bit 15 à 1 =
+table pivot (dans ses informations : bits 0-3 case du 1, bit 4 signe du 1, bits 5-6 signes de C et D),
+sinon Rot5 : les 13 bits de poids fort des 5 valeurs sont les éléments (0,0) (0,1) (0,2) (1,0) (1,1),
+leurs 3 bits de poids faible forment l'élément (1,2), la 3e ligne est le produit vectoriel des deux
+premières. Une échelle nulle sert à cacher un nœud.
+
+### Éclairage de la DS (`g3d_materials.gd`)
+
+Par sommet, pour chaque lumière allumée (jusqu'à 4, directionnelles) :
+`couleur = émission + somme(diffus x lumière x max(0, -L.N) + spéculaire x lumière x max(0, -H.N)² + ambiant x lumière)`
+avec `H = (L + (0, 0, -1)) / 2` dans le repère de la caméra. Les calculs se font sur les couleurs de
+la DS (sRGB), converties ensuite pour Godot. Toutes les formes des cartes ont des normales et la
+lumière 0 allumée.
+
+## Le monde (`engine/field/`)
+
+Unités : 1 case = 16 unités DS = 1 unité Godot. Un morceau de carte fait 32 x 32 cases (512 unités),
+centré sur l'origine de son modèle.
+
+### Morceaux de carte (`a/0/0/8`, `map_container.gd`)
+
+Deux lettres, nombre de sections (u16), position de chaque section puis la fin du fichier.
+
+| Type | Sections | Nombre |
+| --- | --- | --- |
+| `WB` | modèle NSBMD, permissions, bâtiments | 572 |
+| `GC` | modèle, permissions, 2e couche de permissions (ponts), bâtiments | 47 |
+| `NG` | modèle, bâtiments | 22 |
+| `RD` | modèle, 24 Ko inconnus, bâtiments | 8 |
+
+**Bâtiments** : nombre (u32), puis 16 octets : position x, y, z (fx32), rotation (u16, 65536 = un
+tour), numéro (u16 écrit **poids fort en premier**). Le **z des bâtiments est compté vers le nord**,
+à l'inverse des modèles et des permissions : vérifié avec les cases bloquées sous les maisons de
+Renouet (le laboratoire est au nord-ouest, pas sur l'eau).
+
+**Permissions** : largeur et hauteur (u16), puis 8 octets par case : 00 référence de terrain (u32 ;
+bits 0-1 = 2 : renvoi vers un petit arbre de nœuds de 8 octets rangé après la grille, sinon identifiant
+de plan), 04 comportement (u16), 06 indicateurs (u16 : bit 0 = bloquée, bit 7 toujours à 1).
+Les identifiants de plans ne sont ni des hauteurs, ni des index d'une table de la ROM ou du code ARM9
+(cherché en vain) : la **hauteur du sol est lue sur le modèle 3D** (triangles répartis par case,
+surface la plus haute que l'on peut atteindre depuis la hauteur actuelle).
+
+### Matrices (`a/0/0/9`), zones (`a/0/1/2`) et zones de textures (`a/0/1/3`)
+
+- **Matrice** : indicateur (u32, 1 = numéros de zones présents), largeur, hauteur (u16), numéro de
+  morceau de chaque case (u32, `FFFFFFFF` = vide), puis le numéro de zone de chaque case. La matrice
+  n° 0 est la carte d'Unys (29 x 27) : Renouet est le morceau n° 0, en (24, 23).
+- **Zone** (48 octets) : 00 type, 02 zone de textures, 04 matrice, 06 script, 08 script de niveau,
+  0A textes, 0C-12 musiques des 4 saisons (n° de séquence du SDAT), 14 rencontres, 16 numéro, 18 parent,
+  1A nom du lieu (u8). Renouet = zone 389 (lieu n° 4, `SEQ_BGM_T_01`), Route 1 = 317.
+- **Zone de textures** (fichier brut, 10 octets) : 00 lot de bâtiments, 02 textures des cartes
+  (`a/0/1/4`), 04 animation NSBTA (u8, `a/0/6/9`), 05 animation par changement d'image (u8,
+  `a/0/7/0`), `FF` = aucune, 06 extérieur, 07 éclairage (fichier de `a/0/6/1`). Les zones désignent
+  l'entrée du **printemps** ; pour une zone extérieure, les 3 entrées suivantes sont **l'été,
+  l'automne et l'hiver** (textures, animations et éclairage ; les bâtiments restent ceux du
+  printemps). La saison change chaque mois : janvier printemps, février été, mars automne...
+
+### Bâtiments (`a/2/2/9` dehors, `a/2/3/0` dedans ; textures `a/1/7/6`, `a/1/7/7`)
+
+Lot « AB » : nombre de fichiers (2 x N), positions ; N descriptions puis N modèles NSBMD. Description
+(36 octets, suivis de ses fichiers d'animation) : 00 numéro, 02 type, 04 porte posée automatiquement
+(0xFFFF = aucune), 06-0A position de la porte (3 x s16), 10 mode des animations (1 en boucle,
+2 porte qui s'ouvre et se ferme, 3 plusieurs boucles), 13 nombre d'animations, 14 positions (depuis
+la position 10). L'éolienne du laboratoire tourne avec une animation NSBCA en boucle.
+
+### Éclairage (`a/0/6/1`, `field_light.gd`)
+
+56 fichiers de 15 images clés de 52 octets : 00 heure (u16 période : 0 matin, 1 jour, 2 soir, 3 nuit,
+4 minuit ; s16 décalage en minutes), 04 lumières allumées (4 x u8), 08 couleurs des 4 lumières,
+10 directions (3 x fx16 chacune), 28 couleurs imposées à tous les matériaux (diffus, ambiant,
+spéculaire, émission) et deux couleurs de ciel. Débuts des périodes (matin, jour, soir, nuit) :
+printemps 5 h, 10 h, 17 h, 20 h ; été 4 h, 9 h, 19 h, 21 h ; automne 6 h, 10 h, 18 h, 20 h ;
+hiver 7 h, 11 h, 17 h, 19 h. Fichier `0x20` (+ saison) dehors, `0x1C` dedans (constant).
+
+### Animations des textures des cartes
+
+- `a/0/6/9` : NSBTA (eau, herbes qui ondulent), choisi par la zone de textures.
+- `a/0/7/0` : format propre à N&B. Nombre d'animations (u32), puis pour chacune les positions de sa
+  description et d'un NSBTX d'images. Description : nombre de clés n, images (n x u16), textures
+  (n x u8), palettes (n x u8), chaque liste complétée à 4 octets, puis boucle, inconnu, nombre
+  d'images. Elle remplace la texture des cartes qui porte le nom de sa première image (`sea_simi.1` :
+  l'écume de la mer de Renouet).
+
+### Personnages (`a/0/4/9`)
+
+Les 6 premiers fichiers sont des objets 3D (rochers...), les suivants des NSBTX d'images de 32x32 :
+6 = le héros (« t4x4hero », 32 images : dos, face, gauche, droite par groupes de 3 — immobile, pied
+gauche, pied droit — pour la marche puis la course), 7 = à vélo, 8 = en surf, 9-11 = l'héroïne ;
+les PNJ « t4x4flip » ont 7 images, la droite étant la gauche retournée.

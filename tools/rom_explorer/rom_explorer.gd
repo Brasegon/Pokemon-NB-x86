@@ -307,6 +307,8 @@ func _open_narc(path: String) -> void:
 		_types[i] = magic
 		var size := _narc.raw_size(i)
 		var kind := "vide" if size == 0 else _type_label(magic)
+		if path == BWFiles.MAPS and size > 0:
+			kind = "carte « %s »" % _narc.peek(i, 2).get_string_from_ascii()
 		_entries.add_item("#%05d  %s  %s%s" % [i, kind, _format_size(size), "  LZ" if size > 0 and Lz.looks_compressed(_narc.get_raw(i)) else ""])
 	_info.text = "%s — %d sous-fichiers. %s" % [path, _narc.count(), BWFiles.DESCRIPTIONS.get(path, "")]
 	_show_options([])
@@ -354,6 +356,10 @@ func _render_entry() -> void:
 		_show_options([])
 		_show_message_file(MsgFile.parse(data))
 		return
+	if _narc_path == BWFiles.MAPS:
+		_show_options([])
+		_show_map_container(MapContainer.parse(data))
+		return
 	match magic:
 		"RLCN":
 			_show_options([_zoom_spin])
@@ -390,9 +396,85 @@ func _render_entry() -> void:
 			else:
 				_info.text += " — %d cellules, mode %s" % [cells.cells.size(), "2D" if cells.mapping == NCER.MAPPING_2D else "1D"]
 				_display_image(image)
+		"BTX0":
+			_show_options([_zoom_spin])
+			var tex := NSBTX.parse(data)
+			if tex:
+				_info.text += " — %d textures, %d palettes" % [tex.textures.size(), tex.palettes.size()]
+			_display_parsed(tex, func(t: NSBTX) -> Image: return t.to_image())
+		"BMD0":
+			var file := NSBMD.parse(data)
+			if file and file.textures and not file.textures.textures.is_empty():
+				_show_options([_zoom_spin])
+				_info.text += " — " + _describe_models(file).replace("\n", " ; ")
+				_display_image(file.textures.to_image())
+			else:
+				_show_options([])
+				_show_text(_describe_models(file) if file else "Modèle illisible.")
+		"BCA0", "BTA0", "BTP0":
+			_show_options([])
+			_show_text(_describe_animations(magic, data))
 		_:
 			_show_options([])
 			_show_hex(data, _export_name)
+
+
+## Résumé des modèles d'un NSBMD (sommets, polygones, matériaux, textures utilisées).
+func _describe_models(file: NSBMD) -> String:
+	var lines := PackedStringArray()
+	for model in file.models:
+		var textures := PackedStringArray()
+		for mat in model.materials:
+			if not mat.texture.is_empty() and not textures.has(mat.texture):
+				textures.append(mat.texture)
+		lines.append("%s : %d sommets, %d polygones, %d nœuds, %d matériaux, %d formes ; textures : %s" % [
+			model.name, model.vertex_count, model.polygon_count, model.nodes.size(), model.materials.size(),
+			model.shapes.size(), ", ".join(textures)])
+	return "\n".join(lines)
+
+
+func _describe_animations(magic: String, data: PackedByteArray) -> String:
+	var lines := PackedStringArray()
+	match magic:
+		"BCA0":
+			var f := NSBCA.parse(data)
+			var clips: Array = f.animations if f else []
+			for clip in clips:
+				lines.append("Squelette « %s » : %d images, %d nœuds" % [clip.name, clip.frame_count, clip.node_count()])
+		"BTA0":
+			var f := NSBTA.parse(data)
+			var clips: Array = f.animations if f else []
+			for clip in clips:
+				lines.append("Matrices de texture « %s » : %d images ; matériaux : %s" % [clip.name, clip.frame_count, ", ".join(clip.material_names())])
+		"BTP0":
+			var f := NSBTP.parse(data)
+			var clips: Array = f.animations if f else []
+			for clip in clips:
+				lines.append("Changement de texture « %s » : %d images ; matériaux : %s ; textures : %s" % [
+					clip.name, clip.frame_count, ", ".join(clip.material_names()), ", ".join(clip.texture_names)])
+	return "\n".join(lines) if not lines.is_empty() else "Animation illisible."
+
+
+## Morceau de carte : sections, bâtiments et grille des collisions (# = case bloquée).
+func _show_map_container(map: MapContainer) -> void:
+	if map == null:
+		_show_text("Conteneur de carte illisible.")
+		return
+	var model := map.model()
+	var lines := PackedStringArray()
+	lines.append("Conteneur « %s » : %d couche(s) de permissions, %d bâtiment(s)" % [map.kind, map.permissions.size(), map.buildings.size()])
+	if model:
+		lines.append("Modèle %s : %d sommets, %d polygones, %d matériaux" % [model.name, model.vertex_count, model.polygon_count, model.materials.size()])
+	for building in map.buildings:
+		lines.append("  bâtiment n° %d en %s, rotation %d°" % [building.id, building.position, roundi(rad_to_deg(building.rotation))])
+	for layer in map.permissions:
+		lines.append("")
+		for y in layer.height:
+			var row := ""
+			for x in layer.width:
+				row += "#" if layer.is_blocked(x, y) else ("~" if layer.behavior(x, y) != 0 else ".")
+			lines.append(row)
+	_show_text("\n".join(lines))
 
 
 ## Affiche le résultat de render(objet) si le parsing a réussi, sinon un message d'erreur.
