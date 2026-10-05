@@ -23,6 +23,9 @@ musique. Valider mène au **menu de développement** :
 - **Premiers pas dans Renouet (3D)** : la ville de départ et la Route 1 lues dans la ROM (cartes,
   bâtiments, animations), le héros qui marche et court, l'éclairage qui suit l'heure de l'ordinateur
   et les textures des quatre saisons ;
+- **Scènes de l'histoire (mise au point)** : chaque scène jouée jusqu'ici (l'intro, le starter, la
+  mère, le laboratoire, Renouet, la Route 1) lancée directement, la partie posée telle qu'à son
+  début ;
 - **Démo des dialogues** : tous les textes de l'histoire dans la boîte de dialogue du portage ;
 - **Pokémon animés** : les 649 Pokémon animés de face et de dos, version chromatique, cris ;
 - **Modèles 3D** : visionneuse des modèles de la ROM (cartes, bâtiments, objets, effets,

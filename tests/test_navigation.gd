@@ -38,8 +38,8 @@ func _initialize() -> void:
 
 	_go(DEV_MENU)
 	# Chaque entrée du menu de développement, puis retour au menu avec Annuler.
-	for entry in [[4, "res://scenes/demo/dialogue_demo.tscn"], [5, "res://scenes/demo/pokemon_viewer.tscn"],
-			[7, "res://scenes/demo/sound_test.tscn"], [8, "res://scenes/options/options_menu.tscn"]]:
+	for entry in [[5, "res://scenes/demo/dialogue_demo.tscn"], [6, "res://scenes/demo/pokemon_viewer.tscn"],
+			[8, "res://scenes/demo/sound_test.tscn"], [9, "res://scenes/options/options_menu.tscn"]]:
 		_press_times("bas", entry[0])
 		_press("valider")
 		_expect(entry[1])
@@ -77,6 +77,19 @@ func _initialize() -> void:
 	_press("annuler")
 	_press("menu", 10)
 	_quit_field()
+	# Scènes de l'histoire (5e entrée) : la liste, Annuler pour revenir (le curseur reste sur
+	# l'entrée), puis la démonstration de capture (7e scène), qui démarre sur la Route 1.
+	_press_times("bas", 4)
+	_press("valider")
+	_steps.append([func() -> void: _check(current_scene.get("_in_scenes") == true, "liste des scènes de l'histoire"), 0])
+	_press("annuler")
+	_press("valider")
+	_press_times("bas", 6)
+	_press("valider", 30)
+	_expect("res://scenes/field/field.tscn")
+	_expect_zone(317)
+	_go(DEV_MENU)
+	_expect(DEV_MENU)
 	# Nouvelle partie : la chambre du héros, où l'intro démarre toute seule ; retour au menu.
 	_press_times("bas", 2)
 	_press("valider", 30)
@@ -86,7 +99,7 @@ func _initialize() -> void:
 	_go(DEV_MENU)
 	_expect(DEV_MENU)
 	# Visionneuse de modèles : modèle suivant, collection suivante, retour.
-	_press_times("bas", 6)
+	_press_times("bas", 7)
 	_press("valider", 30)
 	_expect("res://scenes/demo/model_viewer.tscn")
 	for action in ["droite", "droite", "bas", "droite", "bas", "gauche", "haut"]:
@@ -94,7 +107,7 @@ func _initialize() -> void:
 	_press("annuler")
 	_expect(DEV_MENU)
 	# Options -> Touches -> retour -> retour.
-	_press_times("bas", 8)
+	_press_times("bas", 9)
 	_press("valider")
 	_expect("res://scenes/options/options_menu.tscn")
 	_press_times("bas", 5)
@@ -110,16 +123,16 @@ func _initialize() -> void:
 	_expect("res://scenes/title/title_screen.tscn")
 	_press("valider", 45)
 	_expect(DEV_MENU)
-	# Dans la démo des dialogues (5e entrée) : avancer le texte, changer de ligne et de fichier.
-	_press_times("bas", 4)
+	# Dans la démo des dialogues (6e entrée) : avancer le texte, changer de ligne et de fichier.
+	_press_times("bas", 5)
 	_press("valider")
 	_expect("res://scenes/demo/dialogue_demo.tscn")
 	for action in ["valider", "valider", "bas", "droite", "gauche", "haut"]:
 		_press(action)
 	_press("menu")
 	_expect(DEV_MENU)
-	# À la souris : clic sur la 6e entrée du menu (« Pokémon animés »).
-	_click_menu_item(5)
+	# À la souris : clic sur la 7e entrée du menu (« Pokémon animés »).
+	_click_menu_item(6)
 	_expect("res://scenes/demo/pokemon_viewer.tscn")
 	_press("annuler")
 	_expect(DEV_MENU)

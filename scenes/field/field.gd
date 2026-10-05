@@ -101,11 +101,20 @@ func _ready() -> void:
 	scripts.script_finished.connect(_on_script_finished)
 	add_child(scripts)
 	# Drapeaux de départ avant l'arrivée dans la zone : ils décident des PNJ présents.
+	var story_scene := Game.story_scene
+	Game.story_scene = -1
 	if not state.started:
 		scripts.new_game()
 		state.started = true
+		# Scène choisie dans le menu de développement : la partie telle qu'au début de la scène.
+		if story_scene >= 0:
+			StoryScenes.apply(story_scene, state)
 	_enter_zone(field.zone_at(start_tile))
+	if story_scene >= 0:
+		StoryScenes.prepare(story_scene, scripts)
 	scripts.enter_zone()
+	if story_scene >= 0:
+		StoryScenes.start(story_scene, scripts)
 
 
 ## Range le lieu du héros dans la partie (avant une sauvegarde ou un changement de scène).

@@ -22,6 +22,7 @@ func _initialize() -> void:
 	_test_tiles()
 	_test_camera()
 	_test_scripts()
+	_test_story_scenes()
 	_test_save()
 	print("%d vérifications, %d échec(s), %d ms" % [_checks, _failures, Time.get_ticks_msec() - started])
 	quit(1 if _failures > 0 else 0)
@@ -426,6 +427,48 @@ func _story_step(scripts: FieldScripts, box: DialogueBox, label: String) -> void
 			map.set_events_zone(zone)
 			scripts.enter_zone()
 	print("   %s : scripts %s, %d images, commandes sautées : %s" % [label, played, frames, scripts.vm.skipped])
+
+
+## Scènes de l'histoire du menu de développement : chacune, préparée comme le fait le terrain,
+## démarre avec le script attendu et va jusqu'au bout.
+func _test_story_scenes() -> void:
+	var map := FieldMap.new()
+	root.add_child(map)
+	var hero := FieldPlayer.create(map, NSBTX.parse(_rom.narc(BWFiles.FIELD_OBJECTS).get_file(6)))
+	map.add_child(hero)
+	var box := DialogueBox.new()
+	root.add_child(box)
+	var played := []
+	for index in StoryScenes.SCENES.size():
+		var scene: Dictionary = StoryScenes.SCENES[index]
+		var state := StoryScenes.new_state(index)
+		var scripts := FieldScripts.create(map, hero, box, state)
+		root.add_child(scripts)
+		# Comme FieldScene._ready : début de partie, histoire avancée, zone, scène.
+		scripts.new_game()
+		StoryScenes.apply(index, state)
+		map.load_zone(scene.zone)
+		var tile: Vector2i = scene.tile
+		if tile.x < 0:
+			var header := map.zones.get_zone(scene.zone)
+			tile = Vector2i(header.x, header.z)
+		map.update_around(tile)
+		map.work = state.work
+		map.set_events_zone(scene.zone)
+		hero.place(tile, scene.facing)
+		StoryScenes.prepare(index, scripts)
+		scripts.enter_zone()
+		StoryScenes.start(index, scripts)
+		var started: bool = scripts.is_running() and scripts.current == scene.script
+		var frames := _play(scripts, box)
+		if started and not scripts.is_running():
+			played.append(index)
+		else:
+			print("   scène « %s » : script %d au départ, %d images" % [scene.name, scripts.current, frames])
+		scripts.queue_free()
+	_check(played.size() == StoryScenes.SCENES.size(), "les %d scènes de l'histoire démarrent et vont au bout (%d)" % [StoryScenes.SCENES.size(), played.size()])
+	box.queue_free()
+	map.queue_free()
 
 
 ## Sauvegarde : l'état de la partie écrit puis relu par l'autoload Game (dans un fichier de test,
