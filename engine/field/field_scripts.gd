@@ -24,6 +24,8 @@ var vm := ScriptVM.new()
 var box: DialogueBox
 ## Menu Oui / Non (commande 0x47), posé au-dessus de la boîte de dialogue.
 var yes_no: ChoiceMenu
+## Fondu de l'écran (commande 0xB3) ; sans lui, les fondus sont instantanés.
+var screen_fade: ScreenFade
 ## Numéro du script en cours (-1 : aucun).
 var current := -1
 ## PNJ qui a lancé le script (on lui a parlé), ou null.
@@ -35,6 +37,11 @@ var _rom: Node
 var _runners: Array[MovementRunner] = []
 ## Réponse du menu Oui / Non : -1 tant que le joueur n'a pas choisi.
 var _yes_no_answer := -1
+## Choix du starter : -1 tant que le joueur n'a pas choisi.
+var _starter_answer := -1
+var _battle_time := 0.0
+## Temps écoulé depuis le début d'une fanfare ou d'un effet sonore attendu.
+var _sound_time := 0.0
 
 
 static func create(map: FieldMap, hero: FieldPlayer, dialogue: DialogueBox, game: GameState = null) -> FieldScripts:
@@ -244,6 +251,53 @@ func set_pending_script(id: int) -> void:
 	state.pending_script = id
 
 
+func add_money(amount: int) -> void:
+	state.add_money(amount)
+
+
+func give_pokemon(species: int, form: int, level: int) -> bool:
+	return state.add_pokemon(species, form, level)
+
+
+## Espèce du Pokémon n° slot de l'équipe (0 si la place est vide).
+func party_species(slot: int) -> int:
+	return state.party[slot].species if slot >= 0 and slot < state.party.size() else 0
+
+
+## Ouvre le choix du starter (commande 0x153) par-dessus le terrain.
+func choose_starter() -> void:
+	_starter_answer = -1
+	var starters := StarterChoice.read_species(_rom.rom)
+	var choice := StarterChoice.create(starters, _rom.text_file(BWFiles.TEXT_STORY, StarterChoice.TEXT_FILE))
+	choice.chosen.connect(func(index: int) -> void: _starter_answer = index)
+	if box.get_parent():
+		box.get_parent().add_child(choice)
+
+
+func starter_answer() -> int:
+	return _starter_answer
+
+
+## Combat de dresseurs (commande 0x85). Les combats viennent avec la phase 4 : en attendant, un
+## court passage au noir, et le joueur gagne.
+func start_battle(trainer: int, partner: int, _flags: int) -> void:
+	print("Combat contre le dresseur n° %d%s (phase 4)" % [trainer, " et %d" % partner if partner else ""])
+	_battle_time = 0.0
+	fade_screen(3, 0, 16, -1)
+
+
+func battle_done(delta: float) -> bool:
+	_battle_time += delta
+	if _battle_time < BATTLE_PLACEHOLDER_TIME:
+		return false
+	fade_screen(3, 16, 0, -1)
+	return true
+
+
+func battle_won() -> bool:
+	return true
+
+
 func ask_yes_no() -> void:
 	_yes_no_answer = -1
 	yes_no.set_items(yes_no.items, 0)
@@ -317,10 +371,67 @@ func set_npc_position(id: int, x: int, _y: int, z: int, direction: int) -> void:
 		npc.face(clampi(direction, 0, 3) as CharacterSprite.Direction)
 
 
+## Au plus quelques secondes d'attente pour un son : sans pilote audio (tests), il ne finit pas.
+const SOUND_LIMIT := 10.0
+## Durée de l'écran qui tient lieu de combat, en attendant la phase 4.
+const BATTLE_PLACEHOLDER_TIME := 1.5
+
+
 func play_sound(id: int) -> void:
+	var name := _sequence(id)
+	if not name.is_empty():
+		_sound_time = 0.0
+		Autoloads.sound().play_effect(name)
+
+
+func sound_effect_done(delta: float) -> bool:
+	_sound_time += delta
 	var sound := Autoloads.sound()
-	if sound == null:
+	return sound == null or not sound.is_effect_playing() or _sound_time > SOUND_LIMIT
+
+
+func play_event_music(id: int) -> void:
+	var name := _sequence(id)
+	if not name.is_empty():
+		Autoloads.sound().play_music(name)
+
+
+func restore_zone_music() -> void:
+	play_event_music(field.zone_music(field.events_zone))
+
+
+func play_fanfare(id: int) -> void:
+	var name := _sequence(id)
+	if not name.is_empty():
+		_sound_time = 0.0
+		Autoloads.sound().play_fanfare(name)
+
+
+func fanfare_done(delta: float) -> bool:
+	_sound_time += delta
+	var sound := Autoloads.sound()
+	if sound and sound.is_music_playing() and _sound_time < SOUND_LIMIT:
+		return false
+	if sound:
+		sound.resume_music()
+	return true
+
+
+## Nom de la séquence n° id du SDAT (« SEQ_ME_POKEGET »...), ou "".
+func _sequence(id: int) -> String:
+	var sound := Autoloads.sound()
+	var archive: SDAT = sound.sdat() if sound else null
+	return archive.sequence_names[id] if archive and id >= 0 and id < archive.sequence_names.size() else ""
+
+
+## Fondu de luminosité (commande 0xB3). Un seul écran ici : les écrans des bits 1 et 2 vont vers le
+## noir (0x0204E7BC change le signe de leur valeur), ceux des bits 4 et 8 vers le blanc.
+func fade_screen(screens: int, from: int, to: int, speed: int) -> void:
+	if screen_fade == null:
 		return
-	var archive: SDAT = sound.sdat()
-	if archive and id < archive.sequence_names.size():
-		sound.play_effect(archive.sequence_names[id])
+	var sign := -1 if screens & 3 else 1
+	screen_fade.brightness(from * sign, to * sign, speed)
+
+
+func fade_done(_delta: float) -> bool:
+	return screen_fade == null or not screen_fade.is_fading()

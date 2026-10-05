@@ -714,7 +714,7 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 4E | u8 mot, valeur objet, valeur nombre, u8 | nom d'objet, au pluriel (fichier 280, 0x0201EF00) si le nombre dépasse 1 |
 | 50 | u8 mot, valeur objet | nom de la capacité d'une CT ou d'une CS (objets 328-425 et 618-620, table 0x0209EA38 de l'ARM9) : pas encore |
 | 51, 52, 56 | u8 mot, valeur | nom de capacité (fichier 203), de poche du sac (fichier 55), de type (fichier 199) |
-| 53, 54 | u8 mot, valeur | espèce, surnom d'un Pokémon de l'équipe (0x0201EE50, 0x0201EEA0) : pas encore |
+| 53, 54 | u8 mot, valeur | espèce, surnom d'un Pokémon de l'équipe (0x0201EE50 et 0x0201EEA0 lisent les champs 5 et 0x73 de 0x02017E38) ; pas encore de surnoms |
 | 57 | u8 mot, valeur | nom d'espèce (0x0201EE2C) |
 | 26, 27 | variable, valeur | ajouter, soustraire |
 | 64, 65 | valeur personnage, s32 / | lancer une liste de mouvements (« fin des paramètres + décalage ») ; attendre qu'elles soient finies |
@@ -722,12 +722,51 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 6B, 6C | valeur | faire apparaître un PNJ des événements de la zone (0x0216CE74), le retirer |
 | 6D | valeurs : PNJ, x, y, z, direction | placer un PNJ présent (0x0216E014), sans changer son entrée des événements |
 | 74 | | le PNJ se tourne vers le héros |
+| 85 | valeurs : dresseur, dresseur 2, ? | combat de dresseurs (0x0216E7A8) ; sans dresseur 2, le même si c'est un dresseur de combat double (0x0215A454). En attendant la phase 4 : un passage au noir et une victoire |
+| 8C | | après une défaite : fin du script et retour au dernier Centre (0x0215F678) |
+| 8D | variable | 1 si le joueur a gagné le dernier combat (table 0x02172568, 0x0216EF38) |
+| 8E | | transition de retour du combat (0x021BE8B8) |
+| 98 | u16 | musique d'événement (0x0202991C ; 1161 = `SEQ_BGM_E_FRIEND`), avec la marque 0xD (0x021590E4) |
+| 9E | | retour à la musique de la zone, en fondu (0x02029838) |
 | A6 | valeur | effet sonore n° N du SDAT (1351 = `SEQ_SE_MESSAGE`) |
+| A8 | | attendre la fin de l'effet sonore (0x021AF1DC) |
+| A9, AA | u16 / | fanfare (0x020297C8 ; 1304 = `SEQ_ME_POKEGET`) ; attendre sa fin, puis la musique reprend (0x020295B8) |
+| B3, B4 | u16 écrans, départ, arrivée, vitesse / | fondu de luminosité (0x0204E6B8, code ARM) ; attendre sa fin (0x0204E79C) |
+| E0 | variable | version du jeu : 20 (0x14) dans Pokémon Blanc |
+| E1 | variable | sexe du héros (0x02008550) |
+| F9 | valeur | ajouter de l'argent (0x0200C278, plafond 9 999 999) |
+| 101 | variable, valeur | 1 si le Pokémon n° x de l'équipe a tous ses PV (champs 0xA0 et 0xA1 de 0x02017E38) ou est un œuf (champ 0x4C) |
+| 104 | | soigner l'équipe (0x0201BA50) |
+| 10C | variable, valeurs : espèce, forme, niveau | donner un Pokémon : 0x0215C4B0 le crée si l'équipe a moins de 6 membres (0x0201AA30, 0x0201AA34), l'ajoute (0x0201A9A8) et l'inscrit au Pokédex (0x0200CDE0) ; 1 dans la variable, 0 si l'équipe est pleine |
+| 14B, 14A | | quitter le terrain pour une application (0x020144F8), le retrouver (0x020145E8) |
+| 153 | variable | choix du starter : application de l'overlay 223 (0x0215C5DC), voir plus bas |
+| 1AE, 1AF | | avant une application, fondu au noir (écrans 3, de 0 à 16) ; au retour, fondu depuis le blanc (écrans 0xC, de 16 à 0) ; vitesse -1 (tâche 0x021B2EB8) |
+| 25F | | fin de la marque de la musique d'événement (0x02159108(0xD)) : elle continue |
 
 **Mots variables** : les messages contiennent des commandes de texte `01xx` dont l'argument est un
 numéro de mot (`{0100:0}` : le nom du héros rangé dans le mot 0). Les commandes 4C à 57 remplissent
 ces mots (0x0201ED50) ; 0x0201ED9C y met le message n° x d'un fichier des textes système. Les mots
 appartiennent au contexte du script (0x02158F14) et disparaissent avec lui.
+
+**Fondus de luminosité** (0x0204E6B8) : écrans (bits), départ, arrivée, vitesse. 0x0204E7BC écrit la
+valeur dans les registres de luminosité de la DS (0x0400006C et 0x0400106C, de -16 noir à +16
+blanc) en changeant son signe pour les écrans des bits 1 et 2 : avec ces écrans, 16 est le noir ;
+avec ceux des bits 4 et 8, le blanc. Vitesse positive : un cran toutes les n images ; négative :
+1 - n crans par image.
+
+**Choix du starter** (commande 0x153) : l'application de l'overlay 223 lit les trois espèces dans
+sa table 0x021BC6B0 (495 Vipélierre, 498 Gruikui, 501 Moustillon) par l'indice choisi
+(0x021B9D4E), joue le cri du Pokémon choisi (0x021BC1EE) et met l'indice dans la variable. Ses
+textes sont ceux du fichier 430 (le même que la chambre du héros, chargé en 0x021BADDC) :
+types (16 Eau, 17 Feu, 18 Plante), « Choisissez un Pokémon! » (19), « Ce Pokémon vous convient? »
+(20), « C'est décidé! » (21), OUI / NON (22, 23). Le script du cadeau (391/9) donne ensuite
+l'espèce de l'indice (0x10C, niveau 5), lance les combats contre Bianca (dresseurs 59 à 61 selon
+le starter) puis Tcheren (53 à 55) et met 0x4081 à 2.
+
+Encore sautées sur ce chemin : 0x21C (deux valeurs rangées dans un champ de bits de la sauvegarde,
+0x0200E3E8), 0xDA (donne aux variables 0x4031 à 0x403A une valeur de la table 0x02170F40 ; aucun
+script ne les lit), 0xD9 (une valeur de 1 à 17 rangée dans la sauvegarde, 0x02012900) et
+l'animation de la chambre (0x127 à 0x12A).
 
 Fichier de textes `0x400` : celui du script en cours (zone ou plage commune) ; c'est le premier
 paramètre de 0x3C et 0x3D dans 3 881 cas sur 3 884. Personnages des commandes (0x021B1608) :

@@ -60,6 +60,21 @@ static func tokenize(chars: PackedInt32Array) -> Array[Token]:
 	return tokens
 
 
+## Texte simple d'un message, pour une étiquette : les mots variables remplacés (words : numéro du
+## mot -> texte), les retours à la ligne gardés, les attentes et la mise en forme enlevées.
+static func plain(chars: PackedInt32Array, words := {}) -> String:
+	var s := ""
+	for token in tokenize(chars):
+		match token.kind:
+			Kind.TEXT:
+				s += token.text
+			Kind.VARIABLE:
+				s += words.get(token.args[0] if not token.args.is_empty() else 0, "")
+			Kind.NEWLINE:
+				s += "\n"
+	return s
+
+
 static func _command_kind(code: int) -> Kind:
 	if code == WAIT_CLEAR_CODE:
 		return Kind.WAIT_CLEAR

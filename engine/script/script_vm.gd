@@ -16,6 +16,8 @@ const POP_CONDITION := 0xFF
 ## Durée d'une image : la machine tourne dans la boucle du terrain, qui compte 30 images par
 ## seconde (voir FieldMap.FRAME) ; les attentes des scripts sont en ces images.
 const FRAME := FieldMap.FRAME
+## Numéro de la version du jeu (commande 0xE0) : 20 pour Pokémon Blanc.
+const GAME_VERSION := 20
 
 ## L'hôte : messages, PNJ, sons... (voir FieldScripts).
 var host: Object
@@ -235,6 +237,10 @@ func _step() -> bool:
 			return false
 		0x4C:
 			host.set_word(_u8(), host.player_name())
+		0x53, 0x54:
+			# Espèce, surnom d'un Pokémon de l'équipe (pas encore de surnoms : le nom de l'espèce).
+			var word := _u8()
+			host.set_word(word, _system_text(BWFiles.TEXT_SPECIES_NAMES, host.party_species(_value())))
 		0x4D, 0x4F:
 			var word := _u8()
 			host.set_word(word, _system_text(BWFiles.TEXT_ITEM_NAMES, _value()))
@@ -287,8 +293,93 @@ func _step() -> bool:
 			host.set_npc_position(id, x, y, z, _value())
 		0x74:
 			host.face_player()
+		0x98:
+			# Musique d'un événement (0x0202991C) ; 0x9E ramène celle de la zone, 0x25F garde la
+			# musique d'événement comme musique du moment.
+			host.play_event_music(_u16())
+		0x9E:
+			host.restore_zone_music()
+		0x85:
+			# Combat contre un ou deux dresseurs (0x0216E7A8) ; sans dresseur 2, le même s'il est
+			# fait pour les combats doubles (0x0215A454). Le résultat se lit avec 0x8D.
+			var trainer := _value()
+			var partner := _value()
+			host.start_battle(trainer, partner, _value())
+			_wait = host.battle_done
+			return false
+		0x8D:
+			# 1 si le joueur a gagné le dernier combat (table 0x02172568, lue par 0x0216EF38).
+			work.set_var(_u16(), int(host.battle_won()))
+		0x8E:
+			# Retour du combat (transition 0x021BE8B8) : rien de plus ici.
+			pass
 		0xA6:
 			host.play_sound(_value())
+		0xA8:
+			# Attendre la fin de l'effet sonore lancé par 0xA6 (0x021AF1DC).
+			_wait = host.sound_effect_done
+			return false
+		0xA9:
+			host.play_fanfare(_u16())
+		0xAA:
+			# Attendre la fin de la fanfare, puis la musique reprend (0x020295B8).
+			_wait = host.fanfare_done
+			return false
+		0xB3:
+			# Fondu de luminosité (0x0204E6B8) : écrans (bits 1 et 2 vers le noir, 4 et 8 vers le
+			# blanc), départ et arrivée en seizièmes, vitesse.
+			var screens := _u16()
+			var from := _s16()
+			var to := _s16()
+			host.fade_screen(screens, from, to, _s16())
+		0xB4:
+			_wait = host.fade_done
+			return false
+		0x25F:
+			pass
+		0xE0:
+			# Version du jeu : 0x0215A9F0 écrit 20 (0x14), le numéro de Pokémon Blanc.
+			work.set_var(_u16(), GAME_VERSION)
+		0xE1:
+			work.set_var(_u16(), host.player_gender())
+		0xF9:
+			host.add_money(_value())
+		0x101:
+			# 1 si le Pokémon n° x de l'équipe a tous ses PV (champs 0xA0 et 0xA1) ou est un œuf :
+			# sans combats, l'équipe est toujours en pleine forme.
+			var id := _u16()
+			work.set_var(id, int(_value() < GameState.PARTY_SIZE))
+		0x104:
+			# Soigner l'équipe (0x0201BA50) : elle n'a encore ni PV ni PP à rendre.
+			pass
+		0x10C:
+			# Donner un Pokémon (espèce, forme, niveau) : 1 dans la variable s'il rejoint l'équipe,
+			# 0 si elle est pleine (0x0215C4B0).
+			var id := _u16()
+			var species := _value()
+			var form := _value()
+			work.set_var(id, int(host.give_pokemon(species, form, _value())))
+		0x14A, 0x14B:
+			# Quitter le terrain pour une application (0x020144F8), puis le retrouver (0x020145E8) :
+			# ici, les applications se posent sur le terrain.
+			pass
+		0x153:
+			# Choix du starter (application de l'overlay 223) : 0, 1 ou 2 dans la variable.
+			var id := _u16()
+			host.choose_starter()
+			_wait = func(_delta: float) -> bool:
+				var answer: int = host.starter_answer()
+				if answer < 0:
+					return false
+				work.set_var(id, answer)
+				return true
+			return false
+		0x1AE:
+			# Avant une application : fondu au noir (0x021B2E5C, deux crans par image).
+			host.fade_screen(3, 0, 16, -1)
+		0x1AF:
+			# Retour d'une application : fondu depuis le blanc.
+			host.fade_screen(0xC, 16, 0, -1)
 		_:
 			return _skip(op)
 	return true
@@ -359,6 +450,11 @@ func _u16() -> int:
 	var v := data.decode_u16(pc) if pc + 2 <= data.size() else 0
 	pc += 2
 	return v
+
+
+func _s16() -> int:
+	var v := _u16()
+	return v - 0x10000 if v >= 0x8000 else v
 
 
 func _u32_signed() -> int:

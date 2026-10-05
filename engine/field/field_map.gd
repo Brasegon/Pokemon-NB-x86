@@ -233,6 +233,13 @@ func tile_position(tile: Vector2i, from := 0.0) -> Vector3:
 	return Vector3(tile.x + 0.5, ground_height(tile, from), tile.y + 0.5)
 
 
+## Musique d'une zone pour la saison en cours (n° de séquence du SDAT, -1 si aucune) : l'en-tête
+## en donne une par saison.
+func zone_music(zone: int) -> int:
+	var header := zones.get_zone(zone)
+	return header.music[season] if not header.is_empty() else -1
+
+
 ## Charge les événements d'une zone (celle où se trouve le joueur).
 func set_events_zone(zone: int) -> void:
 	if zone == events_zone:

@@ -40,7 +40,7 @@ var _light_timer := 0.0
 var _banner: PanelContainer
 var _banner_label: GameLabel
 var _banner_tween: Tween
-var _fade: ColorRect
+var _fade: ScreenFade
 var _warping := false
 var _dialogue: DialogueBox
 
@@ -85,6 +85,7 @@ func _ready() -> void:
 
 	_build_hud()
 	scripts = FieldScripts.create(field, player, _dialogue)
+	scripts.screen_fade = _fade
 	add_child(scripts)
 	# Drapeaux de départ avant l'arrivée dans la zone : ils décident des PNJ présents.
 	scripts.new_game()
@@ -202,9 +203,7 @@ func _arrive(new_zone: int, warp_index: int) -> int:
 
 
 func _fade_to(alpha: float) -> Signal:
-	var tween := create_tween()
-	tween.tween_property(_fade, "color:a", alpha, FADE_TIME)
-	return tween.finished
+	return _fade.fade_to(alpha, FADE_TIME)
 
 
 ## Événements, musique de la saison (comme sur DS, une saison par mois : janvier printemps, février
@@ -216,10 +215,9 @@ func _enter_zone(new_zone: int) -> void:
 	var header := field.zones.get_zone(zone)
 	if header.is_empty():
 		return
-	var season: int = (Time.get_date_dict_from_system().month - 1) % 4
 	var archive := Sound.sdat()
-	var music: int = header.music[season]
-	if archive and music < archive.sequence_names.size():
+	var music := field.zone_music(zone)
+	if archive and music >= 0 and music < archive.sequence_names.size():
 		Sound.play_music(archive.sequence_names[music])
 	var place := Rom.text(BWFiles.TEXT_LOCATION_NAMES, header.name)
 	if previous < 0 or field.zones.get_zone(previous).get("name", -1) != header.name:
@@ -249,10 +247,7 @@ func _build_hud() -> void:
 	SceneHelpers.place_dialogue_box(_dialogue, 18)
 	root.add_child(_dialogue)
 
-	_fade = ColorRect.new()
-	_fade.color = Color(0, 0, 0, 0)
-	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_fade = ScreenFade.new()
 	root.add_child(_fade)
 
 	var help := GameLabel.new()

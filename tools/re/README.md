@@ -19,7 +19,9 @@ git ignore. Ne jamais le versionner ni le partager.
 | `calls.py` | Liste les appels vers une fonction ou une plage d'adresses, avec la valeur de `r0`. |
 | `archives.py` | Table des archives : numéro d'archive (ARCID) → chemin `a/x/y/z`. |
 | `events.py` | Événements d'une zone (objets à lire, PNJ, portes, déclencheurs) ; `--stats` : valeurs des champs dans toute la ROM. |
-| `scriptcmds.py` | Paramètres des 609 commandes de script, retrouvés dans le code de chacune. |
+| `scriptcmds.py` | Paramètres des 609 commandes de script, retrouvés dans le code de chacune (u8, u16, u32, valeur, variable écrite, saut). |
+| `cmd.py` | Fiche d'une commande de script : paramètres, désassemblage de sa fonction, de sa fonction d'attente et de ses renvois. |
+| `texts.gd` | Script Godot : messages d'un fichier de textes (d'une zone, de l'histoire ou du système), avec leur numéro. |
 | `scripts.py` | Désassembleur des scripts du terrain ; `--check` : les 472 fichiers de la ROM. |
 | `movements.py` | Actions de mouvement des personnages (378), classées d'après leur code ; `--gdscript` pour le moteur. |
 | `terrain.py` | Hauteurs du terrain : tables des plans, grille d'un morceau, vérifications sur toute la ROM. |
@@ -30,6 +32,8 @@ python disasm.py
 python search.py "^.*ldrh (r\d), \[r\d\]\n(?:.*\n){0,3}.*muls .*\n(?:.*\n){0,3}.*lsls (r\d), \2, #3\n(?:.*\n){0,3}.*ldr r\d, \[r\d, #4\]$"
 python calls.py 0x02048C98-0x02049500 --r0 57
 python terrain.py grid 0
+python cmd.py 0x4C
+godot --headless --path ../.. --script res://tools/re/texts.gd -- zone 390
 ```
 
 ## Méthode

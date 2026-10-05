@@ -242,6 +242,11 @@ func _test_scripts() -> void:
 	frames = _play(scripts, box)
 	print("   Cadeau : %d images, commandes sautées : %s" % [frames, scripts.vm.skipped])
 	_check(not scripts.is_running() and scripts.work.get_var(0x4081) == 2, "le script du cadeau se termine : variable 0x4081 = 2")
+	_check(StarterChoice.read_species(_rom.rom) == [495, 498, 501], "starters de l'overlay 223 : Vipélierre, Gruikui, Moustillon")
+	_check(scripts.state.party.size() == 1 and scripts.state.party[0].species == 498 and scripts.state.party[0].level == 5,
+		"Gruikui (n° 498) rejoint l'équipe, niveau 5 (commande 0x10C)")
+	_check(scripts.work.get_var(0x4030) == 1, "variable 0x4030 = 1 : le starter choisi est le deuxième")
+	_check(scripts.state.money == 3000, "argent de départ : 3000 (commande 0xF9 du script 9600)")
 	scripts.queue_free()
 	box.queue_free()
 	map.queue_free()
@@ -255,6 +260,11 @@ func _play(scripts: FieldScripts, box: DialogueBox) -> int:
 		box.advance()
 		if scripts.yes_no.visible:
 			scripts._answer_yes_no(0)
+		# Le choix du starter : le deuxième (Gruikui).
+		var choice := root.get_node_or_null("ChoixStarter")
+		if choice:
+			choice.chosen.emit(1)
+			choice.free()
 		scripts._process(1.0 / 30.0)
 		frames += 1
 	return frames

@@ -19,6 +19,8 @@ var _sdat: SDAT
 var _music: Channel
 var _effects: Channel
 var _cries: Channel
+## Musique interrompue par une fanfare, relancée par resume_music().
+var _music_before_fanfare := ""
 
 
 func _ready() -> void:
@@ -40,21 +42,43 @@ func sdat() -> SDAT:
 
 ## Joue une musique par son nom (« SEQ_BGM_TITLE »...). Ne recommence pas si elle joue déjà.
 func play_music(sequence_name: String) -> bool:
-	if _music.sequence.playing and _music.sequence.sequence_name == sequence_name:
+	if _music and _music.sequence.playing and _music.sequence.sequence_name == sequence_name:
 		return true
 	return _play(_music, sequence_name)
 
 
 func stop_music() -> void:
-	_music.sequence.release_all()
+	if _music:
+		_music.sequence.release_all()
 
 
 func current_music() -> String:
-	return _music.sequence.sequence_name if _music.sequence.playing else ""
+	return _music.sequence.sequence_name if _music and _music.sequence.playing else ""
+
+
+func is_music_playing() -> bool:
+	return _music != null and _music.sequence.playing
+
+
+## Fanfare (« ME » : SEQ_ME_POKEGET quand on reçoit un Pokémon...) : elle remplace la musique, que
+## resume_music() relance quand elle est finie.
+func play_fanfare(sequence_name: String) -> bool:
+	_music_before_fanfare = current_music()
+	return _play(_music, sequence_name)
+
+
+func resume_music() -> void:
+	if not _music_before_fanfare.is_empty():
+		play_music(_music_before_fanfare)
+	_music_before_fanfare = ""
 
 
 func play_effect(sequence_name: String) -> bool:
 	return _play(_effects, sequence_name)
+
+
+func is_effect_playing() -> bool:
+	return _effects != null and _effects.sequence.is_busy()
 
 
 ## Cri d'un Pokémon : la séquence SEQ_PV001 jouée avec la banque de l'espèce (BANK_PV001...).
