@@ -37,7 +37,9 @@ Ne pas reproposer d'autre approche sans raison sérieuse.
 godot --headless --path . --script res://tests/test_formats.gd
 ```
 
-Autres tests : `test_explorer`, `test_ui`, `test_sound`, `test_navigation`. Après l'ajout d'une classe
+Autres tests : `test_explorer`, `test_ui`, `test_sound`, `test_navigation`, `test_3d` ; plus long
+(2 à 3 minutes) : `test_models`. Captures de référence de la 3D (avec une fenêtre, sans
+`--headless`) : `tests/capture_3d.gd`. Après l'ajout d'une classe
 (`class_name`), lancer d'abord `godot --headless --path . --import`. La ROM vient de la variable
 `POKEMON_ROM`, sinon du premier `.nds` à la racine. Le chemin de Godot dépend du PC (voir la mémoire).
 

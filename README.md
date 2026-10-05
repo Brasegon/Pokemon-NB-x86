@@ -20,8 +20,13 @@ Au lancement : l'**intro** (copyrights, « GAME FREAK PRÉSENTE »), puis l'**é
 musique. Valider mène au **menu de développement** :
 
 - **Intro et écran titre** ;
+- **Premiers pas dans Renouet (3D)** : la ville de départ et la Route 1 lues dans la ROM (cartes,
+  bâtiments, animations), le héros qui marche et court, l'éclairage qui suit l'heure de l'ordinateur
+  et les textures des quatre saisons ;
 - **Démo des dialogues** : tous les textes de l'histoire dans la boîte de dialogue du portage ;
 - **Pokémon animés** : les 649 Pokémon animés de face et de dos, version chromatique, cris ;
+- **Modèles 3D** : visionneuse des modèles de la ROM (cartes, bâtiments, objets, effets,
+  cinématiques, décors de combat) avec leurs animations ;
 - **Juke-box** : les 179 musiques du jeu, synthétisées en direct ;
 - **Options** : vitesse du texte, volumes, taille de fenêtre, plein écran, touches ;
 - **Explorateur de ROM** : un outil pour parcourir les fichiers du jeu et prévisualiser palettes,
@@ -43,6 +48,9 @@ l'écran du bas sera intégré à l'écran unique (voir la [feuille de route](do
 | Plein écran | F11 | |
 
 Toutes ces touches (sauf F11) se réassignent dans **Options → Touches**.
+
+Sur le terrain, quelques touches de mise au point : **F3** affiche les cases bloquées, **F4** avance
+l'heure d'une heure, **F5** passe à la saison suivante.
 
 ## Tests
 
@@ -68,6 +76,27 @@ godot --headless --path . --script res://tests/test_sound.gd
 godot --headless --path . --script res://tests/test_navigation.gd
 ```
 
+```bash
+godot --headless --path . --script res://tests/test_3d.gd
+```
+
+`test_3d` lit les 649 morceaux de carte (le nombre de triangles produits doit correspondre à celui
+annoncé par chaque modèle), les textures, toutes les animations 3D de la ROM, les bâtiments, les
+éclairages, puis assemble Renouet. Pour regarder le résultat, des captures de référence (Renouet de
+jour, le soir, de nuit, en hiver, avec les collisions, la Route 1, le laboratoire) s'obtiennent avec
+une vraie fenêtre :
+
+```bash
+godot --path . --script res://tests/capture_3d.gd
+```
+
+Un test plus long (2 à 3 minutes) charge les 5 278 modèles de la visionneuse avec leurs textures et
+leurs animations, et échoue à la moindre erreur du moteur :
+
+```bash
+godot --headless --path . --script res://tests/test_models.gd
+```
+
 `test_sound` enregistre aussi quelques musiques et un cri en WAV pour les écouter.
 `test_navigation` joue au clavier et à la souris d'un écran à l'autre, et échoue si le moteur signale
 la moindre erreur en chemin.
@@ -83,12 +112,14 @@ Les images de contrôle sont écrites dans `user://tests/` (sous Windows :
 | --- | --- |
 | `engine/nds/` | Formats bas niveau de la DS : ROM et NitroFS, archives NARC, compression LZ |
 | `engine/nds/gfx/` | Formats 2D du SDK Nitro : palettes, tuiles, écrans, cellules, animations, shader de palette |
+| `engine/nds/g3d/` | Formats 3D du SDK Nitro : modèles, textures, animations, interpréteur du GPU, matériaux façon DS |
+| `engine/field/` | Le monde : morceaux de carte, permissions, matrices, zones, bâtiments, éclairage, héros, caméra |
 | `engine/sound/` | Son : archive SDAT, séquences, instruments, échantillons, synthétiseur |
 | `engine/text/` | Textes chiffrés de la Gen 5, polices NFTR, découpage des textes pour les dialogues |
 | `engine/data/` | Où trouver chaque donnée dans la ROM de N&B, sprites des Pokémon |
 | `engine/core/` | Autoloads `Settings` (réglages), `Controls` (commandes), `Display` (écran unique), `Rom` (ROM du joueur), `Sound` (musique et bruitages) |
 | `engine/ui/` | Interface du jeu : habillage, boîte de dialogue, menu de choix, textes |
-| `scenes/` | Démarrage, intro, écran titre, options, menu de développement, démos |
+| `scenes/` | Démarrage, intro, écran titre, terrain, options, menu de développement, démos |
 | `tools/` | Outils de développement (explorateur de ROM) |
 | `tests/` | Tests en ligne de commande |
 | `docs/` | [Feuille de route](docs/ROADMAP.md) et [notes sur les formats](docs/FORMATS.md) |

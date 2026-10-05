@@ -4,8 +4,10 @@ extends Control
 ## Entrées du menu : [libellé, scène] (scène vide = action particulière).
 const ENTRIES := [
 	["Intro et écran titre", "res://scenes/intro/intro.tscn"],
+	["Premiers pas dans Renouet (3D)", "res://scenes/field/field.tscn"],
 	["Démo des dialogues", "res://scenes/demo/dialogue_demo.tscn"],
 	["Pokémon animés", "res://scenes/demo/pokemon_viewer.tscn"],
+	["Modèles 3D", "res://scenes/demo/model_viewer.tscn"],
 	["Juke-box", "res://scenes/demo/sound_test.tscn"],
 	["Options", "res://scenes/options/options_menu.tscn"],
 	["Explorateur de ROM (outil)", "res://tools/rom_explorer/rom_explorer.tscn"],
