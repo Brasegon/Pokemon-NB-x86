@@ -101,6 +101,17 @@ func _initialize() -> void:
 	_expect_zone(317)
 	_go(DEV_MENU)
 	_expect(DEV_MENU)
+	# La sortie nord (6e scène) : le groupe entre sur la Route 1 en marchant, pendant la scène (le
+	# script 14 tourne encore), et la professeure y est déjà, au loin.
+	_press_times("bas", 4)
+	_press("valider")
+	_press_times("bas", 5)
+	_press("valider", 30)
+	_advance_until(func() -> bool: return current_scene.get("zone") == 317, 150,
+		func() -> bool: return current_scene.scripts.is_running() and current_scene.scripts.current == 14 and current_scene.field.npc_by_id(2) != null,
+		"sortie nord : sur la Route 1 pendant la scène, la professeure est déjà là")
+	_go(DEV_MENU)
+	_expect(DEV_MENU)
 	# Nouvelle partie : la chambre du héros, où l'intro démarre toute seule ; retour au menu.
 	_press_times("bas", 2)
 	_press("valider", 30)
@@ -219,6 +230,27 @@ func _quit_field() -> void:
 	_press("haut")
 	_press("valider", 10)
 	_expect(DEV_MENU)
+
+
+## Appuie sur Valider toutes les 8 images (messages d'une scène) jusqu'à ce que reached soit vrai,
+## au plus max_presses fois, puis vérifie check à ce moment-là.
+func _advance_until(reached: Callable, max_presses: int, check: Callable, label: String) -> void:
+	var poll := {"presses": 0}
+	poll.step = func() -> void:
+		if reached.call():
+			_check(check.call(), label)
+			return
+		poll.presses += 1
+		if poll.presses > max_presses:
+			_check(false, label + " (jamais atteint)")
+			return
+		for pressed in [true, false]:
+			var event := InputEventAction.new()
+			event.action = "valider"
+			event.pressed = pressed
+			root.push_input(event)
+		_steps.push_front([poll.step, 8])
+	_steps.append([poll.step, 0])
 
 
 ## Appuie sur une touche du clavier (les touches de mise au point du terrain, F3 à F6).

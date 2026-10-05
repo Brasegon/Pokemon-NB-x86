@@ -34,6 +34,8 @@ var camera: FieldCamera
 var current := -1
 ## PNJ qui a lancé le script (on lui a parlé), ou null.
 var talker: FieldNpc
+## Une musique d'événement est en cours (commande 0x98) : voir play_event_music().
+var event_music := false
 
 var _files: ScriptFiles
 var _rom: Node
@@ -438,7 +440,11 @@ func _character(id: int) -> Node3D:
 func apply_movement(id: int, data: PackedByteArray, at: int) -> void:
 	var who := _character(id)
 	if who:
-		_runners.append(MovementRunner.create(who, field, data, at))
+		var runner := MovementRunner.create(who, field, data, at)
+		# Les pas du héros comptent comme les siens : le terrain suit sa zone, même pendant une scène.
+		if who == player:
+			runner.stepped.connect(player.moved.emit)
+		_runners.append(runner)
 
 
 func movements_done(_delta: float) -> bool:
@@ -506,14 +512,28 @@ func sound_effect_done(delta: float) -> bool:
 	return sound == null or not sound.is_effect_playing() or _sound_time > SOUND_LIMIT
 
 
+## Commande 0x98 : musique d'un événement. Comme le jeu (0x021590E4(0xD)), elle pose une marque :
+## un changement de zone ne la coupe pas tant que 0x9E ou 0x25F ne l'enlève pas.
 func play_event_music(id: int) -> void:
+	_play_music(id)
+	event_music = true
+
+
+## Commande 0x9E : la musique de la zone revient.
+func restore_zone_music() -> void:
+	_play_music(field.zone_music(field.events_zone))
+	event_music = false
+
+
+## Commande 0x25F : la marque s'en va (0x02159108(0xD)), la musique de l'événement continue.
+func end_event_music() -> void:
+	event_music = false
+
+
+func _play_music(id: int) -> void:
 	var name := _sequence(id)
 	if not name.is_empty():
 		Autoloads.sound().play_music(name)
-
-
-func restore_zone_music() -> void:
-	play_event_music(field.zone_music(field.events_zone))
 
 
 func play_fanfare(id: int) -> void:

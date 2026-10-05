@@ -352,7 +352,7 @@ func _step() -> bool:
 			_wait = host.fade_done
 			return false
 		0x25F:
-			pass
+			host.end_event_music()
 		0xB5, 0xB6, 0xB7, 0xB8:
 			# Sac (objet, quantité, résultat) : ajouter (0x02007E50), retirer (0x02007F1C), y a-t-il
 			# la place (0x02007E3C), en a-t-on assez (0x02007F68) ; 1 ou 0 dans la variable.

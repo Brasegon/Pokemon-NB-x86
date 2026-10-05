@@ -605,7 +605,21 @@ un déclencheur (x, z en cases) ; 0x02162624 fabrique la destination d'une porte
   script) terminée par une variable 0 ; le premier dont la variable vaut la valeur est lancé
   (0x02158B0C, appelé par 0x0218A6D8). C'est ainsi que les scènes démarrent toutes seules : dans la
   chambre du héros, « 0x4081 = 0 -> script 5 », l'intro.
-- Type 2 : un numéro de script (17 à Renouet), rôle pas encore trouvé.
+- Type 2 : script joué quand on change de zone en marchant : 0x02189360 appelle 0x02158A80, qui
+  remet à zéro des drapeaux et variables locaux (0x02158994), puis 0x02158A30 avec le type 2 (17 à
+  Renouet, 13 au laboratoire). 0x02158A68 joue le type 4, 0x02158A74 le type 3. Le moteur joue
+  encore le type 4 dans tous les cas.
+
+**Changement de zone en marchant** : la mise à jour du terrain (0x021886F8) appelle 0x0218926C à
+chaque image, avant de regarder si une scène est en cours. 0x02189310 compare la zone de la case du
+héros à la zone actuelle ; si elle diffère, 0x02189360 retire les personnages sans le bit 0x20
+(0x0216DEAC), charge les événements de la nouvelle zone, crée ses PNJ (0x02189480 → 0x0216CE3C) et
+joue son script de type 2. Un mouvement de script fait donc changer de zone en pleine scène : à la
+sortie nord de Renouet, le groupe entre sur la Route 1 en marchant et la professeure y apparaît au
+loin. Le moteur suit les pas du héros faits par les scripts (`MovementRunner.stepped`) et change de
+zone aussitôt ; les scripts d'arrivée attendent la fin de la scène, car le jeu les joue dans un
+contexte à part. Avant la musique de zone (0x02029C88), 0x021894B8 vérifie un état de la partie
+(+0x40 de la structure en +0x114, 2 = pas de changement).
 
 Exemple : la porte de la maison du héros est en (782, 748), case bloquée, direction d'entrée 2 ;
 elle mène au tapis (5, 10) de la zone 390 (3 cases de large, genre 1, direction 1 ; repère 0x110 :
@@ -797,7 +811,7 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 8C | | après une défaite : fin du script et retour au dernier Centre (0x0215F678) |
 | 8D | variable | 1 si le joueur a gagné le dernier combat (table 0x02172568, 0x0216EF38) |
 | 8E | | transition de retour du combat (0x021BE8B8) |
-| 98 | u16 | musique d'événement (0x0202991C ; 1161 = `SEQ_BGM_E_FRIEND`), avec la marque 0xD (0x021590E4) |
+| 98 | u16 | musique d'événement (0x0202991C ; 1161 = `SEQ_BGM_E_FRIEND`), avec la marque 0xD (0x021590E4) et l'état 2 du gestionnaire de son (0x02028B38). Le moteur ne change pas la musique de zone tant que la marque est posée : supposé d'après ces marques, pas encore vérifié dans 0x02028990 |
 | 9E | | retour à la musique de la zone, en fondu (0x02029838) |
 | A6 | valeur | effet sonore n° N du SDAT (1351 = `SEQ_SE_MESSAGE`) |
 | A8 | | attendre la fin de l'effet sonore (0x021AF1DC) |
@@ -828,7 +842,7 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 1B1 | | attendre la fin de ce fondu (0x021899C4) |
 | 1D0 | | Pokédex reçu (bit 0 du mot +4 de ses données, 0x0200CA28) |
 | 241 | valeur | le personnage restera au changement de zone : 0x0216DB10 met le bit 0x20 de son état. En passant d'une zone à l'autre (0x02189360), 0x0216DEAC retire tous les personnages sauf ceux qui le portent. Ainsi Tcheren (250) et Bianca (240), créés par les scripts 12 et 13 de Renouet, suivent le héros sur la Route 1, où la professeure les retire (0x6C) |
-| 25F | | fin de la marque de la musique d'événement (0x02159108(0xD)) : elle continue |
+| 25F | | fin de la marque de la musique d'événement (0x02159108(0xD), 0x02028B74) : elle continue |
 
 **Mots variables** : les messages contiennent des commandes de texte `01xx` dont l'argument est un
 numéro de mot (`{0100:0}` : le nom du héros rangé dans le mot 0). Les commandes 4C à 57 remplissent

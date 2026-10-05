@@ -49,6 +49,8 @@ var _banner_label: GameLabel
 var _banner_tween: Tween
 var _fade: ScreenFade
 var _warping := false
+## Le héros a changé de zone pendant une scène : les scripts d'arrivée attendent sa fin.
+var _zone_scripts_waiting := false
 var _dialogue: DialogueBox
 var _hud: Control
 var _pause: PauseMenu
@@ -241,6 +243,10 @@ func _save_game() -> void:
 		_dialogue.close()
 
 
+## Le héros arrive sur une case : en marchant, ou par un mouvement de script (le jeu regarde sa zone
+## à chaque image, même pendant une scène : 0x0218926C, appelée par 0x021886F8 avant le test de la
+## scène en cours). À la sortie nord de Renouet, le groupe entre ainsi sur la Route 1 en marchant, et
+## la professeure apparaît au loin.
 func _on_player_moved(tile: Vector2i) -> void:
 	# En marchant, les morceaux voisins se chargent un par image : pas d'arrêt au passage.
 	field.update_around(tile, false)
@@ -248,7 +254,12 @@ func _on_player_moved(tile: Vector2i) -> void:
 	if current != zone:
 		_enter_zone(current)
 		field.set_light_zone(current)
-		scripts.enter_zone()
+		# Le jeu lance le script d'arrivée dans un contexte à part (0x02158A80) ; ici, il ne doit pas
+		# remplacer la scène en cours : il attend sa fin.
+		if scripts.is_running():
+			_zone_scripts_waiting = true
+		else:
+			scripts.enter_zone()
 	scripts.check_triggers(tile)
 
 
@@ -263,6 +274,9 @@ func _on_script_finished(_id: int) -> void:
 	if current != zone:
 		_enter_zone(current)
 		field.set_light_zone(current)
+		_zone_scripts_waiting = true
+	if _zone_scripts_waiting:
+		_zone_scripts_waiting = false
 		scripts.enter_zone()
 	else:
 		scripts.check_conditions()
@@ -368,7 +382,9 @@ func _enter_zone(new_zone: int) -> void:
 		_use_zone_camera(zone)
 	var archive := Sound.sdat()
 	var music := field.zone_music(zone)
-	if archive and music >= 0 and music < archive.sequence_names.size():
+	# Une musique d'événement (commande 0x98) continue malgré le changement de zone.
+	var event_music := scripts != null and scripts.event_music
+	if archive and music >= 0 and music < archive.sequence_names.size() and not event_music:
 		Sound.play_music(archive.sequence_names[music])
 	var place := Rom.text(BWFiles.TEXT_LOCATION_NAMES, header.name)
 	if previous < 0 or field.zones.get_zone(previous).get("name", -1) != header.name:
