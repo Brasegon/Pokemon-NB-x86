@@ -47,8 +47,6 @@ var events_zone := -1
 var npcs: Array[FieldNpc] = []
 ## Drapeaux et variables de l'histoire : un PNJ dont le drapeau est mis reste caché.
 var work: EventWork
-## Inclinaison de la caméra, pour redresser les sprites des PNJ (réglée par la scène).
-var camera_pitch := 0.0
 
 ## Affiche les cases bloquées en rouge (outil de mise au point).
 var show_collisions := false:
@@ -279,14 +277,6 @@ func zone_music(zone: int) -> int:
 	return header.music[season] if not header.is_empty() else -1
 
 
-## Inclinaison de la caméra : les sprites des PNJ s'étirent pour rester lisibles.
-func set_camera_pitch(pitch: float) -> void:
-	camera_pitch = pitch
-	for npc in npcs:
-		if npc.sprite:
-			npc.sprite.set_camera_pitch(pitch)
-
-
 ## Charge les événements d'une zone (celle où se trouve le joueur).
 func set_events_zone(zone: int) -> void:
 	if zone == events_zone:
@@ -335,7 +325,6 @@ func spawn_npc(entry: Dictionary) -> FieldNpc:
 	add_child(npc)
 	npcs.append(npc)
 	if npc.sprite:
-		npc.sprite.set_camera_pitch(camera_pitch)
 		npc.sprite.modulate = sprite_tint
 	_place_npc(npc)
 	return npc

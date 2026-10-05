@@ -373,6 +373,9 @@ func _test_nuvema() -> void:
 	var sprite := CharacterSprite.create(hero)
 	sprite.show_frame(CharacterSprite.Direction.DOWN, CharacterSprite.Step.STAND)
 	_check(sprite.texture == sprite.frames[3], "héros de face = image n° 3")
+	var material := sprite.material_override as ShaderMaterial
+	_check(material != null and material.shader == CharacterSprite.SHADER and material.get_shader_parameter("frame") == sprite.texture,
+		"sprite dessiné face à l'écran par son shader, avec l'image affichée")
 	sprite.free()
 
 

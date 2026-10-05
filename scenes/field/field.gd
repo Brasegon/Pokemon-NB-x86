@@ -89,9 +89,7 @@ func _ready() -> void:
 	camera.target = player
 	add_child(camera)
 	camera.make_current()
-	camera.pitch_changed.connect(_on_camera_pitch_changed)
 	_use_zone_camera(field.zone_at(start_tile))
-	_on_camera_pitch_changed(camera.pitch())
 	camera.follow(player.position)
 	if player.sprite:
 		player.sprite.modulate = field.sprite_tint
@@ -341,12 +339,6 @@ func _use_zone_camera(new_zone: int) -> void:
 	if settings != camera.settings:
 		camera.use_settings(settings)
 	camera.areas = FieldCamera.read_areas(header.camera_area)
-
-
-func _on_camera_pitch_changed(pitch: float) -> void:
-	field.set_camera_pitch(pitch)
-	if player and player.sprite:
-		player.sprite.set_camera_pitch(pitch)
 
 
 ## Événements, musique de la saison (comme sur DS, une saison par mois : janvier printemps, février

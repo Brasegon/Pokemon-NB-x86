@@ -8,11 +8,16 @@ extends Sprite3D
 ## Les PNJ « t4x4flip » n'ont que 7 images (dos, dos qui marche, face, face qui marche, gauche,
 ## deux pas à gauche) : la droite est la gauche retournée.
 ##
-## Le sprite reste vertical (il ne s'enfonce pas dans les murs derrière lui) et il est étiré pour
-## que la caméra inclinée le voie à sa taille d'origine.
+## Il est dessiné par character_sprite.gdshader : toujours face à l'écran, sans déformation sur les
+## bords, avec la profondeur d'un panneau vertical (il ne s'enfonce pas dans les murs derrière lui).
 
 enum Direction { UP, DOWN, LEFT, RIGHT }
 enum Step { STAND, LEFT_FOOT, RIGHT_FOOT }
+
+const SHADER := preload("res://engine/field/character_sprite.gdshader")
+## Marge du test de visibilité (cases) : le shader dessine le personnage en dehors du rectangle
+## vertical que Godot connaît (incliné vers l'arrière, jusqu'à 64 pixels de haut).
+const CULL_MARGIN := 4.0
 
 var frames: Array[ImageTexture] = []
 var direction := Direction.DOWN
@@ -29,19 +34,14 @@ static func create(textures: NSBTX) -> CharacterSprite:
 		sprite.frames.append(textures.texture(i, 0, true))
 	sprite._flip_layout = sprite.frames.size() < 12
 	sprite.pixel_size = FieldMap.UNIT
-	sprite.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-	sprite.shaded = false
-	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
-	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	var material := ShaderMaterial.new()
+	material.shader = SHADER
+	sprite.material_override = material
+	sprite.extra_cull_margin = CULL_MARGIN
 	# Les pieds (bas de l'image) sur l'origine du nœud ; les grands PNJ ont des images de 64x64.
 	sprite.offset = Vector2(0, sprite.frames[0].get_height() / 2.0)
 	sprite.show_frame(Direction.DOWN, Step.STAND)
 	return sprite
-
-
-## Compense l'inclinaison de la caméra (en radians sous l'horizontale).
-func set_camera_pitch(pitch: float) -> void:
-	scale = Vector3(1.0, 1.0 / maxf(cos(pitch), 0.2), 1.0)
 
 
 func show_frame(facing: Direction, step: Step, running := false) -> void:
@@ -66,6 +66,7 @@ func show_frame(facing: Direction, step: Step, running := false) -> void:
 	index = clampi(index, 0, frames.size() - 1)
 	texture = frames[index]
 	flip_h = mirrored
+	(material_override as ShaderMaterial).set_shader_parameter("frame", texture)
 
 
 ## Ombre ronde et douce sous les pieds.

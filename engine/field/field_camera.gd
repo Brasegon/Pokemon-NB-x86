@@ -17,8 +17,6 @@ extends Camera3D
 ## Les scripts la déplacent (commandes 0x13F à 0x147) : save_state(), detach(), move_to(),
 ## back_to_saved(), back_to_zone(), is_moving().
 
-signal pitch_changed(pitch: float)
-
 const ENTRY_SIZE := 44
 ## Angles du jeu : 65536 = un tour.
 const ANGLE_UNITS := 65536.0
@@ -106,7 +104,6 @@ func use_settings(new_settings: Dictionary) -> void:
 	_state = {"distance": settings.distance, "pitch": settings.pitch, "yaw": settings.yaw}
 	_attached = true
 	_move = {}
-	pitch_changed.emit(pitch())
 
 
 ## Inclinaison actuelle, en radians.
@@ -127,7 +124,6 @@ func _process(delta: float) -> void:
 			_state[key] = lerpf(_move.from[key], _move.to[key], t)
 		var goal: Vector3 = _move.point_to if _move.point_to != null else _player_point()
 		_fixed_point = (_move.point_from as Vector3).lerp(goal, t)
-		pitch_changed.emit(pitch())
 		if t >= 1.0:
 			_attached = _move.attach
 			_move = {}
@@ -181,7 +177,6 @@ func restore_state() -> void:
 	_attached = _saved.attached
 	_fixed_point = _saved.point
 	_move = {}
-	pitch_changed.emit(pitch())
 
 
 ## 0x141 : la caméra ne suit plus le héros (0x0218EBF4) ; 0x142 la rattache (0x0218EC00).
