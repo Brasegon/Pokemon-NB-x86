@@ -7,8 +7,10 @@ extends RefCounted
 ## de chaque section puis la fin du fichier (u32). Sections :
 ##   - WB : modèle NSBMD, permissions, bâtiments ;
 ##   - GC : modèle, permissions, deuxième couche de permissions (ponts), bâtiments ;
-##   - NG : modèle, bâtiments ;
-##   - RD : modèle, données de 24 Ko encore inconnues, bâtiments.
+##   - NG : modèle, bâtiments (pas de sol : le jeu n'y trouve aucune hauteur) ;
+##   - RD : modèle, permissions en cases de 24 octets (plans écrits en clair), bâtiments.
+## Le jeu choisit les fonctions de chargement et de hauteur d'après ces deux lettres (table en
+## 0x021D3D6C de l'overlay 21).
 ## Bâtiments : nombre (u32) puis 16 octets chacun : position x, y, z (fx32), rotation autour de
 ## l'axe vertical (u16, 65536 = un tour), numéro du bâtiment (u16 écrit à l'envers, poids fort en premier).
 ## Attention : le z des bâtiments est compté vers le nord, à l'inverse de celui des modèles et des
@@ -27,7 +29,9 @@ var permissions: Array[MapPermissions] = []
 var buildings: Array[Dictionary] = []
 
 
-static func parse(bytes: PackedByteArray) -> MapContainer:
+## Sans les tables des plans du terrain (tables = null), les hauteurs des cartes WB et GC restent
+## inconnues ; le reste est lu normalement.
+static func parse(bytes: PackedByteArray, tables: TerrainPlanes = null) -> MapContainer:
 	if bytes.size() < 8:
 		return null
 	var map := MapContainer.new()
@@ -41,8 +45,14 @@ static func parse(bytes: PackedByteArray) -> MapContainer:
 		var end := bytes.decode_u32(8 + i * 4)
 		sections.append(bytes.slice(start, end))
 	map.model_bytes = sections[0]
+	# Entre le modèle et les bâtiments : les couches de permissions (aucune sur les cartes NG).
 	for i in range(1, count - 1):
-		var layer := MapPermissions.parse(sections[i])
+		var layer: MapPermissions = null
+		match map.kind:
+			"WB", "GC":
+				layer = MapPermissions.parse(sections[i], tables)
+			"RD":
+				layer = MapPermissions.parse_rd(sections[i])
 		if layer:
 			map.permissions.append(layer)
 	map._read_buildings(sections[count - 1])

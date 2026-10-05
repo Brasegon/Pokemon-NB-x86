@@ -21,6 +21,7 @@ func _initialize() -> void:
 	var started := Time.get_ticks_msec()
 	_test_fixed_point()
 	_test_maps()
+	_test_terrain()
 	_test_textures()
 	_test_animations()
 	_test_buildings()
@@ -81,6 +82,76 @@ func _test_maps() -> void:
 	_check(models == parsed, "tous les modèles de cartes lus (%d)" % models)
 	_check(geometry_ok == models, "triangles des cartes = triangles + 2 x quadrilatères (%d/%d) %s" % [geometry_ok, models, ", ".join(bad)])
 	_check(with_permissions >= 600, "permissions des cartes WB/GC")
+
+
+## Plans du terrain : tables de l'overlay 21, puis toutes les couches de permissions. Une case coupée
+## en deux triangles doit avoir ses deux plans raccordés sur la diagonale choisie par le bit 15 de
+## ses indicateurs ; jamais sur l'autre seulement (ce qui voudrait dire que la règle est inversée).
+func _test_terrain() -> void:
+	var tables: TerrainPlanes = _rom.terrain_planes()
+	if not _check(tables != null, "tables des plans du terrain (overlay 21)"):
+		return
+	var unit := 0
+	for i in TerrainPlanes.NORMAL_COUNT:
+		if absf(tables.normal(i).length() - 1.0) < 0.001:
+			unit += 1
+	_check(unit == TerrainPlanes.NORMAL_COUNT, "%d normales unitaires" % unit)
+	_check(tables.normal(0).is_equal_approx(Vector3(0, 4094, 0) / 4096.0), "normale n° 0 vers le haut")
+	_check(is_equal_approx(tables.distance(4), 65519 / 4096.0), "distance n° 4 = 15,996 (la mer de Renouet)")
+	var maps: NARC = _rom.narc(BWFiles.MAPS)
+	var layers := 0
+	var known := 0
+	var on_chosen := 0
+	var on_other := 0
+	for i in maps.count():
+		var container := MapContainer.parse(maps.get_file(i), tables)
+		if container == null:
+			continue
+		for layer in container.permissions:
+			layers += 1
+			var finite := true
+			for y in layer.height:
+				for x in layer.width:
+					var cx := (x + 0.5) * MapPermissions.TILE_UNITS - layer.width * MapPermissions.TILE_UNITS / 2.0
+					var cz := (y + 0.5) * MapPermissions.TILE_UNITS - layer.height * MapPermissions.TILE_UNITS / 2.0
+					finite = finite and is_finite(layer.height_at(cx, cz))
+					var meets := _split_meets(layer, x, y)
+					if meets.x and not meets.y:
+						on_chosen += 1
+					elif meets.y and not meets.x:
+						on_other += 1
+			if finite:
+				known += 1
+	print("   Terrain : %d couches, %d cases coupées raccordées sur leur diagonale" % [layers, on_chosen])
+	_check(layers == 674 and known == layers, "hauteur connue sur toutes les cases (%d/%d couches)" % [known, layers])
+	_check(on_chosen > 3000 and on_other == 0, "cases coupées raccordées sur la bonne diagonale (%d, %d sur l'autre)" % [on_chosen, on_other])
+
+
+## Pour une case coupée (deux plans différents) : (raccord sur la diagonale choisie, raccord sur
+## l'autre diagonale), en comparant les deux plans aux coins de chaque diagonale.
+static func _split_meets(layer: MapPermissions, x: int, y: int) -> Vector2i:
+	var p := (y * layer.width + x) * 8
+	var same := true
+	for k in 4:
+		same = same and layer.planes[p + k] == layer.planes[p + 4 + k]
+	if same:
+		return Vector2i.ZERO
+	var x0 := x * MapPermissions.TILE_UNITS - layer.width * MapPermissions.TILE_UNITS / 2.0
+	var z0 := y * MapPermissions.TILE_UNITS - layer.height * MapPermissions.TILE_UNITS / 2.0
+	var s := MapPermissions.TILE_UNITS
+	var main := _planes_meet(layer.planes, p, [Vector2(x0, z0), Vector2(x0 + s, z0 + s)])
+	var anti := _planes_meet(layer.planes, p, [Vector2(x0 + s, z0), Vector2(x0, z0 + s)])
+	var diagonal := layer.flags[y * layer.width + x] & MapPermissions.DIAGONAL != 0
+	return Vector2i(int(main if diagonal else anti), int(anti if diagonal else main))
+
+
+static func _planes_meet(planes: PackedFloat32Array, p: int, corners: Array) -> bool:
+	for c: Vector2 in corners:
+		var first := -(planes[p] * c.x + planes[p + 2] * c.y + planes[p + 3]) / planes[p + 1]
+		var second := -(planes[p + 4] * c.x + planes[p + 6] * c.y + planes[p + 7]) / planes[p + 5]
+		if absf(first - second) > 0.05:
+			return false
+	return true
 
 
 func _test_textures() -> void:
@@ -278,7 +349,11 @@ func _test_nuvema() -> void:
 	_check(loaded == 9, "9 morceaux de carte autour du joueur")
 	_check(not map.is_blocked(Vector2i(776, 758)) and map.is_blocked(Vector2i(776, 757)), "devant la maison du héros : libre ; la maison : bloquée")
 	_check(is_equal_approx(map.ground_height(Vector2i(776, 758)), 0.0), "sol de Renouet à la hauteur 0")
-	_check(map.ground_height(Vector2i(780, 765)) < -0.5, "plage plus basse que la ville (%.2f)" % map.ground_height(Vector2i(780, 765)))
+	# Mer : plan n° 0, distance n° 4 -> 16 unités DS sous la ville. Colonne (3, 23) du morceau : pente
+	# à 45° (normale n° 1) de -16 côté plage à 0 côté ville, donc -8 au centre de la case.
+	_check(absf(map.ground_height(Vector2i(780, 765)) + 1.0) < 0.01, "mer de Renouet 16 unités sous la ville (%.3f)" % map.ground_height(Vector2i(780, 765)))
+	_check(absf(map.ground_height(Vector2i(771, 759)) + 0.5) < 0.01, "pente de la plage : -8 unités au milieu (%.3f)" % map.ground_height(Vector2i(771, 759)))
+	_check(absf(map.height_at(771.25, 759.5) + 0.75) < 0.01 and absf(map.height_at(771.75, 759.5) + 0.25) < 0.01, "la pente monte vers la ville")
 	_check(map.zone_at(Vector2i(776, 758)) == ZoneTable.NUVEMA and map.zone_at(Vector2i(750, 740)) != ZoneTable.NUVEMA, "zones des cases (Renouet, Route 1)")
 	_check(not map.light.is_empty(), "éclairage de Renouet")
 	var instances := map.find_children("*", "G3DModelInstance", true, false)

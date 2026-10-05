@@ -40,6 +40,31 @@ chacun précédé d'un octet de drapeaux (bit à 1 = copie arrière, lu du bit d
 Les sprites des Pokémon (`a/0/0/4`) sont en LZ11. La détection automatique vérifie que le flux se
 décompresse exactement, pour ne pas confondre un fichier brut qui commencerait par `0x10`/`0x11`.
 
+**BLZ** (« LZ à l'envers », `Lz.decompress_backward`) : l'exécutable ARM9 et 230 des 237 overlays.
+Le début du fichier est en clair, la fin compressée se lit en reculant. Pied de fichier (8 derniers
+octets) : taille de la partie compressée (24 bits) et du pied (8 bits), puis le nombre d'octets
+gagnés (u32, 0 = pas compressé). Groupes de 8 blocs précédés d'un octet de drapeaux (bit 7
+d'abord) : bit à 1 = 2 octets (poids fort lu en premier), longueur = 3 + 4 bits, distance = 3 +
+12 bits vers la fin du fichier ; bit à 0 = octet brut. Vérifié : chaque overlay retrouve exactement
+sa taille en mémoire (table des overlays). Pour l'ARM9, la fin de la partie compressée est donnée
+par les paramètres du module (repérés par `0xDEC00621 0x2106C0DE`, champ +0x14 = adresse de fin) :
+0x6F8E0 octets → 0xA6760.
+
+## Code du jeu (ARM9 et overlays)
+
+Le code est lu pour retrouver les formats, jamais embarqué. Méthode (outils dans
+[tools/re/](../tools/re/)) : décompression BLZ, puis désassemblage Thumb linéaire avec capstone,
+en ajoutant à chaque `ldr rX, [pc, #n]` la valeur lue dans la réserve de littéraux ; on y cherche
+ensuite des motifs d'instructions (par exemple la multiplication par 8 d'un index de case suivie
+d'une lecture en +4).
+
+- **Archives** : l'ARM9 garde en 0x020A6BF8 une table de 235 pointeurs vers les chemins `a/0/0/0`
+  à `a/2/3/4` ; le numéro d'archive est le chemin lu comme un nombre (`a/0/0/8` = 8). La table est
+  confiée à la bibliothèque d'archives par 0x02048C84 (code ARM, appelé en 0x020054FA).
+- **Overlay 10** (0x02155100) : le cœur du terrain (chargement des matrices, des scripts, des
+  événements). **Overlay 21** (0x02187EA0) : le chargeur des morceaux de carte et le calcul des
+  hauteurs (voir *Permissions* plus bas).
+
 ## Formats 2D Nitro (`engine/nds/gfx/`)
 
 En-tête commun de 16 octets : magique inversée (`RLCN` = NCLR...), BOM `FEFF`, version, taille,
@@ -385,19 +410,77 @@ Deux lettres, nombre de sections (u16), position de chaque section puis la fin d
 | `WB` | modèle NSBMD, permissions, bâtiments | 572 |
 | `GC` | modèle, permissions, 2e couche de permissions (ponts), bâtiments | 47 |
 | `NG` | modèle, bâtiments | 22 |
-| `RD` | modèle, 24 Ko inconnus, bâtiments | 8 |
+| `RD` | modèle, permissions en cases de 24 octets, bâtiments | 8 |
 
 **Bâtiments** : nombre (u32), puis 16 octets : position x, y, z (fx32), rotation (u16, 65536 = un
 tour), numéro (u16 écrit **poids fort en premier**). Le **z des bâtiments est compté vers le nord**,
 à l'inverse des modèles et des permissions : vérifié avec les cases bloquées sous les maisons de
 Renouet (le laboratoire est au nord-ouest, pas sur l'eau).
 
-**Permissions** : largeur et hauteur (u16), puis 8 octets par case : 00 référence de terrain (u32 ;
-bits 0-1 = 2 : renvoi vers un petit arbre de nœuds de 8 octets rangé après la grille, sinon identifiant
-de plan), 04 comportement (u16), 06 indicateurs (u16 : bit 0 = bloquée, bit 7 toujours à 1).
-Les identifiants de plans ne sont ni des hauteurs, ni des index d'une table de la ROM ou du code ARM9
-(cherché en vain) : la **hauteur du sol est lue sur le modèle 3D** (triangles répartis par case,
-surface la plus haute que l'on peut atteindre depuis la hauteur actuelle).
+### Permissions et hauteur du sol (`map_permissions.gd`, `terrain_planes.gd`)
+
+Largeur et hauteur (u16), puis 8 octets par case : 00 terrain (u32), 04 comportement (u16),
+06 indicateurs (u16 : bit 0 = bloquée, bit 7 toujours à 1, bit 15 = diagonale). Terrain, bits 0-1
+= type :
+
+- **type 0** (679 781 cases) : un plan ; bits 2-15 = n° de normale, bits 16-31 = n° de distance ;
+- **type 2** (5 275 cases) : case coupée en deux triangles ; bits 16-31 = n° d'une fiche de
+  8 octets rangée après la grille (u16 : normale 1 << 2 | 1, normale 2, distance 1, distance 2) ;
+- types 1 et 3 (absents des données) : plan horizontal à 0.
+
+Triangle d'une case coupée, avec (x, z) mesurés depuis le coin nord-ouest de la case : bit 15 à 0 →
+triangle 1 si x + z < 1 case, sinon triangle 2 ; bit 15 à 1 → triangle 1 si x > z, sinon 2.
+Hauteur : `y = -(nx·x + nz·z + d) / ny`, en unités DS dans le repère du morceau (origine au centre
+de son modèle), plus la hauteur du centre du morceau (0 ici).
+
+**Tables des plans**, dans les données de l'overlay 21 : 329 normales de 3 x fx16 en 0x021DB930
+(n° 0 = (0, 4094, 0), à peine moins que 1,0 vers le haut ; le jeu change le signe de la composante
+z), puis les distances en fx32 en 0x021DC0E8 (n° 0 à 1313 utilisés). Le moteur les retrouve à leur
+place dans la version de référence, sinon en cherchant les trois premières normales. Exemple à
+Renouet : la ville vaut `0x00000000` (plan à 0), la mer `0x00040000` (normale 0, distance n° 4 =
+15,996 → y = -16), la pente de la plage `0x00360004` (normale n° 1 = 45° selon x, distance n° 0x36
+→ y = x + 192, de -16 à 0 sur la case).
+
+**Couches** : `WB` une (section 1), `GC` deux (sections 1 et 2 : le sol et le pont), `RD` une, en
+cases de 24 octets où les plans sont écrits en clair (normales 1 et 2 en 3 x fx16, distances 1 et 2
+en fx32, puis comportement et indicateurs), `NG` aucune (le jeu n'y trouve pas de sol). Avec
+plusieurs couches, le jeu garde celle dont la hauteur est la plus proche de la hauteur actuelle,
+parmi celles où la case existe (comportement ≠ 0xFF) ; ses attributs servent aussi aux collisions.
+Toutes les couches font 32 x 32 cases, sauf celle du morceau n° 120 (64 x 64, seul dans la
+matrice n° 87) : le jeu tire le nombre de cases de la taille des morceaux, pas de cet en-tête.
+
+Preuves (overlay 21 chargé en 0x02187EA0, overlay 10 en 0x02155100) :
+
+- **0x021D1454** (overlay 21), case → plan : ajoute la moitié du morceau à la position, sépare la
+  case (÷ 0x10000) de la position dans la case (mod 0x10000), lit le terrain et teste `& 3` (0 :
+  bits 2-15 et 16-31 ; 2 : fiche en `grille + largeur x hauteur x 8 + n° x 8`), choisit le triangle
+  (`x + z < 0x10000` ou `x > z` selon le bit 31 du mot en 04), lit les deux tables (la composante
+  z de la normale passe par un `rsbs`, changement de signe), puis calcule
+  `-(nx·x + nz·z + d) / ny` (multiplication 64 bits arrondie 0x0209BFEC, division par le diviseur
+  matériel en mode 64/32 avec arrondi 0x0207C700) et ajoute la hauteur de base. Types 1 et 3 :
+  normale (0, 0x1000, 0), d = 0. Résultat : 16 octets (normale, attributs sans le bit 31, hauteur).
+- **0x021D3D6C** (overlay 21) : table des types de morceaux, 16 octets par type : les deux lettres,
+  la fonction de chargement et deux fonctions de hauteur (`WB` 0x02193339 : une couche ; `GC`
+  0x02193439 : deux couches et 0x02193499 : la première ; `NG` 0x021935BD : aucun résultat ;
+  `RD` 0x02193731 : cases de 24 octets ; `FFFFFFFF` = valeurs par défaut).
+- **0x02169790** (overlay 10) : position - centre du morceau (0x0207C998), hauteur de base = y du
+  centre, puis appel de la fonction de hauteur du type (première des deux).
+- **0x0218DA8C** (overlay 21) : choix de la couche, |hauteur - y actuel| minimal (valeur absolue
+  par multiplication par -1,0) ; **0x021AB0A0** : case valide si attributs ≠ 0xFFFFFFFF et
+  comportement ≠ 0xFF ; sans couche valide, la première.
+- Vérifications (`test_3d`, et `tools/re/terrain.py check` en Python) : les 674 couches de la ROM
+  donnent une hauteur sur toutes leurs cases.
+  Sur les cases coupées dont les deux plans diffèrent, 3 706 ont leurs plans raccordés sur la
+  diagonale choisie par le bit 15 et **aucune** sur l'autre diagonale seulement (les autres ont une
+  marche au milieu, et sont presque toutes bloquées).
+- Comparaison avec le modèle 3D (`tools/re/compare_heights.gd` avec `OVERWORLD=1` : 136 morceaux
+  de la carte d'Unys, cases franchissables au comportement 0, 4 points par case) : la hauteur tombe
+  à 0,5 unité près sur une surface du modèle
+  pour 90 % des points des cases plates (99 % à 2 unités près sur les cartes à pont) et 66 à 91 %
+  des pentes. Les écarts se concentrent sur quelques morceaux : mer du bord de la carte (permissions
+  « plates à 0 », mer dessinée vers -59), modèles plus grands que leur morceau, et cases coupées que
+  le modèle découpe selon l'autre diagonale (mêmes hauteurs aux quatre coins, pas au milieu). Ailleurs
+  (eau où l'on surfe, intérieurs, Forêt Blanche en `RD`), le modèle n'est pas une référence.
 
 ### Matrices (`a/0/0/9`), zones (`a/0/1/2`) et zones de textures (`a/0/1/3`)
 

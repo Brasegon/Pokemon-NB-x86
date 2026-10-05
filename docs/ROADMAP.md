@@ -75,8 +75,8 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 - [x] Premiers pas dans Renouet : marche et course case par case, collisions, sprite animé du héros,
       passage sur la Route 1 (panneau du lieu, musique de la zone)
 - [x] Visionneuse de modèles 3D et aperçu des textures 3D dans l'explorateur de ROM
-- [ ] Hauteurs : la « référence de terrain » des permissions (identifiant de plan + petit arbre)
-      n'est pas décodée ; le sol est lu sur le modèle 3D, ce qui suffit pour marcher
+- [x] Hauteurs du sol calculées comme dans le jeu : plans des permissions (normale + distance, tables
+      retrouvées dans l'overlay 21), cases coupées en deux triangles, couches des ponts, cartes « RD »
 - [ ] Panneaux (billboards) des modèles, brouillard, contours (edge marking) et ombrage toon
 
 ## Phase 3 — Le monde
