@@ -18,6 +18,8 @@ const POP_CONDITION := 0xFF
 const FRAME := FieldMap.FRAME
 ## Numéro de la version du jeu (commande 0xE0) : 20 pour Pokémon Blanc.
 const GAME_VERSION := 20
+## Champ « espèce » des données d'un Pokémon (0x02017E38).
+const POKEMON_SPECIES := 5
 
 ## L'hôte : messages, PNJ, sons... (voir FieldScripts).
 var host: Object
@@ -263,6 +265,20 @@ func _step() -> bool:
 		0x57:
 			var word := _u8()
 			host.set_word(word, _system_text(BWFiles.TEXT_SPECIES_NAMES, _value()))
+		0x5C:
+			# Nombre (0x0201EF48 ; le dernier paramètre donne le nombre de chiffres).
+			var word := _u8()
+			var number := _value()
+			_value()
+			host.set_word(word, str(number))
+		0x69:
+			# Créer un PNJ (0x0216CDFC) : case x et z, direction, numéro, sprite, script.
+			var x := _value()
+			var z := _value()
+			var direction := _value()
+			var id := _value()
+			var sprite := _value()
+			host.create_npc(id, sprite, x, z, direction, _value())
 		0x43:
 			var message := _u16()
 			_u16()
@@ -337,6 +353,27 @@ func _step() -> bool:
 			return false
 		0x25F:
 			pass
+		0xB5, 0xB6, 0xB7, 0xB8:
+			# Sac (objet, quantité, résultat) : ajouter (0x02007E50), retirer (0x02007F1C), y a-t-il
+			# la place (0x02007E3C), en a-t-on assez (0x02007F68) ; 1 ou 0 dans la variable.
+			var item := _value()
+			var count := _value()
+			var id := _u16()
+			var done := false
+			match op:
+				0xB5: done = host.add_item(item, count)
+				0xB6: done = host.remove_item(item, count)
+				0xB7: done = host.can_add_item(item, count)
+				0xB8: done = host.item_count(item) >= count
+			work.set_var(id, int(done))
+		0xB9:
+			# Nombre d'exemplaires de l'objet dans le sac (0x02007FB8).
+			var item := _value()
+			work.set_var(_u16(), host.item_count(item))
+		0xBB:
+			# Poche du sac de l'objet (paramètre 5 de ses données, 0x02020F80).
+			var item := _value()
+			work.set_var(_u16(), ItemData.pocket(item))
 		0xE0:
 			# Version du jeu : 0x0215A9F0 écrit 20 (0x14), le numéro de Pokémon Blanc.
 			work.set_var(_u16(), GAME_VERSION)
@@ -348,7 +385,26 @@ func _step() -> bool:
 			# 1 si le Pokémon n° x de l'équipe a tous ses PV (champs 0xA0 et 0xA1) ou est un œuf :
 			# sans combats, l'équipe est toujours en pleine forme.
 			var id := _u16()
-			work.set_var(id, int(_value() < GameState.PARTY_SIZE))
+			work.set_var(id, int(_value() < host.party_count(0)))
+		0x103:
+			# Décomptes de l'équipe : 0 tous, 1 sans les œufs, 2 en état de se battre, 3 et 4 des
+			# œufs, 5 les places libres (0x0201AA34, 0x0201AA38, 0x0201AA6C, 0x0201AAA4, 0x0201AAF0).
+			var id := _u16()
+			work.set_var(id, host.party_count(_value()))
+		0x105:
+			# Écran du surnom d'un Pokémon de l'équipe (0x021C5A38) : pas encore ; on le laisse
+			# sans surnom.
+			var id := _u16()
+			_value()
+			_value()
+			work.set_var(id, 0)
+		0x110:
+			# Un champ d'un Pokémon de l'équipe, parmi 12 permis (table 0x02171112) : 5 = espèce ;
+			# les autres (117 : a-t-il un surnom...) attendent les vraies données de la phase 4.
+			var id := _u16()
+			var slot := _value()
+			var field := _value()
+			work.set_var(id, host.party_species(slot) if field == POKEMON_SPECIES else 0)
 		0x104:
 			# Soigner l'équipe (0x0201BA50) : elle n'a encore ni PV ni PP à rendre.
 			pass
@@ -374,12 +430,33 @@ func _step() -> bool:
 				work.set_var(id, answer)
 				return true
 			return false
+		0x155:
+			# Application de l'overlay 174 (le Vokit qui sonne, sur la Route 1) : pas encore.
+			_value()
+		0x179:
+			# Transition vers un combat (0x021BE8B8) : le passage au noir de 0x17D suffit.
+			pass
+		0x17D:
+			# Démonstration de capture de la professeure (0x0216E8EC), sur la Route 1 : comme les
+			# combats, en attendant la phase 4.
+			host.start_battle(0, 0, 0)
+			_wait = host.battle_done
+			return false
+		0x1AD:
+			# Retour d'une application : fondu depuis le noir (0x021B2E5C).
+			host.fade_screen(3, 16, 0, -1)
 		0x1AE:
 			# Avant une application : fondu au noir (0x021B2E5C, deux crans par image).
 			host.fade_screen(3, 0, 16, -1)
 		0x1AF:
 			# Retour d'une application : fondu depuis le blanc.
 			host.fade_screen(0xC, 16, 0, -1)
+		0x1B1:
+			# Attendre la fin du fondu de 0x1AD, 0x1AE ou 0x1AF (0x021899C4).
+			_wait = host.fade_done
+			return false
+		0x1D0:
+			host.receive_pokedex()
 		_:
 			return _skip(op)
 	return true

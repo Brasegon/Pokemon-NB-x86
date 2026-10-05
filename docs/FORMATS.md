@@ -716,6 +716,8 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 51, 52, 56 | u8 mot, valeur | nom de capacité (fichier 203), de poche du sac (fichier 55), de type (fichier 199) |
 | 53, 54 | u8 mot, valeur | espèce, surnom d'un Pokémon de l'équipe (0x0201EE50 et 0x0201EEA0 lisent les champs 5 et 0x73 de 0x02017E38) ; pas encore de surnoms |
 | 57 | u8 mot, valeur | nom d'espèce (0x0201EE2C) |
+| 5C | u8 mot, valeur nombre, valeur chiffres | nombre (0x0201EF48) |
+| 69 | valeurs : x, z, direction, numéro, sprite, script | créer un PNJ qui n'est pas dans les événements (0x0216CDFC) : Tcheren (250) et Bianca (240) à la sortie nord de Renouet |
 | 26, 27 | variable, valeur | ajouter, soustraire |
 | 64, 65 | valeur personnage, s32 / | lancer une liste de mouvements (« fin des paramètres + décalage ») ; attendre qu'elles soient finies |
 | 68 | variable, variable | case du héros (x, z) |
@@ -732,15 +734,25 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | A8 | | attendre la fin de l'effet sonore (0x021AF1DC) |
 | A9, AA | u16 / | fanfare (0x020297C8 ; 1304 = `SEQ_ME_POKEGET`) ; attendre sa fin, puis la musique reprend (0x020295B8) |
 | B3, B4 | u16 écrans, départ, arrivée, vitesse / | fondu de luminosité (0x0204E6B8, code ARM) ; attendre sa fin (0x0204E79C) |
+| B5 à B8 | valeurs : objet, quantité ; variable | sac : ajouter (0x02007E50), retirer (0x02007F1C), y a-t-il la place (0x02007E3C), en a-t-on assez (0x02007F68) ; 1 ou 0 dans la variable. Au plus 999 du même objet, 1 dans la poche des CT et CS (0x02007DF8) |
+| B9 | valeur objet, variable | nombre d'exemplaires dans le sac (0x02007FB8) |
+| BB | valeur objet, variable | poche de l'objet (paramètre 5 de ses données, 0x02020F80) |
 | E0 | variable | version du jeu : 20 (0x14) dans Pokémon Blanc |
 | E1 | variable | sexe du héros (0x02008550) |
 | F9 | valeur | ajouter de l'argent (0x0200C278, plafond 9 999 999) |
 | 101 | variable, valeur | 1 si le Pokémon n° x de l'équipe a tous ses PV (champs 0xA0 et 0xA1 de 0x02017E38) ou est un œuf (champ 0x4C) |
+| 103 | variable, valeur | décompte de l'équipe : 0 tous, 1 sans les œufs, 2 en état de se battre, 3 et 4 des œufs, 5 places libres (structure : capacité en +0, nombre en +4) |
+| 105 | variable, valeurs : Pokémon, ? | écran du surnom (0x021C5A38) : pas encore, le Pokémon reste sans surnom |
 | 104 | | soigner l'équipe (0x0201BA50) |
 | 10C | variable, valeurs : espèce, forme, niveau | donner un Pokémon : 0x0215C4B0 le crée si l'équipe a moins de 6 membres (0x0201AA30, 0x0201AA34), l'ajoute (0x0201A9A8) et l'inscrit au Pokédex (0x0200CDE0) ; 1 dans la variable, 0 si l'équipe est pleine |
+| 110 | variable, valeurs : Pokémon, champ | un champ d'un Pokémon de l'équipe (0x02017E38), parmi les 12 de la table 0x02171112 (5 espèce, 117...) |
 | 14B, 14A | | quitter le terrain pour une application (0x020144F8), le retrouver (0x020145E8) |
 | 153 | variable | choix du starter : application de l'overlay 223 (0x0215C5DC), voir plus bas |
-| 1AE, 1AF | | avant une application, fondu au noir (écrans 3, de 0 à 16) ; au retour, fondu depuis le blanc (écrans 0xC, de 16 à 0) ; vitesse -1 (tâche 0x021B2EB8) |
+| 155 | valeur | application de l'overlay 174 (le Vokit qui sonne au bout de la Route 1) : pas encore |
+| 17D | | démonstration de capture de la professeure (0x0216E8EC) ; 179 est la transition (0x021BE8B8) |
+| 1AD, 1AE, 1AF | | autour d'une application : fondu depuis le noir (écrans 3, de 16 à 0), vers le noir (de 0 à 16), depuis le blanc (écrans 0xC) ; vitesse -1 (tâche 0x021B2EB8) |
+| 1B1 | | attendre la fin de ce fondu (0x021899C4) |
+| 1D0 | | Pokédex reçu (bit 0 du mot +4 de ses données, 0x0200CA28) |
 | 25F | | fin de la marque de la musique d'événement (0x02159108(0xD)) : elle continue |
 
 **Mots variables** : les messages contiennent des commandes de texte `01xx` dont l'argument est un
@@ -763,19 +775,38 @@ types (16 Eau, 17 Feu, 18 Plante), « Choisissez un Pokémon! » (19), « Ce Pok
 l'espèce de l'indice (0x10C, niveau 5), lance les combats contre Bianca (dresseurs 59 à 61 selon
 le starter) puis Tcheren (53 à 55) et met 0x4081 à 2.
 
-Encore sautées sur ce chemin : 0x21C (deux valeurs rangées dans un champ de bits de la sauvegarde,
-0x0200E3E8), 0xDA (donne aux variables 0x4031 à 0x403A une valeur de la table 0x02170F40 ; aucun
-script ne les lit), 0xD9 (une valeur de 1 à 17 rangée dans la sauvegarde, 0x02012900) et
-l'animation de la chambre (0x127 à 0x12A).
+**L'histoire jusqu'à la Route 1** (`test_world`) : chambre (391/5 l'intro, 391/9 le cadeau),
+rez-de-chaussée (390/1, la mère, quand 0x4085 = 0), laboratoire (396/1, le Pokédex : 0x4079 et
+0x4080 passent à 1), Renouet (389/16 puis 389/12, la Carte), sortie nord (déclencheur de
+0x4080 = 2 : 389/14, Tcheren et Bianca créés par 0x69 accompagnent le héros sur la Route 1 et
+mettent le script 1 en attente avec 0x21), Route 1 (317/1, la démonstration de capture et
+5 Poké Balls ; puis au bout de la route 317/5, Bianca compare les équipes, et 0x407C = 2).
+Comme le jeu (0x0218A6D8, à chaque image), le moteur regarde le script en attente et les scènes
+de la zone à la fin de chaque script, dans la zone où le script a laissé le héros.
+
+Encore sautées sur ce chemin : la caméra (0x13F à 0x147), les animations des bâtiments (0x127 à
+0x12A : portes de Renouet, chambre en désordre), 0x21C (deux valeurs rangées dans un champ de bits
+de la sauvegarde, 0x0200E3E8), 0xDA (donne aux variables 0x4031 à 0x403A une valeur de la table
+0x02170F40 ; aucun script ne les lit), 0xD9 (une valeur de 1 à 17 rangée dans la sauvegarde,
+0x02012900), 0xE7 (un bit de l'octet +0x45 du profil, 0x0200C2F0), 0x19F et 0x240 (des numéros
+26 à 52 associés aux objets rares par la table 0x021DAA70, pour 0x021C1C3C), 0x241 (indicateur
+0x20 d'un personnage, 0x0216DB10), 0x252 (0x021BC52C), 0x24F et 0x250 (fonctions d'un overlay
+propre à la zone, chargé en 0x021F3640).
 
 Fichier de textes `0x400` : celui du script en cours (zone ou plage commune) ; c'est le premier
 paramètre de 0x3C et 0x3D dans 3 881 cas sur 3 884. Personnages des commandes (0x021B1608) :
 `0xFF` le héros, `0xF1` celui à qui l'on parle, `0xF2` un compagnon, sinon le numéro d'un PNJ.
 
 **Début de partie** : le script 9600 (premier de la plage 9600-9699, fichier 866) met 131 drapeaux
-et règle quelques valeurs de départ ; on n'a pas encore retrouvé l'appel dans le code, mais ses
-drapeaux donnent exactement la chambre du début du jeu. Un PNJ lié à un drapeau (champ 08 des
-événements) est caché tant que ce drapeau est mis : avec le script 9600, Tcheren (drapeau 500) est
+et règle quelques valeurs de départ (dont 3000 d'argent) ; on n'a pas encore retrouvé l'appel dans
+le code, mais ses drapeaux donnent exactement la chambre du début du jeu.
+
+**PNJ des événements** : au chargement d'une zone, 0x0216CE3C (appelée en 0x021894B0) crée chaque
+PNJ de la liste (36 octets chacun), sauf si son drapeau (champ 08) est mis et que son script
+(champ 0A) n'est pas 0xFFFF (0x0216E3A8, puis 0x0216E3BC qui lit le drapeau comme la commande
+0x10). La commande 0x6B fait la même chose pour un seul numéro (0x0216CE74). Le sprite passe par
+0x0216E368 : de 0xA2 à 0xB1, il est rangé dans les variables 0x4020 à 0x402F. Avec le script 9600,
+Tcheren (drapeau 500) est
 dans la chambre, Bianca (501) n'est pas encore arrivée, le carton cadeau (680) est sur la table et
 les Poké Balls des starters (681-685) n'apparaissent pas encore.
 

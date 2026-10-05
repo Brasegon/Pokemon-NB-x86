@@ -12,6 +12,13 @@ const UNIT := 1.0 / 16.0
 const CHUNK_TILES := MapContainer.TILES
 ## Morceaux chargés autour du joueur : 1 = un carré de 3x3 morceaux (96x96 cases).
 const LOAD_RADIUS := 1
+## Script d'un PNJ des événements qui le fait exister quel que soit son drapeau.
+const NO_SCRIPT := 0xFFFF
+## Sprites variables des PNJ (0x0216E368) ; sans variables, le sprite n° 10.
+const VARIABLE_SPRITES := 0xA2
+const VARIABLE_SPRITES_LAST := 0xB1
+const SPRITE_VARS := 0x4020
+const DEFAULT_VARIABLE_SPRITE := 0xA
 ## Durée d'une image du terrain : le jeu l'anime à 30 images par seconde. Le héros fait un pas en
 ## 8 images (action 0x0C, choisie par 0x021A4D60 ; 4 images en courant, action 0x10) et un pas dure
 ## bien 16/60 s dans le jeu. Mouvements et attentes des scripts se comptent en ces images.
@@ -255,6 +262,8 @@ func set_events_zone(zone: int) -> void:
 
 ## Crée les PNJ des événements de la zone. Un PNJ lié à un drapeau reste caché tant que ce
 ## drapeau est mis : le script de début de partie (9600) en met une centaine, l'histoire les enlève.
+## PNJ de la zone, comme 0x0216CE3C au chargement (0x021894B0) : chacun est créé, sauf si son
+## drapeau est mis et que son script n'est pas 0xFFFF (0x0216E3A8, 0x0216E3BC).
 func _spawn_npcs() -> void:
 	for npc in npcs:
 		npc.queue_free()
@@ -262,14 +271,23 @@ func _spawn_npcs() -> void:
 	if events == null:
 		return
 	for entry: Dictionary in events.npcs:
-		if entry.rail == 0 and not (entry.flag != 0 and work and work.get_flag(entry.flag)):
+		var hidden: bool = entry.flag != 0 and work != null and work.get_flag(entry.flag)
+		if entry.rail == 0 and (entry.script == NO_SCRIPT or not hidden):
 			spawn_npc(entry)
+
+
+## Sprite d'un PNJ : de 0xA2 à 0xB1, il est rangé dans les variables 0x4020 à 0x402F
+## (0x0216E368, appelée pour chaque PNJ par 0x0216CFD0 et par la commande 0x69).
+func npc_sprite(sprite: int) -> int:
+	if sprite >= VARIABLE_SPRITES and sprite <= VARIABLE_SPRITES_LAST:
+		return work.get_var(SPRITE_VARS + sprite - VARIABLE_SPRITES) if work else DEFAULT_VARIABLE_SPRITE
+	return sprite
 
 
 ## Fait apparaître un PNJ des événements de la zone (commande de script 0x6B).
 func spawn_npc(entry: Dictionary) -> FieldNpc:
 	var archive: NARC = _rom.narc(BWFiles.FIELD_OBJECTS)
-	var file := _objects.file_of(entry.sprite) if _objects else -1
+	var file := _objects.file_of(npc_sprite(entry.sprite)) if _objects else -1
 	var textures: NSBTX = null
 	if archive and file >= 0 and file < archive.count():
 		textures = NSBTX.parse(archive.get_file(file))

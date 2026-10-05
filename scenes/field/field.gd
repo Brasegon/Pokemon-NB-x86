@@ -86,6 +86,7 @@ func _ready() -> void:
 	_build_hud()
 	scripts = FieldScripts.create(field, player, _dialogue)
 	scripts.screen_fade = _fade
+	scripts.script_finished.connect(_on_script_finished)
 	add_child(scripts)
 	# Drapeaux de départ avant l'arrivée dans la zone : ils décident des PNJ présents.
 	scripts.new_game()
@@ -154,6 +155,22 @@ func _on_player_moved(tile: Vector2i) -> void:
 		field.set_light_zone(current)
 		scripts.enter_zone()
 	scripts.check_triggers(tile)
+
+
+## Fin d'un script : un script a pu déplacer le héros dans une autre zone (la sortie nord de
+## Renouet mène sur la Route 1). Comme le jeu, qui regarde à chaque image le script en attente et
+## les scènes de la zone (0x0218A6D8), on les lance aussitôt, dans la zone où se trouve le héros.
+func _on_script_finished(_id: int) -> void:
+	if _warping:
+		return
+	field.update_around(player.tile)
+	var current := field.zone_at(player.tile)
+	if current != zone:
+		_enter_zone(current)
+		field.set_light_zone(current)
+		scripts.enter_zone()
+	else:
+		scripts.check_conditions()
 
 
 ## Passage par une porte : fondu au noir, chargement de la zone de destination, héros posé sur la

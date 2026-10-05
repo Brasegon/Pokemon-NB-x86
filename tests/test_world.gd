@@ -247,9 +247,71 @@ func _test_scripts() -> void:
 		"Gruikui (n° 498) rejoint l'équipe, niveau 5 (commande 0x10C)")
 	_check(scripts.work.get_var(0x4030) == 1, "variable 0x4030 = 1 : le starter choisi est le deuxième")
 	_check(scripts.state.money == 3000, "argent de départ : 3000 (commande 0xF9 du script 9600)")
+	_test_story(map, hero, scripts, box)
 	scripts.queue_free()
 	box.queue_free()
 	map.queue_free()
+
+
+## La suite de l'histoire jusqu'à la Route 1, en entrant dans les zones et en marchant sur les
+## déclencheurs comme le joueur : les scènes qui démarrent seules et leurs variables.
+func _test_story(map: FieldMap, hero: FieldPlayer, scripts: FieldScripts, box: DialogueBox) -> void:
+	# Le rez-de-chaussée : la mère du héros (0x4085 = 0 -> script 1).
+	_enter(map, hero, scripts, 390, Vector2i(5, 9))
+	_story_step(scripts, box, "Rez-de-chaussée")
+	_check(scripts.work.get_var(0x4085) != 0, "la scène du rez-de-chaussée a eu lieu (0x4085 = %d)" % scripts.work.get_var(0x4085))
+	# Le laboratoire (0x4079 = 0 -> script 1) : le Pokédex.
+	_enter(map, hero, scripts, 396, Vector2i(7, 10))
+	_story_step(scripts, box, "Laboratoire")
+	_check(scripts.work.get_var(0x4080) == 1 and scripts.work.get_var(0x4079) == 1, "le Pokédex est reçu au laboratoire : 0x4079 = 1, 0x4080 = 1")
+	# Renouet (0x4080 = 1 -> script 12), devant le laboratoire.
+	_enter(map, hero, scripts, ZoneTable.NUVEMA, Vector2i(787, 742))
+	_story_step(scripts, box, "Renouet")
+	_check(scripts.work.get_var(0x4080) == 2, "Renouet : 0x4080 = 2 (%d)" % scripts.work.get_var(0x4080))
+	# La sortie nord (déclencheur de 0x4080 = 2) : Tcheren et Bianca partent avec le héros.
+	map.update_around(Vector2i(788, 739))
+	hero.place(Vector2i(788, 739), CharacterSprite.Direction.UP)
+	_check(scripts.check_triggers(Vector2i(788, 739)), "déclencheur de la sortie nord de Renouet")
+	_story_step(scripts, box, "Sortie de Renouet")
+	# La scène mène le héros sur la Route 1, où le script mis en attente (0x21) démarre : la
+	# démonstration de capture de la professeure.
+	_check(map.events_zone == 317 and scripts.work.get_var(0x4080) == 3, "le héros est sur la Route 1, 0x4080 = 3")
+	_check(scripts.state.pending_script == 0 and scripts.work.get_var(0x407C) == 1, "démonstration jouée (script 1 en attente), 0x407C = 1")
+	_check(scripts.state.item_count(4) == 5, "5 Poké Balls reçues (%d)" % scripts.state.item_count(4))
+	# Au bout de la Route 1, Bianca compare les équipes (déclencheur de 0x407C = 1).
+	map.update_around(Vector2i(790, 678))
+	hero.place(Vector2i(790, 678), CharacterSprite.Direction.UP)
+	_check(scripts.check_triggers(Vector2i(790, 678)), "déclencheur de Bianca au bout de la Route 1")
+	_story_step(scripts, box, "Route 1, Bianca")
+	_check(scripts.work.get_var(0x407C) == 2, "la Route 1 est libre : 0x407C = 2")
+
+
+## Entre dans une zone comme par une porte : événements, héros sur la case, scènes d'arrivée.
+func _enter(map: FieldMap, hero: FieldPlayer, scripts: FieldScripts, zone: int, tile: Vector2i) -> void:
+	map.load_zone(zone)
+	map.set_events_zone(zone)
+	map.update_around(tile)
+	hero.place(tile, CharacterSprite.Direction.UP)
+	scripts.vm.skipped.clear()
+	scripts.enter_zone()
+
+
+## Joue les scripts qui démarrent (scène, script en attente...) et affiche les commandes sautées.
+func _story_step(scripts: FieldScripts, box: DialogueBox, label: String) -> void:
+	var frames := 0
+	var played := []
+	for i in 4:
+		if not scripts.is_running() and not scripts.check_conditions():
+			break
+		played.append(scripts.current)
+		frames += _play(scripts, box)
+		# Comme FieldScene._on_script_finished : un script a pu mener le héros dans une autre zone.
+		var map := scripts.field
+		var zone := map.zone_at(scripts.player.tile)
+		if zone != map.events_zone:
+			map.set_events_zone(zone)
+			scripts.enter_zone()
+	print("   %s : scripts %s, %d images, commandes sautées : %s" % [label, played, frames, scripts.vm.skipped])
 
 
 ## Joue le script en cours jusqu'à sa fin (au plus 6000 images du terrain) : fait avancer les

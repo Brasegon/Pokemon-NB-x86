@@ -259,9 +259,52 @@ func give_pokemon(species: int, form: int, level: int) -> bool:
 	return state.add_pokemon(species, form, level)
 
 
+func item_count(item: int) -> int:
+	return state.item_count(item)
+
+
+## La poche des CT et CS n'en garde qu'un de chaque (0x02007DF8).
+func _item_limit(item: int) -> int:
+	return 1 if ItemData.pocket(item) == ItemData.Pocket.TMS else GameState.MAX_ITEM_COUNT
+
+
+func can_add_item(item: int, count: int) -> bool:
+	return state.can_add_item(item, count, _item_limit(item))
+
+
+func add_item(item: int, count: int) -> bool:
+	return state.add_item(item, count, _item_limit(item))
+
+
+func remove_item(item: int, count: int) -> bool:
+	return state.remove_item(item, count)
+
+
 ## Espèce du Pokémon n° slot de l'équipe (0 si la place est vide).
 func party_species(slot: int) -> int:
 	return state.party[slot].species if slot >= 0 and slot < state.party.size() else 0
+
+
+## Décomptes de l'équipe de la commande 0x103 (pas encore d'œufs ni de Pokémon K.O.).
+func party_count(mode: int) -> int:
+	match mode:
+		0, 1, 2:
+			return state.party.size()
+		5:
+			return GameState.PARTY_SIZE - state.party.size()
+	return 0
+
+
+func receive_pokedex() -> void:
+	state.has_pokedex = true
+
+
+## Crée un PNJ qui n'est pas dans les événements de la zone (commande 0x69).
+func create_npc(id: int, sprite: int, x: int, z: int, direction: int, script: int) -> void:
+	if field.npc_by_id(id):
+		return
+	field.spawn_npc({"id": id, "sprite": sprite, "movement": 0, "flag": 0, "script": script,
+		"direction": direction, "x": x, "z": z, "y": 0, "rail": 0})
 
 
 ## Ouvre le choix du starter (commande 0x153) par-dessus le terrain.

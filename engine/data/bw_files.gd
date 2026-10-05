@@ -19,7 +19,7 @@ const LEARNSETS := "a/0/1/8"
 const EVOLUTIONS := "a/0/1/9"
 const MOVES := "a/0/2/1"
 const FONTS := "a/0/2/3" ## vérifié (NFTR)
-const ITEMS := "a/0/2/4"
+const ITEMS := "a/0/2/4" ## vérifié (archive 0x18 de 0x02020ED0, un fichier par objet)
 const FIELD_OBJECTS := "a/0/4/9" ## vérifié (objets 3D du terrain, puis sprites des personnages en NSBTX)
 const FIELD_OBJECT_TABLE := "a/0/4/8" ## vérifié (fiches des objets du terrain : numéro -> fichier de a/0/4/9)
 const SCRIPTS := "a/0/5/7"
@@ -70,7 +70,7 @@ const DESCRIPTIONS := {
 	EVOLUTIONS: "Évolutions (à confirmer)",
 	MOVES: "Données des capacités (à confirmer)",
 	FONTS: "Polices du jeu",
-	ITEMS: "Données des objets (à confirmer)",
+	ITEMS: "Données des objets (prix, poche du sac...)",
 	FIELD_OBJECTS: "Objets 3D et sprites des personnages du terrain",
 	FIELD_OBJECT_TABLE: "Fiches des objets du terrain (numéro de PNJ -> image)",
 	SCRIPTS: "Scripts des événements (à confirmer)",
