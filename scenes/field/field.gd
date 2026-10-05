@@ -265,6 +265,10 @@ func _on_warp_requested(index: int) -> void:
 	_warping = true
 	player.controllable = false
 	var warp: Dictionary = field.events.warps[index]
+	# Repère du héros dans la porte, pour arriver au même endroit d'une porte large (0x0218AD20) :
+	# la case où il se tient (tapis, porte qui se prend en arrivant) ou celle de devant.
+	var entry := player.tile if field.events.warp_at(player.tile) == index else player.facing_tile()
+	var code := field.events.entry_code(index, entry)
 	# La porte d'un bâtiment sur la case de devant : elle s'ouvre, puis le héros y entre d'un pas.
 	var tile := field.events.warp_tile(index)
 	var door := field.find_building(BuildingRules.DOOR, tile)
@@ -273,7 +277,7 @@ func _on_warp_requested(index: int) -> void:
 		player.play_action(FieldPlayer.WALK_STEP + player.facing)
 		await player.action_finished
 	await _fade_to(1.0)
-	var step_out := _arrive(warp.zone, warp.warp)
+	var step_out := _arrive(warp.zone, warp.warp, code)
 	# En sortant par la porte d'un bâtiment : fondu, la porte s'ouvre, le héros sort, elle se ferme.
 	var exit_door := field.find_building(BuildingRules.DOOR, player.tile) if step_out >= 0 else {}
 	if exit_door.is_empty():
@@ -297,9 +301,10 @@ func _wait(seconds: float) -> void:
 		await get_tree().create_timer(seconds).timeout
 
 
-## Pose le héros sur la porte n° warp_index de la zone (après avoir chargé sa matrice s'il le faut).
-## Renvoie la direction du pas de sortie, ou -1.
-func _arrive(new_zone: int, warp_index: int) -> int:
+## Pose le héros sur la porte n° warp_index de la zone (après avoir chargé sa matrice s'il le faut),
+## à la case donnée par le repère code de la porte de départ (ZoneEvents.entry_code). Renvoie la
+## direction du pas de sortie, ou -1.
+func _arrive(new_zone: int, warp_index: int, code: int) -> int:
 	var header := field.zones.get_zone(new_zone)
 	if header.is_empty():
 		return -1
@@ -311,7 +316,7 @@ func _arrive(new_zone: int, warp_index: int) -> int:
 	var events := field.events
 	if events == null or warp_index >= events.warps.size():
 		return -1
-	var tile := events.warp_tile(warp_index)
+	var tile := events.arrival_tile(warp_index, code)
 	field.update_around(tile)
 	# On ressort dans le sens inverse de celui qui permet d'entrer (haut <-> bas, gauche <-> droite).
 	var enter: int = ZoneEvents.ENTER_DIRECTIONS.get(events.warps[warp_index].enter, -1)

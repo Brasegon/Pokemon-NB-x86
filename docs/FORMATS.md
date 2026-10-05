@@ -579,9 +579,20 @@ un déclencheur (x, z en cases) ; 0x02162624 fabrique la destination d'une porte
   pieds, puis une porte sur la case de devant (les portes des maisons et les escaliers sont sur des
   cases bloquées, les tapis sur des cases libres) ;
 - en arrivant sur une case (0x0218AC70) : une porte de genre 0, 5 ou 6 s'y prend toute seule ;
-- arrivée : sur la porte de destination (0x02162C14 ; dans une porte large, le décalage vient d'une
-  valeur de la porte de départ, nulle pour une porte simple). Le moteur fait ressortir le joueur
-  d'un pas, dans le sens inverse de l'entrée, quand la porte est sur une case bloquée.
+- arrivée : sur la porte de destination (0x02162C14) ; dans une porte large, à la case donnée par un
+  **repère de la porte de départ** (`ZoneEvents.entry_code`, `arrival_tile`). En prenant une porte,
+  0x0218AD20 le calcule avec 0x02162AF8 et la case où le héros entre (la sienne pour un tapis ou
+  une porte qui se prend en arrivant, celle de devant sinon) : sens de sortie de la porte
+  (0x02162BE4 : champ 04 moins 1, soit l'inverse de la direction d'entrée ; 1 pour les autres
+  valeurs) x 0x100 + taille x 0x10 + case du héros dans la porte (en x si elle est large, sinon en
+  z ; taille 1 et case 0 pour une porte simple). Le repère suit la destination (0x02014188, +0x0A)
+  jusqu'à 0x0216258C, et 0x02162A34 en tire la case d'arrivée : la même si les deux portes ont la
+  même taille, sinon centres alignés (écart impair : les deux cases du centre d'une porte paire
+  mènent à la case du milieu, la case du milieu à la première des deux) ; comptée depuis l'autre
+  bout pour les sens (départ, arrivée) (0, 3), (1, 2), (3, 0) et (2, 1) ; bornée à la porte. Simulé
+  sur les 1 365 cases de départ des portes de la ROM : de la porte d'une maison (1 case) à un tapis
+  de 3 cases (137 fois), on arrive au milieu du tapis. Le moteur fait ressortir le joueur d'un pas,
+  dans le sens inverse de l'entrée, quand la porte est sur une case bloquée.
 - Genres vus à Renouet : 1 tapis, 2 escalier, 3 porte de maison. Porte de destination `0x100` :
   cas spécial (0x02162578), pas encore géré.
 
@@ -597,7 +608,8 @@ un déclencheur (x, z en cases) ; 0x02162624 fabrique la destination d'une porte
 - Type 2 : un numéro de script (17 à Renouet), rôle pas encore trouvé.
 
 Exemple : la porte de la maison du héros est en (782, 748), case bloquée, direction d'entrée 2 ;
-elle mène au tapis (5, 10) de la zone 390 (3 cases de large, genre 1, direction 1), et ses
+elle mène au tapis (5, 10) de la zone 390 (3 cases de large, genre 1, direction 1 ; repère 0x110 :
+on arrive au milieu, en (6, 10)), et ses
 escaliers (2, 2) à ceux de la chambre (9, 2) dans la zone 391, d'où l'on ressort en (8, 2), la case
 du déclencheur de l'intro.
 

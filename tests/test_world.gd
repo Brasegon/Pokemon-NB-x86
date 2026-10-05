@@ -122,11 +122,21 @@ func _test_warps() -> void:
 	_check(not door.is_empty() and door.info.animations.size() == 2 and map.animate_building(door, BuildingRules.OPEN) > 0.0,
 		"porte de la maison du héros : deux animations, l'ouverture dure %.2f s" % (map.animate_building(door, BuildingRules.OPEN) if not door.is_empty() else 0.0))
 
+	var outside := map.events
 	_check(map.load_zone(390), "rez-de-chaussée de la maison du héros (zone 390)")
 	map.set_events_zone(390)
 	var mat := map.events.warp_tile(0)
 	map.update_around(mat)
-	_check(mat == Vector2i(5, 10) and not map.is_blocked(mat), "on arrive sur le tapis (5, 10), case libre")
+	_check(mat == Vector2i(5, 10) and not map.is_blocked(mat), "tapis de 3 cases en (5, 10), case libre")
+	# Repère de la porte de départ (0x02162AF8) et case d'arrivée (0x02162A34) : par la porte de la
+	# maison (une case), on arrive au milieu du tapis ; du tapis, on ressort sur la porte.
+	var code := outside.entry_code(0, Vector2i(782, 748))
+	_check(code == 0x110 and map.events.arrival_tile(0, code) == Vector2i(6, 10), "par la porte, on arrive au milieu du tapis (6, 10)")
+	_check(outside.arrival_tile(0, map.events.entry_code(0, Vector2i(7, 10))) == Vector2i(782, 748), "du tapis, on ressort sur la porte")
+	_check(ZoneEvents.arrival_offset(0x032, 0, 3) == 2 and ZoneEvents.arrival_offset(0x032, 3, 3) == 0
+		and ZoneEvents.arrival_offset(0x020, 0, 3) == 1 and ZoneEvents.arrival_offset(0x021, 0, 3) == 1
+		and ZoneEvents.arrival_offset(0x031, 0, 2) == 0 and ZoneEvents.arrival_offset(0, 0, 3) == 0,
+		"portes larges : même case, sens croisés, centres alignés")
 	_check(map.warp_for_push(mat, CharacterSprite.Direction.DOWN) == 0, "sur le tapis, pousser vers le bas fait sortir")
 	_check(map.warp_for_push(mat, CharacterSprite.Direction.UP) == -1, "sur le tapis, vers le haut : rien")
 	var stairs := map.events.warp_tile(1)
