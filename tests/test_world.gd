@@ -119,6 +119,23 @@ func _test_warps() -> void:
 	var rules: BuildingRules = _rom.building_rules()
 	_check(rules != null and rules.kind_of(1) == 1 and rules.kind_of(11) == 8 and rules.sound(1, 0) == 1669,
 		"règles des bâtiments de l'overlay 21 : genres et sons des portes")
+	# Passe-muraille (F6) : le héros traverse le mur de la maison, mais la porte se prend toujours.
+	var walker_hero := FieldPlayer.create(map, NSBTX.parse(_rom.narc(BWFiles.FIELD_OBJECTS).get_file(6)))
+	map.add_child(walker_hero)
+	walker_hero.controllable = false
+	var wall := Vector2i(781, 748)
+	walker_hero.place(wall + Vector2i(0, 1), CharacterSprite.Direction.UP)
+	walker_hero.walk(CharacterSprite.Direction.UP)
+	var blocked_before := walker_hero.tile == wall + Vector2i(0, 1)
+	walker_hero.pass_through = true
+	walker_hero.walk(CharacterSprite.Direction.UP)
+	_check(map.is_blocked(wall) and blocked_before and walker_hero.tile == wall, "passe-muraille : le héros entre dans le mur de sa maison")
+	var taken := []
+	walker_hero.warp_requested.connect(func(index: int) -> void: taken.append(index))
+	walker_hero.place(Vector2i(782, 749), CharacterSprite.Direction.UP)
+	walker_hero.walk(CharacterSprite.Direction.UP)
+	_check(taken == [0] and walker_hero.tile == Vector2i(782, 749), "passe-muraille : la porte de la maison se prend toujours")
+	walker_hero.queue_free()
 	var door := map.find_building(BuildingRules.DOOR, Vector2i(782, 748))
 	_check(not door.is_empty() and door.info.animations.size() == 2 and map.animate_building(door, BuildingRules.OPEN) > 0.0,
 		"porte de la maison du héros : deux animations, l'ouverture dure %.2f s" % (map.animate_building(door, BuildingRules.OPEN) if not door.is_empty() else 0.0))

@@ -53,7 +53,8 @@ l'écran du bas sera intégré à l'écran unique (voir la [feuille de route](do
 Toutes ces touches (sauf F11) se réassignent dans **Options → Touches**.
 
 Sur le terrain, quelques touches de mise au point : **F3** affiche les cases bloquées, **F4** avance
-l'heure d'une heure, **F5** passe à la saison suivante.
+l'heure d'une heure, **F5** passe à la saison suivante, **F6** active le passe-muraille (le héros
+traverse les obstacles ; les portes se prennent toujours).
 
 ## Tests
 

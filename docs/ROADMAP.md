@@ -113,6 +113,8 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 	  C'est le cœur du portage. Les commandes inconnues s'étudient dans le code ARM9/overlays, avec
 	  Ghidra et un loader NDS
 - [x] Drapeaux et variables d'histoire (en mémoire)
+- [x] Mise au point : les scènes de l'histoire une par une (menu de développement, `StoryScenes`),
+      passe-muraille (F6)
 - [x] Sauvegarde de la partie (profil, drapeaux et variables, équipe, sac, lieu) et reprise depuis le
       menu de développement
 - [x] Menu pause qui remplace le menu de l'écran du bas : entrées et textes du jeu (Pokédex,

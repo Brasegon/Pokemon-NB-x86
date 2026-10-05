@@ -63,6 +63,17 @@ func _initialize() -> void:
 	_expect("res://scenes/field/field.tscn")
 	_hold("droite", 40)
 	_hold("haut", 30)
+	# Passe-muraille (F6) : contre le mur, le héros passe au travers ; F6 l'enlève.
+	var before := []
+	_steps.append([func() -> void: before.append(current_scene.player.tile), 0])
+	_press_key(KEY_F6)
+	_hold("haut", 30)
+	_steps.append([func() -> void:
+		var hero: FieldPlayer = current_scene.player
+		_check(hero.pass_through and hero.tile.y < before[0].y, "passe-muraille : le héros traverse le mur (%s -> %s)" % [before[0], hero.tile]), 0])
+	_press_key(KEY_F6)
+	_steps.append([func() -> void: _check(not current_scene.player.pass_through, "F6 enlève le passe-muraille"), 0])
+	_hold("bas", 30)
 	_hold("courir", 0)
 	_hold("gauche", 30)
 	_release("courir")
@@ -208,6 +219,16 @@ func _quit_field() -> void:
 	_press("haut")
 	_press("valider", 10)
 	_expect(DEV_MENU)
+
+
+## Appuie sur une touche du clavier (les touches de mise au point du terrain, F3 à F6).
+func _press_key(keycode: Key, wait := SETTLE_FRAMES) -> void:
+	_steps.append([func() -> void:
+		for pressed in [true, false]:
+			var event := InputEventKey.new()
+			event.keycode = keycode
+			event.pressed = pressed
+			root.push_input(event), wait])
 
 
 ## Un nœud de ce nom existe dans la scène.

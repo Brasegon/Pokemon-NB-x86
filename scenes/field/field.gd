@@ -167,6 +167,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_show_banner(SEASON_NAMES[field.season])
 			get_viewport().set_input_as_handled()
 			return
+		if key.keycode == KEY_F6:
+			player.pass_through = not player.pass_through
+			_show_banner("Passe-muraille : %s" % ("oui" if player.pass_through else "non"))
+			get_viewport().set_input_as_handled()
+			return
 	# Valider devant un PNJ ou un panneau : son script.
 	if event.is_action_pressed("valider") and not _warping and not scripts.is_running() and not player.is_moving():
 		if scripts.try_talk():
@@ -399,7 +404,7 @@ func _build_hud() -> void:
 
 	var help := GameLabel.new()
 	help.font_id = GameTheme.FontId.MEDIUM
-	help.text = "Flèches : marcher   Maj : courir   Entrée : parler   F3 : collisions   F4 : heure   F5 : saison   Échap : menu"
+	help.text = "Maj : courir   Entrée : parler   Échap : menu   F3 : collisions   F4 : heure   F5 : saison   F6 : passe-muraille"
 	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 6)
 	help.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(help)
