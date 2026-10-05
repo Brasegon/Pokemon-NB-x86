@@ -12,6 +12,10 @@ const UNIT := 1.0 / 16.0
 const CHUNK_TILES := MapContainer.TILES
 ## Morceaux chargés autour du joueur : 1 = un carré de 3x3 morceaux (96x96 cases).
 const LOAD_RADIUS := 1
+## Durée d'une image du terrain : le jeu l'anime à 30 images par seconde. Le héros fait un pas en
+## 8 images (action 0x0C, choisie par 0x021A4D60 ; 4 images en courant, action 0x10) et un pas dure
+## bien 16/60 s dans le jeu. Mouvements et attentes des scripts se comptent en ces images.
+const FRAME := 1.0 / 30.0
 
 var zones: ZoneTable
 var areas: AreaTable
@@ -191,9 +195,23 @@ func npc_at(tile: Vector2i) -> FieldNpc:
 	return null
 
 
+## Comportement de la case (TileBehaviors), sur la couche où l'on se trouve à la hauteur `from`.
 func behavior(tile: Vector2i, from := 0.0) -> int:
 	var ground := _ground_at(tile.x + 0.5, tile.y + 0.5, from)
 	return 0 if ground.is_empty() else ground.layer.behavior(ground.tile.x, ground.tile.y)
+
+
+## Indicateurs de la case (bloquée, Pokémon sauvages...), sur la couche de la hauteur `from`.
+func tile_flags(tile: Vector2i, from := 0.0) -> int:
+	var ground := _ground_at(tile.x + 0.5, tile.y + 0.5, from)
+	return 0 if ground.is_empty() else ground.layer.flags_at(ground.tile.x, ground.tile.y)
+
+
+## Groupe de rencontres de la case (TileBehaviors.Encounter : NONE, herbes, herbes sombres, surf).
+## C'est là que la phase 4 tirera les rencontres, avec le taux de ce groupe dans les données de la
+## zone.
+func encounter_group(tile: Vector2i, from := 0.0) -> TileBehaviors.Encounter:
+	return TileBehaviors.encounter_group(behavior(tile, from), tile_flags(tile, from))
 
 
 ## Hauteur du sol (unités Godot) au point (x, z), calculée comme dans le jeu : chaque couche de

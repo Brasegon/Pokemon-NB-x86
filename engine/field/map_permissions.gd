@@ -92,6 +92,10 @@ func behavior(x: int, y: int) -> int:
 	return behaviors[y * width + x] if contains(x, y) else 0
 
 
+func flags_at(x: int, y: int) -> int:
+	return flags[y * width + x] if contains(x, y) else 0
+
+
 ## Vrai si la case existe sur cette couche (le jeu ignore celles dont le comportement vaut 0xFF).
 func has_ground(x: int, y: int) -> bool:
 	return contains(x, y) and behaviors[y * width + x] != NO_GROUND

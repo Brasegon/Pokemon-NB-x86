@@ -84,7 +84,11 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 - [ ] En-têtes de zones : météo, scripts, textes (carte, musique et nom du lieu : fait en phase 2)
 - [x] Événements des zones (`a/1/2/5`) : objets à lire, PNJ, portes, déclencheurs
 - [x] Portes, tapis et escaliers : entrée dans les maisons et changement d'étage, comme le jeu
-- [ ] Rebords à sauter, animations NSBCA « porte » des bâtiments, comportements des cases (herbe, eau)
+- [x] Rebords à sauter (action et courbe de saut du jeu), comportements des cases : herbes, herbes
+      sombres, eau ; groupe de rencontres de chaque case, retrouvé dans le test de rencontre du jeu
+      (le tirage lui-même est pour la phase 4)
+- [x] Images du terrain à 30 par seconde (durées des mouvements et attentes des scripts)
+- [ ] Animations NSBCA « porte » des bâtiments
 - [ ] Chargement des morceaux de carte en arrière-plan (aujourd'hui : un court arrêt au passage)
 - [x] PNJ affichés d'après les événements (sprite, case, direction), qui bloquent leur case
 - [x] PNJ : apparition selon les drapeaux de l'histoire

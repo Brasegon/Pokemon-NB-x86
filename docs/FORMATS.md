@@ -420,8 +420,8 @@ Renouet (le laboratoire est au nord-ouest, pas sur l'eau).
 ### Permissions et hauteur du sol (`map_permissions.gd`, `terrain_planes.gd`)
 
 Largeur et hauteur (u16), puis 8 octets par case : 00 terrain (u32), 04 comportement (u16),
-06 indicateurs (u16 : bit 0 = bloquée, bit 7 toujours à 1, bit 15 = diagonale). Terrain, bits 0-1
-= type :
+06 indicateurs (u16 : bit 0 = bloquée, bit 1 = eau, bit 2 = Pokémon sauvages, bit 7 toujours à 1,
+bit 15 = diagonale ; voir « Comportements des cases »). Terrain, bits 0-1 = type :
 
 - **type 0** (679 781 cases) : un plan ; bits 2-15 = n° de normale, bits 16-31 = n° de distance ;
 - **type 2** (5 275 cases) : case coupée en deux triangles ; bits 16-31 = n° d'une fiche de
@@ -481,6 +481,48 @@ Preuves (overlay 21 chargé en 0x02187EA0, overlay 10 en 0x02155100) :
   « plates à 0 », mer dessinée vers -59), modèles plus grands que leur morceau, et cases coupées que
   le modèle découpe selon l'autre diagonale (mêmes hauteurs aux quatre coins, pas au milieu). Ailleurs
   (eau où l'on surfe, intérieurs, Forêt Blanche en `RD`), le modèle n'est pas une référence.
+
+### Comportements des cases (`tile_behaviors.gd`)
+
+Le jeu lit les attributs d'une case comme un u32 : comportement = 16 bits du bas (0x021AB090),
+indicateurs = 16 bits du haut (0x021AB098). L'overlay 21 a une petite fonction de test par
+comportement à partir de 0x021AB0E0 (`cmp r0, #comportement`) ; le sens de chacun se retrouve en
+suivant qui appelle ces tests.
+
+**Rebords.** Tests 0x021AB0F8 (0x74), 0x021AB104 (0x75), 0x021AB110 (0x73) et 0x021AB11C (0x72),
+appelés par 0x021A4538, qui décide du pas du héros : si la case de devant est bloquée, il en lit le
+comportement, le change en direction (0x74 → 0 haut, 0x75 → 1 bas, 0x73 → 2 gauche, 0x72 →
+3 droite) et, si c'est la direction de la marche, renvoie 5. Pour 5, 0x021A4E78 donne au héros
+l'action `0x02197E1C(direction, 0x38)` (table des actions par direction en 0x021D5CFC : 0x38-0x3B,
+sauter de deux cases en 16 images) et joue le son 0x55E, `SEQ_SE_DANSA` (« dansa » = rebord en
+japonais). Les autres résultats : 2 marcher, 4 bloqué (marche sur place 0x1C + direction). La
+case d'arrivée n'est pas testée. La Route 1 n'a pas de rebord ; le test en saute un sur la Route 2,
+en (774, 624).
+
+**Rencontres.** 0x021A9EE0 (overlay 21) est le test de rencontre : il vérifie que les données de
+rencontres de la zone sont chargées (bit 7 de l'octet 7, mis par 0x0215E248 qui les lit, 0xE8 octets
+par saison), demande le groupe de la case sous le héros à **0x021AA2FC**, puis le taux à 0x021AA380
+(`données[groupe]` pour un groupe < 7, plus un ajout s'il est positif) et tire au sort avec
+0x021AA39C (taux plafonné à 100). Groupe d'un pas ordinaire (0x021AA2FC) :
+
+- pas d'indicateur 0x04 → aucune rencontre (0xFF) ;
+- indicateur 0x02 (eau) → 3, le surf ;
+- comportement de 0x021AB23C (0x06, 0x22, 0x07 par 0x021AB1F0 ; 0x09 par 0x021AB210) → 1, herbes
+  sombres ;
+- sinon → 0, hautes herbes (et sol des grottes, sable...).
+
+Les comportements 0x08 et 0x09 (test 0x021AB0E0) ajoutent 10 au taux. Les autres groupes (2 et 4)
+servent dans un autre mode de 0x021AA2FC. Sur toute la ROM, l'indicateur 0x04 n'est mis que sur des
+cases d'herbe (0x04 à 0x09, 0x21, 0x22), de grotte (0x0A, 0x30...), de sable (0x1C, 0x23...) ou
+d'eau (0x3D, 0x3F, 0x43), jamais sur un chemin ; l'indicateur 0x02 marque l'eau (0x3D à 0x44,
+0x94 à 0x97, 0x9C), où l'on ne marche pas sans surfer (0x021A4538). Route 1 : 177 cases de hautes
+herbes (0x04), 155 d'herbes sombres (0x06, à l'ouest) et 132 d'eau (0x3F).
+
+Autres tests reconnus : 0x021AB21C (0x04, 0x21, 0x05, 0x08) et 0x021AB23C forment 0x021AB25C,
+« herbe », dont 0x021CF568 se sert pour le décor des combats ; 0x021AB4A4 donne aux cases
+d'indicateur 0x04 un genre de phénomène (0 : 0x04, 1 : 0x05, 2 : 0x21, 3 : 0x08, 4 : 0x0A grottes,
+5 : 0x3D, 6 : 0x3F et 0x43 mer, 7 : 0x20 ponts, même sans l'indicateur), lu par 0x021AAC74 qui liste
+ces cases autour du héros (herbe qui bouge, poussière, remous, ombres sur les ponts).
 
 ### Matrices (`a/0/0/9`), zones (`a/0/1/2`) et zones de textures (`a/0/1/3`)
 
@@ -697,7 +739,7 @@ La première fonction de chaque action appelle une fonction de « famille » ave
 | 0x02197F0C | 00-03 | se tourner (haut, bas, gauche, droite) |
 | 0x02197F60 | 04-17 | marcher d'une case : vitesse x images = 16 unités ; 32, 16, 8, 4, 2 images |
 | 0x021982B8 | 18-2B | marcher sur place : 32, 16, 8... images |
-| 0x021984CC | 2C-3B | sauter (distance = vitesse x images, 0 = sur place) |
+| 0x021984CC | 2C-3B, 5C-5F | sauter (distance = vitesse x images, 0 = sur place ; courbe et pas) |
 | 0x02198900 | 3C-42, F9-... | attendre 1, 2, 4, 8, 15, 16, 32 images |
 | 0x02198BA8 | 4C-63 | marcher d'une case avec une vitesse tirée d'une table (départ et arrivée doux) |
 | 0x0216D4D8, 0x0216D4E0 | 45-4A | mettre, enlever un bit des indicateurs du personnage (4, 8, 16) |
@@ -708,3 +750,24 @@ La première fonction de chaque action appelle une fonction de « famille » ave
 
 Sprites des personnages : la couleur 0 de leur palette est toujours transparente, même quand le
 paramètre de la texture ne le dit pas (celle de Tcheren, fichier 12 de `a/0/4/9`).
+
+**Images du terrain : 30 par seconde.** Le héros marche avec l'action 0x0C (8 images par case) et
+court avec 0x10 (4 images), choisies par 0x021A4D60 ; un pas dure 16/60 s dans le jeu, donc une
+image du terrain dure 1/30 s. Les durées des actions et les attentes des scripts (commande 0x03)
+se comptent en ces images (`FieldMap.FRAME`).
+
+**Sauts** (`jump_curves.gd`). 0x021984CC passe à 0x02198460 la direction, la vitesse, le nombre
+d'images et, sur la pile, une courbe (rangée en +0x0F) et un pas (+0x08), avec le son 0x55E joué
+au départ. À chaque image, 0x021984F0 avance le personnage, ajoute le pas à un compteur (+0x0A,
+plafonné à 0xF00) et place le sprite au-dessus du sol (0x0216D850) à la hauteur n° compteur >> 8 de
+la courbe ; à la dernière image, il remet le sprite au sol et joue 0x67B (`SEQ_SE_FLD_10`). Les
+courbes : table de trois pointeurs en 0x021DDB54, 16 hauteurs fx32 chacune, en unités DS :
+
+| Courbe | Hauteurs | Actions |
+| --- | --- | --- |
+| 0 | 4, 6, 8, 10, 11, 12, 12, 12, 11, 10, 9, 8, 6, 4, 0, 0 | 34-3B (rebords : pas 0x100, 16 images), 5C-5F |
+| 1 | 0, 2, 3, 4, 5, 6, 6, 6, 5, 5, 4, 3, 2, 0, 0, 0 | 2C-33 (sur place) |
+| 2 | 2, 4, 6, 8, 9, 10, 10, 10, 9, 8, 6, 5, 3, 2, 0, 0 | — |
+
+Seul le sprite monte : l'ombre reste au sol. Le moteur lit les courbes dans l'overlay 21 et
+interpole entre deux images du jeu.

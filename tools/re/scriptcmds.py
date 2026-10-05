@@ -254,7 +254,8 @@ def gdscript(rows):
 
 def main():
     if sys.argv[1:] == ["--gdscript"]:
-        sys.stdout.write(gdscript(commands()))
+        # Octets bruts : fins de ligne LF, même sous Windows.
+        sys.stdout.buffer.write(gdscript(commands()).encode("utf-8"))
         return
     rows = commands()
     wanted = [int(a, 0) for a in sys.argv[1:]]

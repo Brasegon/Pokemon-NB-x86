@@ -243,8 +243,7 @@ func set_npc_position(id: int, x: int, _y: int, z: int, direction: int) -> void:
 
 func play_sound(id: int) -> void:
 	var sound := Autoloads.sound()
-	# Le son n'est prêt qu'une fois son autoload dans l'arbre (pas pendant l'initialisation d'un test).
-	if sound == null or not sound.is_inside_tree():
+	if sound == null:
 		return
 	var archive: SDAT = sound.sdat()
 	if archive and id < archive.sequence_names.size():

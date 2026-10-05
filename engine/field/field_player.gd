@@ -2,16 +2,19 @@ class_name FieldPlayer
 extends Node3D
 ## Le héros sur le terrain : déplacement case par case comme sur DS (marche, course en maintenant
 ## la touche « courir »), collisions et hauteur du sol lues dans les permissions de la carte (la
-## hauteur suit les plans du terrain tout au long du pas), animation de marche et petite ombre au sol.
+## hauteur suit les plans du terrain tout au long du pas), sauts des rebords, animation de marche et
+## petite ombre au sol.
 
 signal moved(tile: Vector2i)
 signal bumped(tile: Vector2i)
 ## Le héros prend la porte n° index des événements de la zone (FieldMap.events).
 signal warp_requested(index: int)
 
-## Durée d'un pas d'une case : 16 images à 60 i/s en marchant, 8 en courant.
-const WALK_TIME := 16.0 / 60.0
-const RUN_TIME := 8.0 / 60.0
+## Durée d'un pas d'une case : 8 images du terrain en marchant (action 0x0C), 4 en courant (0x10).
+const WALK_TIME := 8 * FieldMap.FRAME
+const RUN_TIME := 4 * FieldMap.FRAME
+## Saut d'un rebord : action 0x38 + direction (choisie par 0x021A4E78), deux cases en 16 images.
+const LEDGE_JUMP := 0x38
 ## Un appui bref sur une direction tourne le héros sans le faire avancer.
 const TURN_DELAY := 0.1
 const BUMP_SOUND := "SEQ_SE_WALL_HIT"
@@ -46,6 +49,8 @@ var _left_foot := true
 var _held_time := 0.0
 var _turning := false
 var _bump_cooldown := 0.0
+## Action du jeu en cours (saut d'un rebord), jouée comme les mouvements des scripts.
+var _action: MovementRunner
 
 
 static func create(map: FieldMap, textures: NSBTX) -> FieldPlayer:
@@ -64,12 +69,15 @@ func place(at: Vector2i, direction := CharacterSprite.Direction.DOWN) -> void:
 	tile = at
 	facing = direction
 	_moving = false
+	_action = null
+	if sprite:
+		sprite.position.y = 0.0
 	position = field.tile_position(tile, position.y)
 	_show(CharacterSprite.Step.STAND)
 
 
 func is_moving() -> bool:
-	return _moving
+	return _moving or _action != null
 
 
 ## Case devant le héros.
@@ -79,6 +87,12 @@ func facing_tile() -> Vector2i:
 
 func _process(delta: float) -> void:
 	_bump_cooldown = maxf(_bump_cooldown - delta, 0.0)
+	if _action:
+		_action.update(delta)
+		if _action.done:
+			_action = null
+			_arrive()
+		return
 	if _moving:
 		_advance(delta)
 		return
@@ -109,7 +123,7 @@ func _wanted_direction() -> int:
 
 ## Fait un pas dans une direction sans attendre les touches (sortie d'une porte, scripts).
 func walk(direction: CharacterSprite.Direction) -> void:
-	if not _moving:
+	if not is_moving():
 		facing = direction
 		_try_step()
 
@@ -117,6 +131,10 @@ func walk(direction: CharacterSprite.Direction) -> void:
 func _try_step() -> void:
 	var target: Vector2i = tile + DIRECTIONS[facing]
 	if field.is_blocked(target, position.y):
+		# Un rebord tourné dans le sens de la marche : on le saute (0x021A4538).
+		if TileBehaviors.ledge_direction(field.behavior(target, position.y)) == facing:
+			_jump()
+			return
 		# Une porte sur la case bloquée (ou un tapis sous les pieds) ?
 		var warp := field.warp_for_push(tile, facing)
 		if warp >= 0:
@@ -155,16 +173,34 @@ func _advance(delta: float) -> void:
 	if _progress >= 1.0:
 		_moving = false
 		_left_foot = not _left_foot
-		moved.emit(tile)
-		var warp := field.warp_on_arrival(tile)
-		if warp >= 0:
-			warp_requested.emit(warp)
-			return
-		# On enchaîne sans s'arrêter si la direction est toujours tenue.
-		var wanted := _wanted_direction()
-		if controllable and wanted >= 0:
-			facing = wanted
-			_try_step()
+		_arrive()
+
+
+## Fin d'un pas ou d'un saut, sur la nouvelle case : signal, porte qui se prend en arrivant, puis
+## pas suivant sans s'arrêter si la direction est toujours tenue.
+func _arrive() -> void:
+	moved.emit(tile)
+	var warp := field.warp_on_arrival(tile)
+	if warp >= 0:
+		warp_requested.emit(warp)
+		return
+	if not controllable:
+		return
+	var wanted := _wanted_direction()
+	if wanted >= 0:
+		facing = wanted
+		_try_step()
+
+
+## Saute le rebord de devant avec l'action du jeu (deux cases, courbe de saut et sons du jeu).
+func _jump() -> void:
+	var list := PackedByteArray()
+	list.resize(8)
+	list.encode_u16(0, LEDGE_JUMP + facing)
+	list.encode_u16(2, 1)
+	list.encode_u16(4, MovementActions.END)
+	_running = false
+	_action = MovementRunner.create(self, field, list, 0)
 
 
 func _show(step: CharacterSprite.Step) -> void:

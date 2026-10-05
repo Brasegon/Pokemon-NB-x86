@@ -8,7 +8,8 @@ enum Kind { OTHER, FACE, WALK, STEP, JUMP, WAIT }
 
 ## Fin d'une liste de mouvements.
 const END := 0xFE
-## Pour chaque action : [sorte, direction (0 haut, 1 bas, 2 gauche, 3 droite), images, cases].
+## Pour chaque action : [sorte, direction (0 haut, 1 bas, 2 gauche, 3 droite), images, cases],
+## et pour un saut, en plus : [courbe de hauteur (JumpCurves), pas dans la courbe par image].
 const ACTIONS := [
 	[1, 0, 0, 0],  # 0x00 FACE
 	[1, 1, 0, 0],  # 0x01 FACE
@@ -54,22 +55,22 @@ const ACTIONS := [
 	[3, 1, 2, 0],  # 0x29 STEP
 	[3, 2, 2, 0],  # 0x2A STEP
 	[3, 3, 2, 0],  # 0x2B STEP
-	[4, 0, 16, 0],  # 0x2C JUMP
-	[4, 1, 16, 0],  # 0x2D JUMP
-	[4, 2, 16, 0],  # 0x2E JUMP
-	[4, 3, 16, 0],  # 0x2F JUMP
-	[4, 0, 8, 0],  # 0x30 JUMP
-	[4, 1, 8, 0],  # 0x31 JUMP
-	[4, 2, 8, 0],  # 0x32 JUMP
-	[4, 3, 8, 0],  # 0x33 JUMP
-	[4, 0, 8, 1],  # 0x34 JUMP
-	[4, 1, 8, 1],  # 0x35 JUMP
-	[4, 2, 8, 1],  # 0x36 JUMP
-	[4, 3, 8, 1],  # 0x37 JUMP
-	[4, 0, 16, 2],  # 0x38 JUMP
-	[4, 1, 16, 2],  # 0x39 JUMP
-	[4, 2, 16, 2],  # 0x3A JUMP
-	[4, 3, 16, 2],  # 0x3B JUMP
+	[4, 0, 16, 0, 1, 256],  # 0x2C JUMP
+	[4, 1, 16, 0, 1, 256],  # 0x2D JUMP
+	[4, 2, 16, 0, 1, 256],  # 0x2E JUMP
+	[4, 3, 16, 0, 1, 256],  # 0x2F JUMP
+	[4, 0, 8, 0, 1, 512],  # 0x30 JUMP
+	[4, 1, 8, 0, 1, 512],  # 0x31 JUMP
+	[4, 2, 8, 0, 1, 512],  # 0x32 JUMP
+	[4, 3, 8, 0, 1, 512],  # 0x33 JUMP
+	[4, 0, 8, 1, 0, 512],  # 0x34 JUMP
+	[4, 1, 8, 1, 0, 512],  # 0x35 JUMP
+	[4, 2, 8, 1, 0, 512],  # 0x36 JUMP
+	[4, 3, 8, 1, 0, 512],  # 0x37 JUMP
+	[4, 0, 16, 2, 0, 256],  # 0x38 JUMP
+	[4, 1, 16, 2, 0, 256],  # 0x39 JUMP
+	[4, 2, 16, 2, 0, 256],  # 0x3A JUMP
+	[4, 3, 16, 2, 0, 256],  # 0x3B JUMP
 	[5, 0, 1, 0],  # 0x3C WAIT
 	[5, 0, 2, 0],  # 0x3D WAIT
 	[5, 0, 4, 0],  # 0x3E WAIT
@@ -102,10 +103,10 @@ const ACTIONS := [
 	[2, 1, 4, 1],  # 0x59 WALK
 	[2, 2, 4, 1],  # 0x5A WALK
 	[2, 3, 4, 1],  # 0x5B WALK
-	[4, 2, 16, 1],  # 0x5C JUMP
-	[4, 3, 16, 1],  # 0x5D JUMP
-	[4, 2, 12, 3],  # 0x5E JUMP
-	[4, 3, 12, 3],  # 0x5F JUMP
+	[4, 2, 16, 1, 0, 240],  # 0x5C JUMP
+	[4, 3, 16, 1, 0, 240],  # 0x5D JUMP
+	[4, 2, 12, 3, 0, 320],  # 0x5E JUMP
+	[4, 3, 12, 3, 0, 320],  # 0x5F JUMP
 	[2, 0, 8, 1],  # 0x60 WALK
 	[2, 1, 8, 1],  # 0x61 WALK
 	[2, 2, 8, 1],  # 0x62 WALK

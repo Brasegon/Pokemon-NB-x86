@@ -71,6 +71,10 @@ func music_sequence() -> SequencePlayer:
 
 
 func _play(channel: Channel, sequence_name: String, bank := -1) -> bool:
+	# Les canaux ne sont créés qu'à l'entrée de l'autoload dans l'arbre (pas encore pendant
+	# l'initialisation d'un test lancé par --script).
+	if channel == null:
+		return false
 	var archive := sdat()
 	if archive == null:
 		return false

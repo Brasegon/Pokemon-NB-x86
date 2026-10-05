@@ -13,8 +13,9 @@ extends RefCounted
 const CONDITIONS := [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [0, 1, 1], [1, 0, 1]]
 ## Condition « dépiler le résultat » des sauts conditionnels.
 const POP_CONDITION := 0xFF
-## Durée d'une image de la DS (le jeu compte ses attentes en images, à 60 par seconde).
-const FRAME := 1.0 / 60.0
+## Durée d'une image : la machine tourne dans la boucle du terrain, qui compte 30 images par
+## seconde (voir FieldMap.FRAME) ; les attentes des scripts sont en ces images.
+const FRAME := FieldMap.FRAME
 
 ## L'hôte : messages, PNJ, sons... (voir FieldScripts).
 var host: Object

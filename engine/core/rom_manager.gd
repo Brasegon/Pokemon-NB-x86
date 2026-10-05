@@ -16,6 +16,8 @@ var _narc_cache := {}
 var _text_cache := {}
 var _terrain_planes: TerrainPlanes
 var _terrain_planes_read := false
+var _jump_curves: JumpCurves
+var _jump_curves_read := false
 
 
 func is_loaded() -> bool:
@@ -34,6 +36,8 @@ func load_rom(path: String) -> String:
 	_text_cache.clear()
 	_terrain_planes = null
 	_terrain_planes_read = false
+	_jump_curves = null
+	_jump_curves_read = false
 	_save_rom_path(path)
 	rom_changed.emit()
 	return ""
@@ -67,6 +71,17 @@ func terrain_planes() -> TerrainPlanes:
 		if _terrain_planes == null:
 			push_error("Tables des plans du terrain introuvables dans l'overlay %d." % TerrainPlanes.OVERLAY)
 	return _terrain_planes
+
+
+## Courbes de saut des personnages, lues une fois dans le code du jeu (overlay 21) ; null si elles
+## sont introuvables (les sauts suivent alors un simple arc).
+func jump_curves() -> JumpCurves:
+	if not _jump_curves_read:
+		_jump_curves_read = true
+		_jump_curves = JumpCurves.from_overlay(rom.read_overlay(JumpCurves.OVERLAY), rom.overlays9[JumpCurves.OVERLAY].ram_address)
+		if _jump_curves == null:
+			push_error("Courbes de saut introuvables dans l'overlay %d." % JumpCurves.OVERLAY)
+	return _jump_curves
 
 
 ## Fichier de textes n° index de l'archive TEXT_SYSTEM ou TEXT_STORY.
