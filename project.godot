@@ -22,6 +22,7 @@ Controls="*res://engine/core/controls.gd"
 Display="*res://engine/core/display.gd"
 Rom="*res://engine/core/rom_manager.gd"
 Sound="*res://engine/core/sound.gd"
+Game="*res://engine/core/game.gd"
 
 [debug]
 

@@ -45,6 +45,26 @@ func value_of(param: int) -> int:
 	return get_var(param) if is_var(param) else param
 
 
+## Pour la sauvegarde : les drapeaux mis et les variables de la sauvegarde (0x4000-0x7FFF) ; les
+## variables temporaires ne se gardent pas.
+func to_dict() -> Dictionary:
+	var saved := {}
+	for id: int in _vars:
+		if id < TEMP_VARS:
+			saved[str(id)] = _vars[id]
+	return {"flags": _flags.keys(), "vars": saved}
+
+
+static func from_dict(data: Dictionary) -> EventWork:
+	var work := EventWork.new()
+	for id: Variant in data.get("flags", []):
+		work.set_flag(int(id))
+	var vars: Dictionary = data.get("vars", {})
+	for key: String in vars:
+		work.set_var(int(key), int(vars[key]))
+	return work
+
+
 ## Les variables temporaires (0x8000-0xBFFF) sont rangées dans le contexte du script qui tourne
 ## (0x02158F70) : elles disparaissent avec lui.
 func clear_temp_vars() -> void:

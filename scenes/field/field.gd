@@ -6,6 +6,17 @@ extends Node3D
 ## change de zone.
 
 const DEV_MENU := "res://scenes/dev_menu/dev_menu.tscn"
+const FIELD := "res://scenes/field/field.tscn"
+const OPTIONS := "res://scenes/options/options_menu.tscn"
+## Textes du jeu pour sauvegarder : la question (fichier système 46, message 25), « Sauvegarde en
+## cours... » et « {nom} a sauvegardé la partie. » (fichier 36, messages 3 et 4).
+const SAVE_QUESTION := [46, 25]
+const SAVE_TEXTS := 36
+const SAVE_RUNNING := 3
+const SAVE_DONE := 4
+const SAVE_SOUND := "SEQ_SE_SAVE"
+## Durée du message « Sauvegarde en cours... ».
+const SAVE_TIME := 0.8
 const START_ZONE := ZoneTable.NUVEMA
 ## Sprite du héros (« t4x4hero ») dans les objets du terrain.
 const HERO_SPRITE := 6
@@ -13,10 +24,6 @@ const HERO_SPRITE := 6
 ## d'Unys.
 const START_TILE := Vector2i(782, 749)
 const BANNER_TIME := 2.5
-## Départ d'une nouvelle partie (choisi dans le menu de développement avant d'ouvrir la scène) :
-## dans la chambre du héros, à la position par défaut de la zone, avec l'intro qui démarre seule.
-## Sinon, devant la maison du héros, en promenade.
-static var new_game := false
 ## Durée d'un fondu au noir quand on passe une porte, en secondes.
 const FADE_TIME := 0.25
 const SKY_COLOR := Color("#90c8f0")
@@ -43,6 +50,8 @@ var _banner_tween: Tween
 var _fade: ScreenFade
 var _warping := false
 var _dialogue: DialogueBox
+var _hud: Control
+var _pause: PauseMenu
 
 
 func _ready() -> void:
@@ -56,11 +65,14 @@ func _ready() -> void:
 
 	field = FieldMap.new()
 	add_child(field)
-	var start_zone := ZoneTable.HERO_ROOM if new_game else START_ZONE
-	var start_tile := START_TILE
-	if new_game:
-		var room := field.zones.get_zone(start_zone)
-		start_tile = Vector2i(room.x, room.z)
+	# Le départ vient de la partie (autoload Game) : la promenade devant la maison du héros, une
+	# nouvelle partie dans sa chambre (position par défaut de la zone), ou une partie sauvegardée.
+	var state: GameState = Game.state
+	var start_zone := state.zone if state.zone >= 0 else START_ZONE
+	var start_tile := state.tile if state.zone >= 0 else START_TILE
+	if start_tile.x < 0:
+		var header := field.zones.get_zone(start_zone)
+		start_tile = Vector2i(header.x, header.z)
 	field.load_zone(start_zone)
 	# La saison (textures de l'été, de l'automne, de l'hiver) est choisie avant de charger la carte.
 	_refresh_light()
@@ -69,7 +81,7 @@ func _ready() -> void:
 	var hero := NSBTX.parse(Rom.narc(BWFiles.FIELD_OBJECTS).get_file(HERO_SPRITE))
 	player = FieldPlayer.create(field, hero)
 	add_child(player)
-	player.place(start_tile, CharacterSprite.Direction.DOWN)
+	player.place(start_tile, clampi(state.facing, 0, 3) as CharacterSprite.Direction)
 	player.moved.connect(_on_player_moved)
 	player.warp_requested.connect(_on_warp_requested)
 
@@ -85,15 +97,24 @@ func _ready() -> void:
 		player.sprite.modulate = field.sprite_tint
 
 	_build_hud()
-	scripts = FieldScripts.create(field, player, _dialogue)
+	scripts = FieldScripts.create(field, player, _dialogue, state)
 	scripts.screen_fade = _fade
 	scripts.camera = camera
 	scripts.script_finished.connect(_on_script_finished)
 	add_child(scripts)
 	# Drapeaux de départ avant l'arrivée dans la zone : ils décident des PNJ présents.
-	scripts.new_game()
+	if not state.started:
+		scripts.new_game()
+		state.started = true
 	_enter_zone(field.zone_at(start_tile))
 	scripts.enter_zone()
+
+
+## Range le lieu du héros dans la partie (avant une sauvegarde ou un changement de scène).
+func remember_location() -> void:
+	Game.state.zone = zone
+	Game.state.tile = player.tile
+	Game.state.facing = player.facing
 
 
 func _process(delta: float) -> void:
@@ -142,11 +163,68 @@ func _unhandled_input(event: InputEvent) -> void:
 		if scripts.try_talk():
 			get_viewport().set_input_as_handled()
 			return
-	if event.is_action_pressed("menu"):
-		# Le viewport est gardé avant de changer de scène (qui retire aussitôt celle-ci de l'arbre).
-		var viewport := get_viewport()
-		get_tree().change_scene_to_file(DEV_MENU)
-		viewport.set_input_as_handled()
+	if event.is_action_pressed("menu") and _pause == null and not _warping and not scripts.is_running() and not player.is_moving() and player.controllable:
+		get_viewport().set_input_as_handled()
+		_open_pause()
+
+
+## Menu du terrain : le héros ne bouge plus tant qu'il est ouvert.
+func _open_pause() -> void:
+	player.controllable = false
+	_pause = PauseMenu.create(Game.state)
+	_pause.closed.connect(_on_pause_closed)
+	_pause.action_chosen.connect(_on_pause_action)
+	_hud.add_child(_pause)
+
+
+func _on_pause_closed() -> void:
+	_pause = null
+	player.controllable = not scripts.is_running()
+
+
+func _on_pause_action(action: PauseMenu.Action) -> void:
+	match action:
+		PauseMenu.Action.SAVE:
+			_pause.close()
+			player.controllable = false
+			await _save_game()
+			player.controllable = not scripts.is_running()
+		PauseMenu.Action.OPTIONS:
+			# Les options sont une scène à part : on y range le lieu du héros pour revenir ici.
+			remember_location()
+			load(OPTIONS).set("return_scene", FIELD)
+			var viewport := get_viewport()
+			get_tree().change_scene_to_file(OPTIONS)
+			viewport.set_input_as_handled()
+		PauseMenu.Action.QUIT:
+			var viewport := get_viewport()
+			get_tree().change_scene_to_file(DEV_MENU)
+			viewport.set_input_as_handled()
+
+
+## Sauvegarde, avec les textes et le son du jeu : la question, OUI / NON, puis la partie est
+## enregistrée par l'autoload Game.
+func _save_game() -> void:
+	_dialogue.show_chars(Rom.text_file(BWFiles.TEXT_SYSTEM, SAVE_QUESTION[0]).get_chars(SAVE_QUESTION[1]))
+	while not _dialogue.is_complete():
+		await get_tree().process_frame
+	scripts.ask_yes_no()
+	while scripts.yes_no_answer() < 0:
+		await get_tree().process_frame
+	if scripts.yes_no_answer() == 0:
+		var texts: MsgFile = Rom.text_file(BWFiles.TEXT_SYSTEM, SAVE_TEXTS)
+		_dialogue.show_chars(texts.get_chars(SAVE_RUNNING))
+		remember_location()
+		var saved: bool = Game.save_game()
+		await get_tree().create_timer(SAVE_TIME).timeout
+		if saved:
+			Sound.play_effect(SAVE_SOUND)
+			_dialogue.buffers[0] = Game.state.player_name
+			_dialogue.show_chars(texts.get_chars(SAVE_DONE))
+			await _dialogue.finished
+	_dialogue.buffers.clear()
+	if not _dialogue.is_closed():
+		_dialogue.close()
 
 
 func _on_player_moved(tile: Vector2i) -> void:
@@ -291,6 +369,7 @@ func _build_hud() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud.add_child(root)
+	_hud = root
 
 	_banner = PanelContainer.new()
 	_banner.add_theme_stylebox_override("panel", GameTheme.frame())

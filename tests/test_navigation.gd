@@ -38,8 +38,8 @@ func _initialize() -> void:
 
 	_go(DEV_MENU)
 	# Chaque entrée du menu de développement, puis retour au menu avec Annuler.
-	for entry in [[3, "res://scenes/demo/dialogue_demo.tscn"], [4, "res://scenes/demo/pokemon_viewer.tscn"],
-			[6, "res://scenes/demo/sound_test.tscn"], [7, "res://scenes/options/options_menu.tscn"]]:
+	for entry in [[4, "res://scenes/demo/dialogue_demo.tscn"], [5, "res://scenes/demo/pokemon_viewer.tscn"],
+			[7, "res://scenes/demo/sound_test.tscn"], [8, "res://scenes/options/options_menu.tscn"]]:
 		_press_times("bas", entry[0])
 		_press("valider")
 		_expect(entry[1])
@@ -51,11 +51,11 @@ func _initialize() -> void:
 	_press("valider", 30)
 	_expect("res://scenes/field/field.tscn")
 	# La porte de la maison du héros est juste au nord de la case de départ : elle s'ouvre, le héros
-	# entre (fondu au noir). Le rez-de-chaussée lance alors sa scène (l'histoire n'a pas avancé) :
-	# retour au menu.
+	# entre (fondu au noir). Le rez-de-chaussée lance alors sa scène (l'histoire n'a pas avancé) et le
+	# menu du terrain attend sa fin : retour direct au menu de développement.
 	_hold("haut", 100)
 	_expect_zone(390)
-	_press("menu")
+	_go(DEV_MENU)
 	_expect(DEV_MENU)
 	# Promenade : quelques pas dans Renouet (contre un mur, en courant).
 	_press_times("bas", 1)
@@ -68,18 +68,25 @@ func _initialize() -> void:
 	_release("courir")
 	_press("annuler")
 	_expect("res://scenes/field/field.tscn")
-	_press("menu")
-	_expect(DEV_MENU)
+	# Le menu du terrain : la carte du héros (2e entrée sans Pokédex ni équipe), on la referme, on
+	# ferme le menu, puis on le rouvre pour QUITTER (la dernière entrée).
+	_press("menu", 10)
+	_expect_node("MenuPause")
+	_press_times("bas", 1)
+	_press("valider")
+	_press("annuler")
+	_press("menu", 10)
+	_quit_field()
 	# Nouvelle partie : la chambre du héros, où l'intro démarre toute seule ; retour au menu.
 	_press_times("bas", 2)
 	_press("valider", 30)
 	_expect("res://scenes/field/field.tscn")
 	_expect_zone(ZoneTable.HERO_ROOM)
 	_press_times("valider", 3)
-	_press("menu")
+	_go(DEV_MENU)
 	_expect(DEV_MENU)
 	# Visionneuse de modèles : modèle suivant, collection suivante, retour.
-	_press_times("bas", 5)
+	_press_times("bas", 6)
 	_press("valider", 30)
 	_expect("res://scenes/demo/model_viewer.tscn")
 	for action in ["droite", "droite", "bas", "droite", "bas", "gauche", "haut"]:
@@ -87,7 +94,7 @@ func _initialize() -> void:
 	_press("annuler")
 	_expect(DEV_MENU)
 	# Options -> Touches -> retour -> retour.
-	_press_times("bas", 7)
+	_press_times("bas", 8)
 	_press("valider")
 	_expect("res://scenes/options/options_menu.tscn")
 	_press_times("bas", 5)
@@ -103,16 +110,16 @@ func _initialize() -> void:
 	_expect("res://scenes/title/title_screen.tscn")
 	_press("valider", 45)
 	_expect(DEV_MENU)
-	# Dans la démo des dialogues (4e entrée) : avancer le texte, changer de ligne et de fichier.
-	_press_times("bas", 3)
+	# Dans la démo des dialogues (5e entrée) : avancer le texte, changer de ligne et de fichier.
+	_press_times("bas", 4)
 	_press("valider")
 	_expect("res://scenes/demo/dialogue_demo.tscn")
 	for action in ["valider", "valider", "bas", "droite", "gauche", "haut"]:
 		_press(action)
 	_press("menu")
 	_expect(DEV_MENU)
-	# À la souris : clic sur la 5e entrée du menu (« Pokémon animés »).
-	_click_menu_item(4)
+	# À la souris : clic sur la 6e entrée du menu (« Pokémon animés »).
+	_click_menu_item(5)
 	_expect("res://scenes/demo/pokemon_viewer.tscn")
 	_press("annuler")
 	_expect(DEV_MENU)
@@ -180,6 +187,21 @@ func _expect(scene: String) -> void:
 	_steps.append([func() -> void:
 		var current := current_scene.scene_file_path if current_scene else "(aucune)"
 		_check(current == scene, "scène attendue %s (actuelle : %s)" % [scene.get_file(), current.get_file()]), 0])
+
+
+## Ouvre le menu du terrain et choisit QUITTER, sa dernière entrée.
+func _quit_field() -> void:
+	_press("menu", 10)
+	_press("haut")
+	_press("valider", 10)
+	_expect(DEV_MENU)
+
+
+## Un nœud de ce nom existe dans la scène.
+func _expect_node(node_name: String) -> void:
+	_steps.append([func() -> void:
+		var found := current_scene.find_child(node_name, true, false) != null if current_scene else false
+		_check(found, "nœud %s présent" % node_name), 0])
 
 
 ## Zone où se trouve le héros dans la scène du terrain.

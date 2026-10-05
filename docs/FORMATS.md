@@ -864,6 +864,18 @@ les Poké Balls des starters (681-685) n'apparaissent pas encore.
 Exemples : 0x1E saut (s32 relatif à la fin du paramètre), 0x1F saut conditionnel (u8 condition,
 s32), 0x04 appel (s32), 0x05 retour, 0x02 fin, 0x03 attente (u16).
 
+## Menu du terrain et sauvegarde (`pause_menu.gd`, `game.gd`)
+
+0x021A8B58 (overlay 21) bâtit le menu du terrain avec le fichier système 34 : POKÉDEX (1),
+POKÉMON (2), SAC (3), le nom du héros (4, mis par 0x020084BC), SAUVER (5), OPTIONS (6). Le
+portage n'en montre le Pokédex et l'équipe qu'une fois reçus, et ajoute QUITTER. Textes de la
+sauvegarde : « Voulez-vous sauvegarder la partie? » (fichier système 46, message 25), OUI / NON
+(fichier 233), « Sauvegarde en cours... Ne pas éteindre. » et « {nom} a sauvegardé la partie. »
+(fichier 36, messages 3 et 4), son `SEQ_SE_SAVE` (1368). La partie (profil, drapeaux et variables
+de la sauvegarde, script en attente, équipe, sac, lieu) est enregistrée en JSON dans
+`user://sauvegarde.json` ; les variables temporaires (0x8000 et plus) ne sont pas gardées, comme
+dans le jeu.
+
 ## Mouvements (`movement_runner.gd`, `movement_actions.gd`)
 
 Liste de mouvements (commande 0x64) : paires (action u16, nombre u16) terminées par l'action

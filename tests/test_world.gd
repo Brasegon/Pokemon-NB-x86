@@ -22,6 +22,7 @@ func _initialize() -> void:
 	_test_tiles()
 	_test_camera()
 	_test_scripts()
+	_test_save()
 	print("%d vérifications, %d échec(s), %d ms" % [_checks, _failures, Time.get_ticks_msec() - started])
 	quit(1 if _failures > 0 else 0)
 
@@ -356,6 +357,40 @@ func _story_step(scripts: FieldScripts, box: DialogueBox, label: String) -> void
 			map.set_events_zone(zone)
 			scripts.enter_zone()
 	print("   %s : scripts %s, %d images, commandes sautées : %s" % [label, played, frames, scripts.vm.skipped])
+
+
+## Sauvegarde : l'état de la partie écrit puis relu par l'autoload Game (dans un fichier de test,
+## pas dans la sauvegarde du joueur).
+func _test_save() -> void:
+	var game: Node = root.get_node("Game")
+	var player_save: String = game.save_path
+	game.save_path = "user://tests/sauvegarde_test.json"
+	DirAccess.make_dir_recursive_absolute("user://tests")
+	game.new_game()
+	var state: GameState = game.state
+	state.player_name = "Ludo"
+	state.gender = GameState.Gender.GIRL
+	state.add_money(3000)
+	state.work.set_flag(679)
+	state.work.set_var(0x4081, 2)
+	state.work.set_var(0x8010, 7)
+	state.add_pokemon(498, 0, 5)
+	state.add_item(4, 5)
+	state.tile = Vector2i(5, 6)
+	state.started = true
+	_check(game.save_game(), "partie sauvegardée")
+	game.new_walk()
+	_check(game.load_game(), "partie relue")
+	state = game.state
+	_check(state.player_name == "Ludo" and state.gender == GameState.Gender.GIRL and state.money == 3000,
+		"profil relu : nom, sexe, argent")
+	_check(state.work.get_flag(679) and state.work.get_var(0x4081) == 2 and state.work.get_var(0x8010) == 0,
+		"drapeaux et variables relus, sans les variables temporaires")
+	_check(state.party == [{"species": 498, "form": 0, "level": 5}] and state.item_count(4) == 5, "équipe et sac relus")
+	_check(state.zone == ZoneTable.HERO_ROOM and state.tile == Vector2i(5, 6) and state.started, "lieu relu")
+	DirAccess.remove_absolute(game.save_path)
+	game.save_path = player_save
+	game.new_walk()
 
 
 ## Joue le script en cours jusqu'à sa fin (au plus 6000 images du terrain) : fait avancer les

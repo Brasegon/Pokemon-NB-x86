@@ -1,8 +1,8 @@
 class_name GameState
 extends RefCounted
 ## La partie en cours : ce que garde la sauvegarde du jeu. Le profil du héros (nom, sexe, argent),
-## les drapeaux et variables de l'histoire, le script en attente, le sac et l'équipe ; le lieu
-## viendra avec la sauvegarde.
+## les drapeaux et variables de l'histoire, le script en attente, le sac, l'équipe et le lieu.
+## L'autoload Game l'enregistre (to_dict) et le relit (from_dict).
 
 enum Gender { BOY, GIRL }
 ## Nom du héros tant que la nouvelle partie ne le demande pas (l'écran du nom viendra avec
@@ -33,6 +33,45 @@ var party: Array[Dictionary] = []
 var bag := {}
 ## Pokédex reçu (bit 0 du mot +4 des données du Pokédex, mis par la commande 0x1D0).
 var has_pokedex := false
+## Lieu : zone (-1 : la promenade, devant la maison du héros), case du héros (-1, -1 : la position
+## par défaut de la zone) et sa direction.
+var zone := -1
+var tile := Vector2i(-1, -1)
+var facing := 1
+## Vrai une fois joué le script de début de partie (9600).
+var started := false
+
+
+func to_dict() -> Dictionary:
+	var items := {}
+	for item: int in bag:
+		items[str(item)] = bag[item]
+	return {
+		"name": player_name, "gender": gender, "money": money, "pending_script": pending_script,
+		"has_pokedex": has_pokedex, "zone": zone, "x": tile.x, "z": tile.y, "facing": facing,
+		"started": started, "party": party, "bag": items, "work": work.to_dict(),
+	}
+
+
+static func from_dict(data: Dictionary) -> GameState:
+	var state := GameState.new()
+	state.player_name = str(data.get("name", DEFAULT_NAME))
+	state.gender = Gender.GIRL if int(data.get("gender", 0)) == Gender.GIRL else Gender.BOY
+	state.money = int(data.get("money", 0))
+	state.pending_script = int(data.get("pending_script", 0))
+	state.has_pokedex = bool(data.get("has_pokedex", false))
+	state.zone = int(data.get("zone", -1))
+	state.tile = Vector2i(int(data.get("x", -1)), int(data.get("z", -1)))
+	state.facing = int(data.get("facing", 1))
+	state.started = bool(data.get("started", false))
+	for pokemon: Variant in data.get("party", []):
+		if pokemon is Dictionary:
+			state.party.append({"species": int(pokemon.get("species", 0)), "form": int(pokemon.get("form", 0)), "level": int(pokemon.get("level", 1))})
+	var items: Dictionary = data.get("bag", {})
+	for key: String in items:
+		state.bag[int(key)] = int(items[key])
+	state.work = EventWork.from_dict(data.get("work", {}))
+	return state
 
 
 func add_money(amount: int) -> void:

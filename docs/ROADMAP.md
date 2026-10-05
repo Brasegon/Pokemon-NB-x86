@@ -106,8 +106,11 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 	  C'est le cœur du portage. Les commandes inconnues s'étudient dans le code ARM9/overlays, avec
 	  Ghidra et un loader NDS
 - [x] Drapeaux et variables d'histoire (en mémoire)
-- [ ] Sauvegarde des drapeaux et variables
-- [ ] Menu pause qui remplace le C-Gear et le menu de l'écran du bas
+- [x] Sauvegarde de la partie (profil, drapeaux et variables, équipe, sac, lieu) et reprise depuis le
+      menu de développement
+- [x] Menu pause qui remplace le menu de l'écran du bas : entrées et textes du jeu (Pokédex,
+      Pokémon, Sac, carte du héros, Sauver, Options) ; les écrans de l'équipe et du sac sont de
+      simples fiches en attendant leurs phases. Le C-Gear reste à faire.
 
 ## Phase 4 — Les combats
 
