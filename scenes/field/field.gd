@@ -230,7 +230,8 @@ func _save_game() -> void:
 
 
 func _on_player_moved(tile: Vector2i) -> void:
-	field.update_around(tile)
+	# En marchant, les morceaux voisins se chargent un par image : pas d'arrêt au passage.
+	field.update_around(tile, false)
 	var current := field.zone_at(tile)
 	if current != zone:
 		_enter_zone(current)

@@ -81,7 +81,10 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 
 ## Phase 3 — Le monde
 
-- [ ] En-têtes de zones : météo, scripts, textes (carte, musique et nom du lieu : fait en phase 2)
+- [x] En-têtes de zones : scripts, textes, caméra (champs 1C et 20), décor des combats (bits 5-9 du
+      champ 1E, pour la phase 4) ; carte, musique et nom du lieu : faits en phase 2
+- [ ] Météo : elle n'est pas dans l'en-tête de zone, sa table reste à retrouver (Renouet et la
+      Route 1 n'en ont pas)
 - [x] Événements des zones (`a/1/2/5`) : objets à lire, PNJ, portes, déclencheurs
 - [x] Portes, tapis et escaliers : entrée dans les maisons et changement d'étage, comme le jeu
 - [x] Rebords à sauter (action et courbe de saut du jeu), comportements des cases : herbes, herbes
@@ -92,7 +95,9 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
       (`a/1/0/8`), plans de caméra des scripts (0x13F à 0x147)
 - [x] Animations NSBCA « porte » des bâtiments : la porte s'ouvre, le héros entre ou sort, elle se
       ferme, avec ses sons ; les scripts animent aussi les bâtiments (portes, chambre en désordre)
-- [ ] Chargement des morceaux de carte en arrière-plan (aujourd'hui : un court arrêt au passage)
+- [x] Chargement des morceaux de carte au fil de la marche : une couronne de morceaux préparée
+      d'avance, un morceau par image (3 à 25 ms chacun), plus d'arrêt au passage d'un morceau à
+      l'autre
 - [x] PNJ affichés d'après les événements (sprite, case, direction), qui bloquent leur case
 - [x] PNJ : apparition selon les drapeaux de l'histoire
 - [x] PNJ : déplacements autonomes (codes de mouvement des événements) : regarder autour, se promener

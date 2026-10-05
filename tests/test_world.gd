@@ -184,6 +184,16 @@ func _test_tiles() -> void:
 	hero.walk(CharacterSprite.Direction.UP)
 	_check(not hero.is_moving() and hero.tile == ledge + Vector2i(0, 1), "on ne remonte pas un rebord")
 
+	# Chargement en marchant : seul le morceau du héros tout de suite, les autres (3x3 puis la
+	# couronne d'après) un par image.
+	map.clear()
+	_check(map.update_around(Vector2i(774, 624), false) == 1 and map.loaded_chunks().size() == 1 and map.pending_chunks() > 8,
+		"en marchant : un morceau chargé tout de suite, %d en file d'attente" % map.pending_chunks())
+	var frames_needed := map.pending_chunks()
+	for i in frames_needed:
+		map._process(1.0 / 60.0)
+	_check(map.pending_chunks() == 0 and map.loaded_chunks().size() == 1 + frames_needed, "la file se vide en une image par morceau")
+
 	# Route 1 (morceaux autour de la case de matrice (24, 22)) : hautes herbes, herbes sombres et eau.
 	_check(map.load_zone(317), "Route 1 chargée (zone 317)")
 	map.update_around(Vector2i(24 * 32 + 16, 22 * 32 + 16))

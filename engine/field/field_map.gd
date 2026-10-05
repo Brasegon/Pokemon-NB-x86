@@ -12,6 +12,8 @@ const UNIT := 1.0 / 16.0
 const CHUNK_TILES := MapContainer.TILES
 ## Morceaux chargés autour du joueur : 1 = un carré de 3x3 morceaux (96x96 cases).
 const LOAD_RADIUS := 1
+## Morceaux préparés d'avance au-delà : une couronne de plus, chargée un morceau par image.
+const PREFETCH_RADIUS := LOAD_RADIUS + 1
 ## Script d'un PNJ des événements qui le fait exister quel que soit son drapeau.
 const NO_SCRIPT := 0xFFFF
 ## Sprites variables des PNJ (0x0216E368) ; sans variables, le sprite n° 10.
@@ -64,6 +66,8 @@ var _areas := {}
 var _light_zone := -1
 var _light_file := -1
 var _light_source: FieldLight
+## Morceaux à charger, du plus proche au plus loin (un par image).
+var _queue: Array[Vector2i] = []
 var _objects: FieldObjectTable
 
 
@@ -130,6 +134,7 @@ func clear() -> void:
 	for chunk: Dictionary in _chunks.values():
 		chunk.node.queue_free()
 	_chunks.clear()
+	_queue.clear()
 
 
 ## Case au centre des morceaux d'une zone (pour y placer le joueur).
@@ -149,25 +154,52 @@ static func chunk_of(tile: Vector2i) -> Vector2i:
 	return Vector2i(floori(float(tile.x) / CHUNK_TILES), floori(float(tile.y) / CHUNK_TILES))
 
 
-## Charge les morceaux proches de la case et libère les autres. Renvoie le nombre de morceaux chargés.
-func update_around(tile: Vector2i) -> int:
+## Charge les morceaux proches de la case et libère les autres. now : charger tout de suite les 3x3
+## morceaux autour (arrivée par une porte, début) ; sinon seul celui de la case l'est, et les autres
+## passent par la file d'attente, comme la couronne préparée d'avance. Renvoie le nombre de
+## morceaux chargés tout de suite.
+func update_around(tile: Vector2i, now := true) -> int:
 	var center := chunk_of(tile)
 	var loaded := 0
 	for key: Vector2i in _chunks.keys():
-		if absi(key.x - center.x) > LOAD_RADIUS + 1 or absi(key.y - center.y) > LOAD_RADIUS + 1:
+		if absi(key.x - center.x) > PREFETCH_RADIUS + 1 or absi(key.y - center.y) > PREFETCH_RADIUS + 1:
 			_chunks[key].node.queue_free()
 			_chunks.erase(key)
-	for dy in range(-LOAD_RADIUS, LOAD_RADIUS + 1):
-		for dx in range(-LOAD_RADIUS, LOAD_RADIUS + 1):
+	_queue.clear()
+	for dy in range(-PREFETCH_RADIUS, PREFETCH_RADIUS + 1):
+		for dx in range(-PREFETCH_RADIUS, PREFETCH_RADIUS + 1):
 			var key := center + Vector2i(dx, dy)
-			if not _chunks.has(key) and matrix.map_at(key.x, key.y) >= 0:
+			if _chunks.has(key) or matrix.map_at(key.x, key.y) < 0:
+				continue
+			var near := absi(dx) <= LOAD_RADIUS and absi(dy) <= LOAD_RADIUS
+			if key == center or (now and near):
 				_load_chunk(key)
+				_place_npcs_on(key)
 				loaded += 1
-	# Les PNJ se posent sur le sol des morceaux qui viennent d'arriver.
-	if loaded > 0:
-		for npc in npcs:
-			_place_npc(npc)
+			else:
+				_queue.append(key)
+	_queue.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return (a - center).length_squared() < (b - center).length_squared())
 	return loaded
+
+
+## Un morceau de la file d'attente par image.
+func _process(_delta: float) -> void:
+	if not _queue.is_empty():
+		var key: Vector2i = _queue.pop_front()
+		if not _chunks.has(key):
+			_load_chunk(key)
+			_place_npcs_on(key)
+
+
+## Les PNJ qui se tiennent sur un morceau qui vient d'arriver se posent sur son sol.
+func _place_npcs_on(chunk: Vector2i) -> void:
+	for npc in npcs:
+		if chunk_of(npc.tile) == chunk:
+			_place_npc(npc)
+
+
+func pending_chunks() -> int:
+	return _queue.size()
 
 
 func is_chunk_loaded(chunk: Vector2i) -> bool:
