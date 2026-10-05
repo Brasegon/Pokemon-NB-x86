@@ -8,7 +8,8 @@ extends RefCounted
 ## de l'hiver (numéros de séquences du SDAT), 14 rencontres sauvages (0xFFFF = aucune),
 ## 16 fichier des événements (`a/1/2/5`, lu par 0x02013EE8 ; égal au numéro de la zone dans les
 ## faits), 18 zone parente (la ville d'un intérieur), 1A nom du lieu (u8, ligne des noms de lieux),
-## 1C bits 9-15 type de caméra (0x02013BCC, voir FieldCamera), 20 rectangles de la caméra
+## 1C bits 9-15 type de caméra (0x02013BCC, voir FieldCamera), 1E bits 5-9 décor des combats
+## (0x02013EF4, pour la phase 4), 20 rectangles de la caméra
 ## (`a/1/0/8`, 0x02013BE0 ; 0xFFFF = aucun), 24, 28, 2C position par défaut x, y, z (u32, en cases :
 ## 0x02013B84 ; c'est là que commence une nouvelle partie, dans la zone 391, d'après 0x02014280).
 
@@ -41,6 +42,7 @@ static func parse(bytes: PackedByteArray) -> ZoneTable:
 			"parent": bytes.decode_u16(p + 0x18),
 			"name": bytes[p + 0x1A],
 			"camera": (bytes.decode_u16(p + 0x1C) >> 9) & 0x7F,
+			"battle_background": (bytes.decode_u16(p + 0x1E) >> 5) & 0x1F,
 			"camera_area": bytes.decode_u16(p + 0x20),
 			"x": bytes.decode_u32(p + 0x24),
 			"y": bytes.decode_u32(p + 0x28),

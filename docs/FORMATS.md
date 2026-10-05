@@ -532,8 +532,12 @@ ces cases autour du héros (herbe qui bouge, poussière, remous, ombres sur les 
 - **Zone** (48 octets) : 00 type, 02 zone de textures, 04 matrice, 06 script, 08 script de niveau,
   0A textes, 0C-12 musiques des 4 saisons (n° de séquence du SDAT), 14 rencontres, 16 fichier des
   événements (`a/1/2/5`, lu par 0x02013EE8 ; égal au numéro de la zone), 18 parent (la ville d'un
-  intérieur), 1A nom du lieu (u8), 24, 28, 2C position par défaut x, y, z (u32, en cases :
-  0x02013B84). Une nouvelle partie commence dans la zone 391 à cette position, (5, 6)
+  intérieur), 1A nom du lieu (u8), 1C bits 9-15 type de caméra (0x02013BCC, voir « Caméra du
+  terrain »), 1C bits 6-8 (0x02013BB8 : 1 dehors, 0 dedans), 1E bits 5-9 décor des combats
+  (0x02013EF4, recopié par 0x021AA2A4 avec le genre de la case et l'heure, pour la phase 4),
+  20 rectangles de la caméra (`a/1/0/8`), 24, 28, 2C position par défaut x, y, z (u32, en cases :
+  0x02013B84). La météo n'est pas dans l'en-tête (Désert Délassant et Tour Dragospire n'y ont rien
+  de particulier) : sa table reste à retrouver. Une nouvelle partie commence dans la zone 391 à cette position, (5, 6)
   (0x02014280). Renouet = zone 389 (lieu n° 4, `SEQ_BGM_T_01`), Route 1 = 317 ;
   ses intérieurs sont les zones 390 à 396, chacune avec sa matrice d'un seul morceau (390-391 : la
   maison du héros, 396 : le laboratoire).
