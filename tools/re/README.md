@@ -19,6 +19,8 @@ git ignore. Ne jamais le versionner ni le partager.
 | `calls.py` | Liste les appels vers une fonction ou une plage d'adresses, avec la valeur de `r0`. |
 | `archives.py` | Table des archives : numéro d'archive (ARCID) → chemin `a/x/y/z`. |
 | `events.py` | Événements d'une zone (objets à lire, PNJ, portes, déclencheurs) ; `--stats` : valeurs des champs dans toute la ROM. |
+| `scriptcmds.py` | Paramètres des 609 commandes de script, retrouvés dans le code de chacune. |
+| `scripts.py` | Désassembleur des scripts du terrain ; `--check` : les 472 fichiers de la ROM. |
 | `terrain.py` | Hauteurs du terrain : tables des plans, grille d'un morceau, vérifications sur toute la ROM. |
 | `compare_heights.gd` | Script Godot : compare les hauteurs calculées au modèle 3D des cartes. |
 

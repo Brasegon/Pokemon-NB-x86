@@ -580,3 +580,42 @@ Les 6 premiers fichiers sont des objets 3D (rochers...), les suivants des NSBTX 
 6 = le héros (« t4x4hero », 32 images : dos, face, gauche, droite par groupes de 3 — immobile, pied
 gauche, pied droit — pour la marche puis la course), 7 = à vélo, 8 = en surf, 9-11 = l'héroïne ;
 les PNJ « t4x4flip » ont 7 images, la droite étant la gauche retournée.
+
+## Scripts du terrain (`a/0/5/7`)
+
+**Machine virtuelle** (ARM9) : 0x0201121C la crée, 0x02011298 l'exécute. Structure : +4 table des
+commandes, +8 nombre de commandes, +0C profondeur de la pile d'appels, +0D état (0 arrêtée,
+1 en marche, 2 en attente d'une fonction), +10 fonction d'attente, +14 position dans le script,
++18 pile d'appels, +20 contexte. Chaque tour : numéro de commande (u16, 0x02011330), arrêt s'il
+dépasse le nombre de commandes, appel de `table[numéro](machine, contexte)` ; la commande renvoie 1
+pour rendre la main (attente), 0 pour continuer. Utilitaires : 0x02011330 lit un u16, 0x0201134C un
+u32, 0x020113B0 saute, 0x020113B4 appelle (empile la position), 0x020113C4 revient, 0x020113D0 met
+la machine en attente d'une fonction, 0x02011290 l'arrête.
+
+**Table des commandes** : 609 fonctions en 0x021705BC (overlay 10), nombre lu en 0x02170568 ;
+installée par 0x02158B9C. 9 entrées sont vides (137, 143-145, 153, 154, 156, 157, 435). Les
+fonctions sont dans les overlays 10 et 21 (sauf 367-375 dans l'overlay 18, 382 dans le 48,
+450-457 dans le 20).
+
+**Fichier de scripts** : table de décalages (s32), chacun relatif à la fin de son entrée, souvent
+terminée par le marqueur `0xFD13` que le jeu ne lit pas (le fichier 865 n'en a pas) ; puis le code.
+Démarrage (fin de 0x02158B9C) : position = début du fichier + numéro local x 4, lecture du
+décalage (u32), position += décalage.
+
+**Numéros de scripts** (0x02158C70) : à partir de 2000, 46 plages de scripts communs (table en
+0x02170138 de l'overlay 10 : premier et dernier numéro, fichier de scripts, genre, fichier de
+textes ; par exemple 2000-2099 : fichier 854, textes 158) ; sinon un script de la zone (fichier =
+champ 06 de l'en-tête de zone, textes = champ 0A, numéro local = numéro - 1).
+
+**Paramètres des commandes** (`tools/re/scriptcmds.py`) : retrouvés dans le code de chaque
+commande, en suivant les lectures à la position du script : lecteurs u16 et u32, lectures écrites
+en ligne, sous-fonctions qui reçoivent la machine (appel, renvoi `bx`, machine rangée sur la pile)
+et fonction d'attente installée par 0x020113D0, qui lit parfois les paramètres plus tard (commande
+0x137). Les commandes qui appellent l'arrêt ou le retour, et le saut sans condition, terminent le
+code qui les suit (0x02, 0x05, 0x1D, 0x1E, 0x8C, 0x156, 0x167, 0x17A). Vérification
+(`tools/re/scripts.py --check`) : les **472 fichiers de scripts** de la ROM (zones et plages
+communes) se désassemblent sans erreur, en suivant sauts et appels depuis chaque script, sans
+chevauchement ni commande inconnue.
+
+Exemples : 0x1E saut (s32 relatif à la fin du paramètre), 0x1F saut conditionnel (u8 condition,
+s32), 0x04 appel (s32), 0x05 retour, 0x02 fin, 0x03 attente (u16).
