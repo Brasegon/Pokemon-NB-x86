@@ -82,8 +82,9 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 ## Phase 3 — Le monde
 
 - [ ] En-têtes de zones : météo, scripts, textes (carte, musique et nom du lieu : fait en phase 2)
-- [ ] Escaliers, rebords à sauter, portes (animations NSBCA « porte » des bâtiments), entrée dans les
-      maisons (événements de zone `a/1/2/5`), comportements des cases (herbe, eau)
+- [x] Événements des zones (`a/1/2/5`) : objets à lire, PNJ, portes, déclencheurs
+- [x] Portes, tapis et escaliers : entrée dans les maisons et changement d'étage, comme le jeu
+- [ ] Rebords à sauter, animations NSBCA « porte » des bâtiments, comportements des cases (herbe, eau)
 - [ ] Chargement des morceaux de carte en arrière-plan (aujourd'hui : un court arrêt au passage)
 - [ ] PNJ et sprites du monde extérieur
 - [ ] **Moteur de scripts** (`a/0/5/7`) : machine virtuelle qui exécute le bytecode des événements.

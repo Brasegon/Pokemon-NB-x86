@@ -18,6 +18,7 @@ git ignore. Ne jamais le versionner ni le partager.
 | `find.py` | Cherche une chaîne ou une valeur de 32 bits (pointeur, constante) dans le code et ses données. |
 | `calls.py` | Liste les appels vers une fonction ou une plage d'adresses, avec la valeur de `r0`. |
 | `archives.py` | Table des archives : numéro d'archive (ARCID) → chemin `a/x/y/z`. |
+| `events.py` | Événements d'une zone (objets à lire, PNJ, portes, déclencheurs) ; `--stats` : valeurs des champs dans toute la ROM. |
 | `terrain.py` | Hauteurs du terrain : tables des plans, grille d'un morceau, vérifications sur toute la ROM. |
 | `compare_heights.gd` | Script Godot : compare les hauteurs calculées au modèle 3D des cartes. |
 

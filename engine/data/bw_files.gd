@@ -27,7 +27,7 @@ const MAP_TEXTURE_ANIMATIONS := "a/0/6/9" ## vérifié (NSBTA des textures de ca
 const MAP_TEXTURE_PATTERNS := "a/0/7/0" ## vérifié (changements d'image des textures de cartes)
 const TRAINERS := "a/0/9/2"
 const TRAINER_TEAMS := "a/0/9/3"
-const ZONE_EVENTS := "a/1/2/5"
+const ZONE_EVENTS := "a/1/2/5" ## vérifié (objets à lire, PNJ, portes, déclencheurs)
 const ENCOUNTERS := "a/1/2/6"
 const SOUND := "wb_sound_data.sdat" ## vérifié
 const TITLE_SCREEN := "a/0/2/6" ## vérifié (logo, crédit, écran The Pokémon Company / Nintendo)
@@ -71,7 +71,7 @@ const DESCRIPTIONS := {
 	MAP_TEXTURE_PATTERNS: "Changements d'image des textures des cartes (écume, cascades)",
 	TRAINERS: "Dresseurs (à confirmer)",
 	TRAINER_TEAMS: "Équipes des dresseurs (à confirmer)",
-	ZONE_EVENTS: "Événements des zones (à confirmer)",
+	ZONE_EVENTS: "Événements des zones : objets à lire, PNJ, portes, déclencheurs",
 	ENCOUNTERS: "Rencontres sauvages (à confirmer)",
 	SOUND: "Musiques et bruitages (SDAT)",
 	TITLE_SCREEN: "Écran titre (logo, crédits)",

@@ -27,6 +27,10 @@ var light := {}
 ## Teinte des sprites des personnages pour cet éclairage.
 var sprite_tint := Color.WHITE
 
+## Événements de la zone où se trouve le joueur (portes, PNJ...), voir set_events_zone().
+var events: ZoneEvents
+var events_zone := -1
+
 ## Affiche les cases bloquées en rouge (outil de mise au point).
 var show_collisions := false:
 	set(value):
@@ -184,6 +188,45 @@ func ground_height(tile: Vector2i, from := 0.0) -> float:
 ## Position Godot du centre d'une case, au niveau du sol.
 func tile_position(tile: Vector2i, from := 0.0) -> Vector3:
 	return Vector3(tile.x + 0.5, ground_height(tile, from), tile.y + 0.5)
+
+
+## Charge les événements d'une zone (celle où se trouve le joueur).
+func set_events_zone(zone: int) -> void:
+	if zone == events_zone:
+		return
+	events_zone = zone
+	events = null
+	var header := zones.get_zone(zone)
+	var archive: NARC = _rom.narc(BWFiles.ZONE_EVENTS)
+	if not header.is_empty() and archive and header.events < archive.count():
+		events = ZoneEvents.parse(archive.get_file(header.events))
+
+
+## Porte à prendre en poussant vers `direction` depuis `tile` quand la case de devant est bloquée,
+## ou -1. Comme le jeu (0x0218AE74) : d'abord un tapis sous les pieds, puis une porte sur la case
+## de devant.
+func warp_for_push(tile: Vector2i, direction: int) -> int:
+	if events == null:
+		return -1
+	var under := events.warp_at(tile)
+	if under >= 0 and events.warps[under].kind == ZoneEvents.MAT_KIND and _usable_warp(under, direction):
+		return under
+	var front := events.warp_at(tile + ZoneEvents.STEPS[direction])
+	return front if front >= 0 and _usable_warp(front, direction) else -1
+
+
+## Porte qui se prend toute seule en arrivant sur la case (genres 0, 5 et 6 : 0x0218AC70), ou -1.
+func warp_on_arrival(tile: Vector2i) -> int:
+	if events == null:
+		return -1
+	var index := events.warp_at(tile)
+	if index < 0 or events.warps[index].kind not in ZoneEvents.ANY_DIRECTION_KINDS:
+		return -1
+	return index if _usable_warp(index, -1) else -1
+
+
+func _usable_warp(index: int, direction: int) -> bool:
+	return events.is_warp_enabled(index) and events.warps[index].warp != ZoneEvents.SPECIAL_WARP and events.warp_accepts(index, direction)
 
 
 ## Couche de permissions retenue au point (x, z) : { layer, tile (case dans le morceau), height },

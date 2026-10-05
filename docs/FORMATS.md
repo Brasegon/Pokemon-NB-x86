@@ -488,14 +488,58 @@ Preuves (overlay 21 chargé en 0x02187EA0, overlay 10 en 0x02155100) :
   morceau de chaque case (u32, `FFFFFFFF` = vide), puis le numéro de zone de chaque case. La matrice
   n° 0 est la carte d'Unys (29 x 27) : Renouet est le morceau n° 0, en (24, 23).
 - **Zone** (48 octets) : 00 type, 02 zone de textures, 04 matrice, 06 script, 08 script de niveau,
-  0A textes, 0C-12 musiques des 4 saisons (n° de séquence du SDAT), 14 rencontres, 16 numéro, 18 parent,
-  1A nom du lieu (u8). Renouet = zone 389 (lieu n° 4, `SEQ_BGM_T_01`), Route 1 = 317.
+  0A textes, 0C-12 musiques des 4 saisons (n° de séquence du SDAT), 14 rencontres, 16 fichier des
+  événements (`a/1/2/5`, lu par 0x02013EE8 ; égal au numéro de la zone), 18 parent (la ville d'un
+  intérieur), 1A nom du lieu (u8). Renouet = zone 389 (lieu n° 4, `SEQ_BGM_T_01`), Route 1 = 317 ;
+  ses intérieurs sont les zones 390 à 396, chacune avec sa matrice d'un seul morceau (390-391 : la
+  maison du héros, 396 : le laboratoire).
 - **Zone de textures** (fichier brut, 10 octets) : 00 lot de bâtiments, 02 textures des cartes
   (`a/0/1/4`), 04 animation NSBTA (u8, `a/0/6/9`), 05 animation par changement d'image (u8,
   `a/0/7/0`), `FF` = aucune, 06 extérieur, 07 éclairage (fichier de `a/0/6/1`). Les zones désignent
   l'entrée du **printemps** ; pour une zone extérieure, les 3 entrées suivantes sont **l'été,
   l'automne et l'hiver** (textures, animations et éclairage ; les bâtiments restent ceux du
   printemps). La saison change chaque mois : janvier printemps, février été, mars automne...
+
+### Événements des zones (`a/1/2/5`, `zone_events.gd`)
+
+Découpage de la fonction 0x02162440 (overlay 10), qui charge le fichier de la zone : taille (u32)
+de la partie qui suit, quatre nombres (u8), puis les quatre listes à la suite. Une dernière section
+suit la taille annoncée (pointeur gardé en +0x120 de la structure), pas encore décodée. Le dernier
+fichier (n° 427) ne fait que 4 octets à zéro. Directions du jeu : 0 haut (-z), 1 bas (+z),
+2 gauche (-x), 3 droite (+x) (case devant le joueur : 0x0218ADE8).
+
+| Liste | Taille | Champs |
+| --- | --- | --- |
+| Objets à lire | 20 | 00 script, 02 type, 04 ?, 08 x, 0C z (s32, cases), 10 y |
+| PNJ | 36 | 00 numéro, 02 sprite, 04 mouvement, 08 drapeau, 0A script, 0C direction, 0E-12 paramètres, 14-16 zone de déplacement, 18 type de position (u32 : 0 = grille, sinon rail), 1C x, 1E z (u16, cases), 20 y (fx32) |
+| Portes | 20 | 00 zone et 02 porte de destination (`FFFF` = désactivée), 04 direction d'entrée (u8), 05 genre (u8), 06 rail, 08 x, 0A y, 0C z (s16, unités DS, centre de la case), 0E largeur et 10 profondeur (cases) |
+| Déclencheurs | 22 | 00 script, 02 valeur, 04 variable, 06 ?, 08 rail, 0A x, 0C z (cases), 0E largeur, 10 profondeur, 12 y |
+
+Preuves des champs : 0x02162704 et 0x02162718 changent le sprite (02) et le script (0A) d'un PNJ ;
+0x021626D8 le déplace (direction 0C, x 1C, z 1E, y 20, seulement si 18 = 0) ; 0x021623EC
+désactive une porte (`FFFF` en 00 et 02) ; 0x02162CBC teste si une position est sur une porte
+(x, z en unités DS, y à ±2 près, largeur et profondeur en cases) ; 0x02162E9C fait de même pour
+un déclencheur (x, z en cases) ; 0x02162624 fabrique la destination d'une porte (00 et 02).
+
+**Portes** (overlay 21) :
+
+- direction d'entrée (0x02162648) : 1 = en allant vers le bas, 2 = vers le haut, 3 = vers la
+  droite, 4 = vers la gauche ; les genres 0, 5 et 6 se prennent sans condition de direction (masque
+  `0x61`, 0x0218AE4C) ;
+- en poussant contre une case bloquée (0x0218AE74) : d'abord une porte de genre 1 (tapis) sous les
+  pieds, puis une porte sur la case de devant (les portes des maisons et les escaliers sont sur des
+  cases bloquées, les tapis sur des cases libres) ;
+- en arrivant sur une case (0x0218AC70) : une porte de genre 0, 5 ou 6 s'y prend toute seule ;
+- arrivée : sur la porte de destination (0x02162C14 ; dans une porte large, le décalage vient d'une
+  valeur de la porte de départ, nulle pour une porte simple). Le moteur fait ressortir le joueur
+  d'un pas, dans le sens inverse de l'entrée, quand la porte est sur une case bloquée.
+- Genres vus à Renouet : 1 tapis, 2 escalier, 3 porte de maison. Porte de destination `0x100` :
+  cas spécial (0x02162578), pas encore géré.
+
+Exemple : la porte de la maison du héros est en (782, 748), case bloquée, direction d'entrée 2 ;
+elle mène au tapis (5, 10) de la zone 390 (3 cases de large, genre 1, direction 1), et ses
+escaliers (2, 2) à ceux de la chambre (9, 2) dans la zone 391, d'où l'on ressort en (8, 2), la case
+du déclencheur de l'intro.
 
 ### Bâtiments (`a/2/2/9` dehors, `a/2/3/0` dedans ; textures `a/1/7/6`, `a/1/7/7`)
 

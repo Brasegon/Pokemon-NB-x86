@@ -50,6 +50,12 @@ func _initialize() -> void:
 	_press_times("bas", 1)
 	_press("valider", 30)
 	_expect("res://scenes/field/field.tscn")
+	# La porte de la maison du héros est juste au nord de la case de départ : on entre (fondu au
+	# noir), puis on ressort en descendant sur le tapis.
+	_hold("haut", 45)
+	_expect_zone(390)
+	_hold("bas", 45)
+	_expect_zone(ZoneTable.NUVEMA)
 	_hold("droite", 40)
 	_hold("haut", 30)
 	_hold("courir", 0)
@@ -161,6 +167,13 @@ func _expect(scene: String) -> void:
 	_steps.append([func() -> void:
 		var current := current_scene.scene_file_path if current_scene else "(aucune)"
 		_check(current == scene, "scène attendue %s (actuelle : %s)" % [scene.get_file(), current.get_file()]), 0])
+
+
+## Zone où se trouve le héros dans la scène du terrain.
+func _expect_zone(zone: int) -> void:
+	_steps.append([func() -> void:
+		var current: int = current_scene.get("zone") if current_scene and current_scene.get("zone") != null else -1
+		_check(current == zone, "zone attendue %d (actuelle : %d)" % [zone, current]), 0])
 
 
 func _finish() -> void:

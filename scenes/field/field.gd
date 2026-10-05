@@ -1,15 +1,19 @@
 extends Node3D
 ## Le terrain : premiers pas dans Renouet. La carte 3D de la ROM (morceaux de la matrice d'Unys,
-## bâtiments, animations), le héros qui se déplace case par case, la caméra façon N&B élargie au
-## 16:9, la musique de la zone et le panneau du nom du lieu quand on change de zone.
+## bâtiments, animations), le héros qui se déplace case par case, les portes vers les intérieurs,
+## la caméra façon N&B élargie au 16:9, la musique de la zone et le panneau du nom du lieu quand on
+## change de zone.
 
 const DEV_MENU := "res://scenes/dev_menu/dev_menu.tscn"
 const START_ZONE := ZoneTable.NUVEMA
 ## Sprite du héros (« t4x4hero ») dans les objets du terrain.
 const HERO_SPRITE := 6
-## Devant la maison du héros, au sud-ouest de Renouet (case de la matrice d'Unys).
-const START_TILE := Vector2i(776, 758)
+## Devant la maison du héros (sa porte est en (782, 748) et mène à la zone 390), case de la matrice
+## d'Unys.
+const START_TILE := Vector2i(782, 749)
 const BANNER_TIME := 2.5
+## Durée d'un fondu au noir quand on passe une porte, en secondes.
+const FADE_TIME := 0.25
 const SKY_COLOR := Color("#90c8f0")
 ## L'éclairage suit l'horloge de l'ordinateur ; on le recalcule régulièrement.
 const LIGHT_REFRESH := 5.0
@@ -30,6 +34,8 @@ var _light_timer := 0.0
 var _banner: PanelContainer
 var _banner_label: GameLabel
 var _banner_tween: Tween
+var _fade: ColorRect
+var _warping := false
 
 
 func _ready() -> void:
@@ -53,6 +59,7 @@ func _ready() -> void:
 	add_child(player)
 	player.place(START_TILE, CharacterSprite.Direction.DOWN)
 	player.moved.connect(_on_player_moved)
+	player.warp_requested.connect(_on_warp_requested)
 
 	camera = FieldCamera.new()
 	camera.target = player
@@ -123,11 +130,61 @@ func _on_player_moved(tile: Vector2i) -> void:
 		field.set_light_zone(current)
 
 
-## Musique de la saison (comme sur DS, une saison par mois : janvier printemps, février été...)
-## et nom du lieu.
+## Passage par une porte : fondu au noir, chargement de la zone de destination, héros posé sur la
+## porte d'arrivée, puis fondu retour pendant qu'il en sort d'un pas si elle est sur une case bloquée
+## (la porte d'une maison).
+func _on_warp_requested(index: int) -> void:
+	if _warping or field.events == null:
+		return
+	_warping = true
+	player.controllable = false
+	var warp: Dictionary = field.events.warps[index]
+	await _fade_to(1.0)
+	var step_out := _arrive(warp.zone, warp.warp)
+	var faded := _fade_to(0.0)
+	if step_out >= 0:
+		player.walk(step_out as CharacterSprite.Direction)
+	await faded
+	player.controllable = true
+	_warping = false
+
+
+## Pose le héros sur la porte n° warp_index de la zone (après avoir chargé sa matrice s'il le faut).
+## Renvoie la direction du pas de sortie, ou -1.
+func _arrive(new_zone: int, warp_index: int) -> int:
+	var header := field.zones.get_zone(new_zone)
+	if header.is_empty():
+		return -1
+	if header.matrix != field.matrix_index:
+		field.load_zone(new_zone)
+	_enter_zone(new_zone)
+	field.set_light_zone(new_zone)
+	_refresh_light()
+	var events := field.events
+	if events == null or warp_index >= events.warps.size():
+		return -1
+	var tile := events.warp_tile(warp_index)
+	field.update_around(tile)
+	# On ressort dans le sens inverse de celui qui permet d'entrer (haut <-> bas, gauche <-> droite).
+	var enter: int = ZoneEvents.ENTER_DIRECTIONS.get(events.warps[warp_index].enter, -1)
+	var out: int = enter ^ 1 if enter >= 0 else player.facing
+	player.place(tile, out as CharacterSprite.Direction)
+	camera.follow(player.position)
+	return out if enter >= 0 and field.is_blocked(tile, player.position.y) else -1
+
+
+func _fade_to(alpha: float) -> Signal:
+	var tween := create_tween()
+	tween.tween_property(_fade, "color:a", alpha, FADE_TIME)
+	return tween.finished
+
+
+## Événements, musique de la saison (comme sur DS, une saison par mois : janvier printemps, février
+## été...) et nom du lieu.
 func _enter_zone(new_zone: int) -> void:
 	var previous := zone
 	zone = new_zone
+	field.set_events_zone(zone)
 	var header := field.zones.get_zone(zone)
 	if header.is_empty():
 		return
@@ -159,6 +216,12 @@ func _build_hud() -> void:
 	_banner.add_child(_banner_label)
 	_banner.position = Vector2(8, -40)
 	root.add_child(_banner)
+
+	_fade = ColorRect.new()
+	_fade.color = Color(0, 0, 0, 0)
+	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(_fade)
 
 	var help := GameLabel.new()
 	help.font_id = GameTheme.FontId.MEDIUM

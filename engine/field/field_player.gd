@@ -6,6 +6,8 @@ extends Node3D
 
 signal moved(tile: Vector2i)
 signal bumped(tile: Vector2i)
+## Le héros prend la porte n° index des événements de la zone (FieldMap.events).
+signal warp_requested(index: int)
 
 ## Durée d'un pas d'une case : 16 images à 60 i/s en marchant, 8 en courant.
 const WALK_TIME := 16.0 / 60.0
@@ -105,9 +107,22 @@ func _wanted_direction() -> int:
 	return -1
 
 
+## Fait un pas dans une direction sans attendre les touches (sortie d'une porte, scripts).
+func walk(direction: CharacterSprite.Direction) -> void:
+	if not _moving:
+		facing = direction
+		_try_step()
+
+
 func _try_step() -> void:
 	var target: Vector2i = tile + DIRECTIONS[facing]
 	if field.is_blocked(target, position.y):
+		# Une porte sur la case bloquée (ou un tapis sous les pieds) ?
+		var warp := field.warp_for_push(tile, facing)
+		if warp >= 0:
+			_show(CharacterSprite.Step.STAND)
+			warp_requested.emit(warp)
+			return
 		# On marche sur place contre l'obstacle.
 		if _bump_cooldown > WALK_TIME:
 			_show(CharacterSprite.Step.LEFT_FOOT if _left_foot else CharacterSprite.Step.RIGHT_FOOT)
@@ -141,6 +156,10 @@ func _advance(delta: float) -> void:
 		_moving = false
 		_left_foot = not _left_foot
 		moved.emit(tile)
+		var warp := field.warp_on_arrival(tile)
+		if warp >= 0:
+			warp_requested.emit(warp)
+			return
 		# On enchaîne sans s'arrêter si la direction est toujours tenue.
 		var wanted := _wanted_direction()
 		if controllable and wanted >= 0:
