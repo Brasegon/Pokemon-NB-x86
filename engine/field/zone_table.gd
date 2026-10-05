@@ -7,11 +7,15 @@ extends RefCounted
 ## 06 script, 08 script de niveau, 0A textes, 0C-12 musiques du printemps, de l'été, de l'automne et
 ## de l'hiver (numéros de séquences du SDAT), 14 rencontres sauvages (0xFFFF = aucune),
 ## 16 fichier des événements (`a/1/2/5`, lu par 0x02013EE8 ; égal au numéro de la zone dans les
-## faits), 18 zone parente (la ville d'un intérieur), 1A nom du lieu (u8, ligne des noms de lieux).
+## faits), 18 zone parente (la ville d'un intérieur), 1A nom du lieu (u8, ligne des noms de lieux),
+## 24, 28, 2C position par défaut x, y, z (u32, en cases : 0x02013B84 ; c'est là que commence une
+## nouvelle partie, dans la zone 391, d'après 0x02014280).
 
 const ENTRY_SIZE := 48
 ## Renouet (Nuvema Town), la ville de départ.
 const NUVEMA := 389
+## Chambre du héros, à l'étage de sa maison : là où commence une nouvelle partie.
+const HERO_ROOM := 391
 const NO_ENCOUNTERS := 0xFFFF
 
 var zones: Array[Dictionary] = []
@@ -35,6 +39,9 @@ static func parse(bytes: PackedByteArray) -> ZoneTable:
 			"events": bytes.decode_u16(p + 0x16),
 			"parent": bytes.decode_u16(p + 0x18),
 			"name": bytes[p + 0x1A],
+			"x": bytes.decode_u32(p + 0x24),
+			"y": bytes.decode_u32(p + 0x28),
+			"z": bytes.decode_u32(p + 0x2C),
 		})
 	return table
 

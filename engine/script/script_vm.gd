@@ -114,6 +114,12 @@ func _step() -> bool:
 			elif op == 0x20 and yes:
 				_calls.append(pc)
 				pc = target
+		0x26:
+			var id := _u16()
+			work.set_var(id, work.get_var(id) + _value())
+		0x27:
+			var id := _u16()
+			work.set_var(id, work.get_var(id) - _value())
 		0x23:
 			work.set_flag(_value())
 		0x24:
@@ -158,6 +164,28 @@ func _step() -> bool:
 			host.show_message(text, message, -1)
 			_wait = host.wait_button
 			return false
+		0x64:
+			var object := _value()
+			var offset := _u32_signed()
+			# Les données de mouvement sont à « fin des paramètres + décalage », comme un saut.
+			host.apply_movement(object, data, pc + offset)
+		0x65:
+			_wait = host.movements_done
+			return false
+		0x68:
+			var tile: Vector2i = host.player_tile()
+			work.set_var(_u16(), tile.x)
+			work.set_var(_u16(), tile.y)
+		0x6B:
+			host.add_npc(_value())
+		0x6C:
+			host.remove_npc(_value())
+		0x6D:
+			var id := _value()
+			var x := _value()
+			var y := _value()
+			var z := _value()
+			host.set_npc_position(id, x, y, z, _value())
 		0x74:
 			host.face_player()
 		0xA6:
@@ -227,6 +255,12 @@ func _u8() -> int:
 func _u16() -> int:
 	var v := data.decode_u16(pc) if pc + 2 <= data.size() else 0
 	pc += 2
+	return v
+
+
+func _u32_signed() -> int:
+	var v := data.decode_s32(pc) if pc + 4 <= data.size() else 0
+	pc += 4
 	return v
 
 

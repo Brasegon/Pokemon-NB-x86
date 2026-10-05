@@ -79,17 +79,18 @@ func _test_warps() -> void:
 	var map := FieldMap.new()
 	root.add_child(map)
 	_check(map.load_zone(ZoneTable.NUVEMA), "Renouet chargée")
+	map.work = EventWork.new()
 	map.set_events_zone(ZoneTable.NUVEMA)
 	map.update_around(Vector2i(782, 749))
 	_check(map.is_blocked(Vector2i(782, 748)) and not map.is_blocked(Vector2i(782, 749)), "porte bloquée, case de devant libre")
 	_check(map.warp_for_push(Vector2i(782, 749), CharacterSprite.Direction.UP) == 0, "pousser vers la porte la prend")
 	_check(map.warp_for_push(Vector2i(781, 749), CharacterSprite.Direction.UP) == -1, "à côté de la porte : rien")
-	# Les 3 habitants sans drapeau ; les 3 autres (liés à l'histoire) attendent les drapeaux.
+	# Sans aucun drapeau mis, les 6 PNJ de Renouet sont là.
 	var with_sprite := 0
 	for npc in map.npcs:
 		if npc.sprite:
 			with_sprite += 1
-	_check(map.npcs.size() == 3 and with_sprite == 3, "3 PNJ visibles à Renouet, avec leur sprite")
+	_check(map.npcs.size() == 6 and with_sprite == 6, "6 PNJ à Renouet sans drapeau, avec leur sprite")
 	_check(map.is_blocked(map.npcs[0].tile), "un PNJ bloque sa case")
 
 	_check(map.load_zone(390), "rez-de-chaussée de la maison du héros (zone 390)")
@@ -153,6 +154,30 @@ func _test_scripts() -> void:
 		scripts._process(1.0 / 60.0)
 	_check(not scripts.is_running() and scripts.vm.skipped.is_empty() and hero.controllable,
 		"le script se termine, le héros est libre (sautées : %s)" % scripts.vm.skipped)
+	# Début de partie (script 9600) : la mère du héros (drapeau 679) n'est plus dehors.
+	scripts.new_game()
+	_check(scripts.work.get_flag(679) and scripts.work.get_flag(501) and not scripts.work.get_flag(500),
+		"début de partie : drapeaux 679 et 501 mis, 500 non")
+	map.events_zone = -1
+	map.set_events_zone(ZoneTable.NUVEMA)
+	_check(map.npcs.size() == 5 and map.npc_by_id(5) == null, "la mère du héros n'est plus dehors")
+
+	# L'intro dans la chambre (zone 391) démarre toute seule : variable 0x4081 = 0 -> script 5.
+	map.load_zone(391)
+	map.set_events_zone(391)
+	map.update_around(Vector2i(8, 2))
+	hero.place(Vector2i(8, 2), CharacterSprite.Direction.LEFT)
+	_check(map.npc_by_id(0) != null and map.npc_by_id(1) == null, "chambre : Tcheren là, Bianca pas encore arrivée")
+	scripts.enter_zone()
+	_check(scripts.is_running() and scripts.current == 5, "l'intro démarre toute seule (script 5)")
+	var frames := 0
+	while scripts.is_running() and frames < 4000:
+		box.advance()
+		scripts._process(1.0 / 30.0)
+		frames += 1
+	print("   Intro : %d images, commandes sautées : %s" % [frames, scripts.vm.skipped])
+	_check(not scripts.is_running() and scripts.work.get_var(0x4081) == 1, "l'intro se termine : variable 0x4081 = 1")
+	_check(map.npc_by_id(1) != null and not scripts.work.get_flag(501), "Bianca est arrivée (drapeau 501 enlevé, commande 0x6B)")
 	scripts.queue_free()
 	box.queue_free()
 	map.queue_free()

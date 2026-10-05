@@ -5,6 +5,7 @@ extends Control
 const ENTRIES := [
 	["Intro et écran titre", "res://scenes/intro/intro.tscn"],
 	["Premiers pas dans Renouet (3D)", "res://scenes/field/field.tscn"],
+	["Nouvelle partie (chambre du héros, intro)", "res://scenes/field/field.tscn", "nouvelle partie"],
 	["Démo des dialogues", "res://scenes/demo/dialogue_demo.tscn"],
 	["Pokémon animés", "res://scenes/demo/pokemon_viewer.tscn"],
 	["Modèles 3D", "res://scenes/demo/model_viewer.tscn"],
@@ -66,6 +67,8 @@ func _on_chosen(index: int) -> void:
 	if scene.is_empty():
 		get_tree().quit()
 	else:
+		# Le terrain s'ouvre en nouvelle partie (chambre du héros) ou en promenade dans Renouet.
+		FieldScene.new_game = ENTRIES[index].size() > 2
 		get_tree().change_scene_to_file(scene)
 
 

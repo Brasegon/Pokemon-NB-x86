@@ -5,8 +5,9 @@ extends RefCounted
 ##
 ## Fichier : taille (u32) de la partie qui suit, quatre nombres (u8) puis les quatre listes à la
 ## suite : objets à lire (20 octets), PNJ (36), portes (20), déclencheurs (22). Après la taille
-## annoncée vient une dernière section, pas encore décodée. Découpage de la fonction 0x02162440
-## de l'overlay 10 ; champs et preuves dans docs/FORMATS.md.
+## annoncée viennent les scripts d'arrivée (les mêmes octets que le fichier du champ 08 de
+## l'en-tête de zone dans `a/0/5/7`). Découpage de la fonction 0x02162440 de l'overlay 10 ; champs
+## et preuves dans docs/FORMATS.md.
 ##
 ## Directions du jeu (PNJ, joueur) : 0 haut (-z), 1 bas (+z), 2 gauche (-x), 3 droite (+x), comme
 ## CharacterSprite.Direction. Positions : en cases, sauf les portes (unités DS, centre de la case).
@@ -32,8 +33,15 @@ var npcs: Array[Dictionary] = []
 var warps: Array[Dictionary] = []
 ## { script, value, variable, x, z, width, depth, y, rail }.
 var triggers: Array[Dictionary] = []
-## Section qui suit la taille annoncée, pas encore décodée.
+## Section qui suit la taille annoncée : les scripts d'arrivée.
 var tail := PackedByteArray()
+## Scripts d'arrivée : type -> valeur (entrées type u16, valeur u32, jusqu'au type 0 : 0x02158ADC).
+## Types 3 et 4 : numéro du script lancé au chargement de la zone (0x02188648 : le 4 en arrivant
+## par un changement de carte, sinon le 3).
+var init_scripts := {}
+## Type 1 : [variable, valeur, script], le premier dont la variable vaut la valeur est lancé
+## (0x02158B0C, table placée à « fin de l'entrée + valeur », terminée par une variable 0).
+var conditions: Array[PackedInt32Array] = []
 
 
 static func parse(bytes: PackedByteArray) -> ZoneEvents:
@@ -70,7 +78,24 @@ static func parse(bytes: PackedByteArray) -> ZoneEvents:
 		p += 22
 	if 4 + size <= bytes.size():
 		events.tail = bytes.slice(4 + size)
+		events._read_init_scripts()
 	return events
+
+
+func _read_init_scripts() -> void:
+	var p := 0
+	while p + 6 <= tail.size():
+		var type := tail.decode_u16(p)
+		if type == 0:
+			break
+		var value := tail.decode_u32(p + 2)
+		init_scripts[type] = value
+		if type == 1:
+			var q := p + 6 + value
+			while q + 6 <= tail.size() and tail.decode_u16(q) != 0:
+				conditions.append(PackedInt32Array([tail.decode_u16(q), tail.decode_u16(q + 2), tail.decode_u16(q + 4)]))
+				q += 6
+		p += 6
 
 
 ## Case de la porte n° index (le coin nord-ouest si elle est large).

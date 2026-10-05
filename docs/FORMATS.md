@@ -490,7 +490,9 @@ Preuves (overlay 21 chargé en 0x02187EA0, overlay 10 en 0x02155100) :
 - **Zone** (48 octets) : 00 type, 02 zone de textures, 04 matrice, 06 script, 08 script de niveau,
   0A textes, 0C-12 musiques des 4 saisons (n° de séquence du SDAT), 14 rencontres, 16 fichier des
   événements (`a/1/2/5`, lu par 0x02013EE8 ; égal au numéro de la zone), 18 parent (la ville d'un
-  intérieur), 1A nom du lieu (u8). Renouet = zone 389 (lieu n° 4, `SEQ_BGM_T_01`), Route 1 = 317 ;
+  intérieur), 1A nom du lieu (u8), 24, 28, 2C position par défaut x, y, z (u32, en cases :
+  0x02013B84). Une nouvelle partie commence dans la zone 391 à cette position, (5, 6)
+  (0x02014280). Renouet = zone 389 (lieu n° 4, `SEQ_BGM_T_01`), Route 1 = 317 ;
   ses intérieurs sont les zones 390 à 396, chacune avec sa matrice d'un seul morceau (390-391 : la
   maison du héros, 396 : le laboratoire).
 - **Zone de textures** (fichier brut, 10 octets) : 00 lot de bâtiments, 02 textures des cartes
@@ -503,8 +505,9 @@ Preuves (overlay 21 chargé en 0x02187EA0, overlay 10 en 0x02155100) :
 ### Événements des zones (`a/1/2/5`, `zone_events.gd`)
 
 Découpage de la fonction 0x02162440 (overlay 10), qui charge le fichier de la zone : taille (u32)
-de la partie qui suit, quatre nombres (u8), puis les quatre listes à la suite. Une dernière section
-suit la taille annoncée (pointeur gardé en +0x120 de la structure), pas encore décodée. Le dernier
+de la partie qui suit, quatre nombres (u8), puis les quatre listes à la suite. Après la taille
+annoncée viennent les **scripts d'arrivée** (pointeur gardé en +0x120, rendu par 0x021623E0) ; ce
+sont les mêmes octets que le fichier du champ 08 de l'en-tête de zone dans `a/0/5/7`. Le dernier
 fichier (n° 427) ne fait que 4 octets à zéro. Directions du jeu : 0 haut (-z), 1 bas (+z),
 2 gauche (-x), 3 droite (+x) (case devant le joueur : 0x0218ADE8).
 
@@ -535,6 +538,17 @@ un déclencheur (x, z en cases) ; 0x02162624 fabrique la destination d'une porte
   d'un pas, dans le sens inverse de l'entrée, quand la porte est sur une case bloquée.
 - Genres vus à Renouet : 1 tapis, 2 escalier, 3 porte de maison. Porte de destination `0x100` :
   cas spécial (0x02162578), pas encore géré.
+
+**Scripts d'arrivée** : entrées (type u16, valeur u32) jusqu'au type 0 (0x02158ADC).
+
+- Types 3 et 4 : numéro d'un script lancé au chargement de la zone (0x02188648 : le 4 en arrivant
+  par un changement de carte, sinon le 3). Celui de Renouet (13) place les PNJ selon les variables
+  de l'histoire.
+- Type 1 : décalage, depuis la fin de l'entrée, vers une table de triplets (variable, valeur,
+  script) terminée par une variable 0 ; le premier dont la variable vaut la valeur est lancé
+  (0x02158B0C, appelé par 0x0218A6D8). C'est ainsi que les scènes démarrent toutes seules : dans la
+  chambre du héros, « 0x4081 = 0 -> script 5 », l'intro.
+- Type 2 : un numéro de script (17 à Renouet), rôle pas encore trouvé.
 
 Exemple : la porte de la maison du héros est en (782, 748), case bloquée, direction d'entrée 2 ;
 elle mène au tapis (5, 10) de la zone 390 (3 cases de large, genre 1, direction 1), et ses
@@ -644,11 +658,53 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 3D | valeurs : fichier, message, ?, ? | message du PNJ à qui l'on parle |
 | 3E, 3F | | fermer le message, toutes les fenêtres |
 | 43, 44 | u16 message, u16 style / | panneau (attend une touche), le fermer |
+| 26, 27 | variable, valeur | ajouter, soustraire |
+| 64, 65 | valeur personnage, s32 / | lancer une liste de mouvements (« fin des paramètres + décalage ») ; attendre qu'elles soient finies |
+| 68 | variable, variable | case du héros (x, z) |
+| 6B, 6C | valeur | faire apparaître un PNJ des événements de la zone (0x0216CE74), le retirer |
+| 6D | valeurs : PNJ, x, y, z, direction | placer un PNJ présent (0x0216E014), sans changer son entrée des événements |
 | 74 | | le PNJ se tourne vers le héros |
 | A6 | valeur | effet sonore n° N du SDAT (1351 = `SEQ_SE_MESSAGE`) |
 
 Fichier de textes `0x400` : celui du script en cours (zone ou plage commune) ; c'est le premier
-paramètre de 0x3C et 0x3D dans 3 881 cas sur 3 884.
+paramètre de 0x3C et 0x3D dans 3 881 cas sur 3 884. Personnages des commandes (0x021B1608) :
+`0xFF` le héros, `0xF1` celui à qui l'on parle, `0xF2` un compagnon, sinon le numéro d'un PNJ.
+
+**Début de partie** : le script 9600 (premier de la plage 9600-9699, fichier 866) met 131 drapeaux
+et règle quelques valeurs de départ ; on n'a pas encore retrouvé l'appel dans le code, mais ses
+drapeaux donnent exactement la chambre du début du jeu. Un PNJ lié à un drapeau (champ 08 des
+événements) est caché tant que ce drapeau est mis : avec le script 9600, Tcheren (drapeau 500) est
+dans la chambre, Bianca (501) n'est pas encore arrivée, le carton cadeau (680) est sur la table et
+les Poké Balls des starters (681-685) n'apparaissent pas encore.
 
 Exemples : 0x1E saut (s32 relatif à la fin du paramètre), 0x1F saut conditionnel (u8 condition,
 s32), 0x04 appel (s32), 0x05 retour, 0x02 fin, 0x03 attente (u16).
+
+## Mouvements (`movement_runner.gd`, `movement_actions.gd`)
+
+Liste de mouvements (commande 0x64) : paires (action u16, nombre u16) terminées par l'action
+`0xFE`. La tâche 0x02197D6C (overlay 21, états en 0x021D49E0) attend que le personnage soit libre,
+lui donne l'action (0x0216D3A0, rangée en +0x26 du personnage, étape en +0x28), attend sa fin,
+puis compte les répétitions. L'action n° N est une suite d'étapes : 0x02197E54 lit l'action et son
+étape, 0x02197EC0 appelle `table[action][étape](personnage)`, la table étant en 0x021D5EE8
+(378 actions ; une autre en 0x021D61DC sert quand le bit 0x2000 du personnage est mis).
+
+La première fonction de chaque action appelle une fonction de « famille » avec des constantes
+(`tools/re/movements.py` les relève toutes) :
+
+| Fonction | Actions | Rôle et constantes |
+| --- | --- | --- |
+| 0x02197F0C | 00-03 | se tourner (haut, bas, gauche, droite) |
+| 0x02197F60 | 04-17 | marcher d'une case : vitesse x images = 16 unités ; 32, 16, 8, 4, 2 images |
+| 0x021982B8 | 18-2B | marcher sur place : 32, 16, 8... images |
+| 0x021984CC | 2C-3B | sauter (distance = vitesse x images, 0 = sur place) |
+| 0x02198900 | 3C-42, F9-... | attendre 1, 2, 4, 8, 15, 16, 32 images |
+| 0x02198BA8 | 4C-63 | marcher d'une case avec une vitesse tirée d'une table (départ et arrivée doux) |
+| 0x0216D4D8, 0x0216D4E0 | 45-4A | mettre, enlever un bit des indicateurs du personnage (4, 8, 16) |
+
+162 actions sur 378 sont ainsi classées, dont toutes celles des scripts de Renouet et de la Route 1
+(sauf 45-48, 4B, 64, 9A, 9F, B5, encore sans effet). Exemple : Tcheren vient arrêter le héros avec
+« 0x13 x 6 » (6 cases vers la droite, 4 images chacune) et repart avec « 0x4E x 6 ».
+
+Sprites des personnages : la couleur 0 de leur palette est toujours transparente, même quand le
+paramètre de la texture ne le dit pas (celle de Tcheren, fichier 12 de `a/0/4/9`).

@@ -26,7 +26,7 @@ static func create(textures: NSBTX) -> CharacterSprite:
 	var sprite := CharacterSprite.new()
 	sprite.name = "Sprite"
 	for i in textures.textures.size():
-		sprite.frames.append(textures.texture(i, 0))
+		sprite.frames.append(textures.texture(i, 0, true))
 	sprite._flip_layout = sprite.frames.size() < 12
 	sprite.pixel_size = FieldMap.UNIT
 	sprite.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y

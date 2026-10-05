@@ -32,6 +32,8 @@ var events: ZoneEvents
 var events_zone := -1
 ## PNJ de cette zone.
 var npcs: Array[FieldNpc] = []
+## Drapeaux et variables de l'histoire : un PNJ dont le drapeau est mis reste caché.
+var work: EventWork
 ## Inclinaison de la caméra, pour redresser les sprites des PNJ (réglée par la scène).
 var camera_pitch := 0.0
 
@@ -226,29 +228,50 @@ func set_events_zone(zone: int) -> void:
 	_spawn_npcs()
 
 
-## Crée les PNJ des événements de la zone. Ceux qui sont liés à un drapeau n'apparaissent qu'à
-## certains moments de l'histoire : tant que les drapeaux ne sont pas gérés, ils restent cachés.
+## Crée les PNJ des événements de la zone. Un PNJ lié à un drapeau reste caché tant que ce
+## drapeau est mis : le script de début de partie (9600) en met une centaine, l'histoire les enlève.
 func _spawn_npcs() -> void:
 	for npc in npcs:
 		npc.queue_free()
 	npcs.clear()
 	if events == null:
 		return
-	var archive: NARC = _rom.narc(BWFiles.FIELD_OBJECTS)
 	for entry: Dictionary in events.npcs:
-		if entry.rail != 0 or entry.flag != 0:
-			continue
-		var file := _objects.file_of(entry.sprite) if _objects else -1
-		var textures: NSBTX = null
-		if archive and file >= 0 and file < archive.count():
-			textures = NSBTX.parse(archive.get_file(file))
-		var npc := FieldNpc.create(entry, textures)
-		add_child(npc)
-		npcs.append(npc)
-		if npc.sprite:
-			npc.sprite.set_camera_pitch(camera_pitch)
-			npc.sprite.modulate = sprite_tint
-		_place_npc(npc)
+		if entry.rail == 0 and not (entry.flag != 0 and work and work.get_flag(entry.flag)):
+			spawn_npc(entry)
+
+
+## Fait apparaître un PNJ des événements de la zone (commande de script 0x6B).
+func spawn_npc(entry: Dictionary) -> FieldNpc:
+	var archive: NARC = _rom.narc(BWFiles.FIELD_OBJECTS)
+	var file := _objects.file_of(entry.sprite) if _objects else -1
+	var textures: NSBTX = null
+	if archive and file >= 0 and file < archive.count():
+		textures = NSBTX.parse(archive.get_file(file))
+	var npc := FieldNpc.create(entry, textures)
+	add_child(npc)
+	npcs.append(npc)
+	if npc.sprite:
+		npc.sprite.set_camera_pitch(camera_pitch)
+		npc.sprite.modulate = sprite_tint
+	_place_npc(npc)
+	return npc
+
+
+## PNJ présent de numéro id (champ 00 des événements), ou null.
+func npc_by_id(id: int) -> FieldNpc:
+	for npc in npcs:
+		if npc.data.id == id:
+			return npc
+	return null
+
+
+## Retire un PNJ (commande de script 0x6C).
+func remove_npc(id: int) -> void:
+	var npc := npc_by_id(id)
+	if npc:
+		npcs.erase(npc)
+		npc.queue_free()
 
 
 ## Pose un PNJ sur sa case, au niveau du sol (ou à sa hauteur, s'il en a une : un objet sur une

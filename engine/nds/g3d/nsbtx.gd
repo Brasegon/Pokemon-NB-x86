@@ -94,17 +94,19 @@ func to_image(cell := 64) -> Image:
 	return sheet
 
 
-## Texture Godot (gardée en cache), ou null si la texture est absente.
-func texture(texture_index: int, palette_index := -1) -> ImageTexture:
-	var key := texture_index * 4096 + palette_index
+## Texture Godot (gardée en cache), ou null si la texture est absente. force_transparent_zero :
+## la couleur 0 des palettes est transparente même si le paramètre de la texture ne le dit pas (les
+## sprites des personnages : celui de Tcheren, fichier 12 de `a/0/4/9`, n'a pas ce paramètre).
+func texture(texture_index: int, palette_index := -1, force_transparent_zero := false) -> ImageTexture:
+	var key := texture_index * 4096 + palette_index + (0x1000000 if force_transparent_zero else 0)
 	if not _cache.has(key):
-		var image := decode(texture_index, palette_index)
+		var image := decode(texture_index, palette_index, force_transparent_zero)
 		_cache[key] = ImageTexture.create_from_image(image) if image else null
 	return _cache[key]
 
 
 ## Décode une texture en RGBA8. Les formats à palette ont besoin de palette_index.
-func decode(texture_index: int, palette_index := -1) -> Image:
+func decode(texture_index: int, palette_index := -1, force_transparent_zero := false) -> Image:
 	if texture_index < 0 or texture_index >= textures.size():
 		return null
 	var t := textures[texture_index]
@@ -121,11 +123,11 @@ func decode(texture_index: int, palette_index := -1) -> Image:
 		Format.A5I3:
 			_decode_alpha_indexed(out, t.offset, w * h, palette, 3)
 		Format.PALETTE_4:
-			_decode_paletted(out, t.offset, w * h, palette, 2, t.transparent_zero)
+			_decode_paletted(out, t.offset, w * h, palette, 2, t.transparent_zero or force_transparent_zero)
 		Format.PALETTE_16:
-			_decode_paletted(out, t.offset, w * h, palette, 4, t.transparent_zero)
+			_decode_paletted(out, t.offset, w * h, palette, 4, t.transparent_zero or force_transparent_zero)
 		Format.PALETTE_256:
-			_decode_paletted(out, t.offset, w * h, palette, 8, t.transparent_zero)
+			_decode_paletted(out, t.offset, w * h, palette, 8, t.transparent_zero or force_transparent_zero)
 		Format.COMPRESSED_4X4:
 			_decode_4x4(out, t, palette)
 		Format.DIRECT:

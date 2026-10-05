@@ -38,24 +38,28 @@ func _initialize() -> void:
 
 	_go(DEV_MENU)
 	# Chaque entrée du menu de développement, puis retour au menu avec Annuler.
-	for entry in [[2, "res://scenes/demo/dialogue_demo.tscn"], [3, "res://scenes/demo/pokemon_viewer.tscn"],
-			[5, "res://scenes/demo/sound_test.tscn"], [6, "res://scenes/options/options_menu.tscn"]]:
+	for entry in [[3, "res://scenes/demo/dialogue_demo.tscn"], [4, "res://scenes/demo/pokemon_viewer.tscn"],
+			[6, "res://scenes/demo/sound_test.tscn"], [7, "res://scenes/options/options_menu.tscn"]]:
 		_press_times("bas", entry[0])
 		_press("valider")
 		_expect(entry[1])
 		_press("annuler")
 		_expect(DEV_MENU)
-	# Le terrain : quelques pas dans Renouet (contre un mur, en courant), puis Menu. Annuler ne
-	# quitte pas le terrain : c'est aussi le bouton B, qui sert à courir sur une manette.
+	# Le terrain : la porte de la maison du héros, puis quelques pas dans Renouet, puis Menu.
+	# Annuler ne quitte pas le terrain : c'est aussi le bouton B, qui sert à courir sur une manette.
 	_press_times("bas", 1)
 	_press("valider", 30)
 	_expect("res://scenes/field/field.tscn")
 	# La porte de la maison du héros est juste au nord de la case de départ : on entre (fondu au
-	# noir), puis on ressort en descendant sur le tapis.
+	# noir). Le rez-de-chaussée lance alors sa scène (l'histoire n'a pas avancé) : retour au menu.
 	_hold("haut", 45)
 	_expect_zone(390)
-	_hold("bas", 45)
-	_expect_zone(ZoneTable.NUVEMA)
+	_press("menu")
+	_expect(DEV_MENU)
+	# Promenade : quelques pas dans Renouet (contre un mur, en courant).
+	_press_times("bas", 1)
+	_press("valider", 30)
+	_expect("res://scenes/field/field.tscn")
 	_hold("droite", 40)
 	_hold("haut", 30)
 	_hold("courir", 0)
@@ -65,8 +69,16 @@ func _initialize() -> void:
 	_expect("res://scenes/field/field.tscn")
 	_press("menu")
 	_expect(DEV_MENU)
+	# Nouvelle partie : la chambre du héros, où l'intro démarre toute seule ; retour au menu.
+	_press_times("bas", 2)
+	_press("valider", 30)
+	_expect("res://scenes/field/field.tscn")
+	_expect_zone(ZoneTable.HERO_ROOM)
+	_press_times("valider", 3)
+	_press("menu")
+	_expect(DEV_MENU)
 	# Visionneuse de modèles : modèle suivant, collection suivante, retour.
-	_press_times("bas", 4)
+	_press_times("bas", 5)
 	_press("valider", 30)
 	_expect("res://scenes/demo/model_viewer.tscn")
 	for action in ["droite", "droite", "bas", "droite", "bas", "gauche", "haut"]:
@@ -74,7 +86,7 @@ func _initialize() -> void:
 	_press("annuler")
 	_expect(DEV_MENU)
 	# Options -> Touches -> retour -> retour.
-	_press_times("bas", 6)
+	_press_times("bas", 7)
 	_press("valider")
 	_expect("res://scenes/options/options_menu.tscn")
 	_press_times("bas", 5)
@@ -90,16 +102,16 @@ func _initialize() -> void:
 	_expect("res://scenes/title/title_screen.tscn")
 	_press("valider", 45)
 	_expect(DEV_MENU)
-	# Dans la démo des dialogues (3e entrée) : avancer le texte, changer de ligne et de fichier.
-	_press_times("bas", 2)
+	# Dans la démo des dialogues (4e entrée) : avancer le texte, changer de ligne et de fichier.
+	_press_times("bas", 3)
 	_press("valider")
 	_expect("res://scenes/demo/dialogue_demo.tscn")
 	for action in ["valider", "valider", "bas", "droite", "gauche", "haut"]:
 		_press(action)
 	_press("menu")
 	_expect(DEV_MENU)
-	# À la souris : clic sur la 4e entrée du menu (« Pokémon animés »).
-	_click_menu_item(3)
+	# À la souris : clic sur la 5e entrée du menu (« Pokémon animés »).
+	_click_menu_item(4)
 	_expect("res://scenes/demo/pokemon_viewer.tscn")
 	_press("annuler")
 	_expect(DEV_MENU)

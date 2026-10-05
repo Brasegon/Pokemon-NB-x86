@@ -21,6 +21,7 @@ git ignore. Ne jamais le versionner ni le partager.
 | `events.py` | Événements d'une zone (objets à lire, PNJ, portes, déclencheurs) ; `--stats` : valeurs des champs dans toute la ROM. |
 | `scriptcmds.py` | Paramètres des 609 commandes de script, retrouvés dans le code de chacune. |
 | `scripts.py` | Désassembleur des scripts du terrain ; `--check` : les 472 fichiers de la ROM. |
+| `movements.py` | Actions de mouvement des personnages (378), classées d'après leur code ; `--gdscript` pour le moteur. |
 | `terrain.py` | Hauteurs du terrain : tables des plans, grille d'un morceau, vérifications sur toute la ROM. |
 | `compare_heights.gd` | Script Godot : compare les hauteurs calculées au modèle 3D des cartes. |
 

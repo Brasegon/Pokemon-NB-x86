@@ -1,3 +1,4 @@
+class_name FieldScene
 extends Node3D
 ## Le terrain : premiers pas dans Renouet. La carte 3D de la ROM (morceaux de la matrice d'Unys,
 ## bâtiments, animations), le héros qui se déplace case par case, les portes vers les intérieurs,
@@ -12,6 +13,10 @@ const HERO_SPRITE := 6
 ## d'Unys.
 const START_TILE := Vector2i(782, 749)
 const BANNER_TIME := 2.5
+## Départ d'une nouvelle partie (choisi dans le menu de développement avant d'ouvrir la scène) :
+## dans la chambre du héros, à la position par défaut de la zone, avec l'intro qui démarre seule.
+## Sinon, devant la maison du héros, en promenade.
+static var new_game := false
 ## Durée d'un fondu au noir quand on passe une porte, en secondes.
 const FADE_TIME := 0.25
 const SKY_COLOR := Color("#90c8f0")
@@ -51,15 +56,20 @@ func _ready() -> void:
 
 	field = FieldMap.new()
 	add_child(field)
-	field.load_zone(START_ZONE)
+	var start_zone := ZoneTable.HERO_ROOM if new_game else START_ZONE
+	var start_tile := START_TILE
+	if new_game:
+		var room := field.zones.get_zone(start_zone)
+		start_tile = Vector2i(room.x, room.z)
+	field.load_zone(start_zone)
 	# La saison (textures de l'été, de l'automne, de l'hiver) est choisie avant de charger la carte.
 	_refresh_light()
-	field.update_around(START_TILE)
+	field.update_around(start_tile)
 
 	var hero := NSBTX.parse(Rom.narc(BWFiles.FIELD_OBJECTS).get_file(HERO_SPRITE))
 	player = FieldPlayer.create(field, hero)
 	add_child(player)
-	player.place(START_TILE, CharacterSprite.Direction.DOWN)
+	player.place(start_tile, CharacterSprite.Direction.DOWN)
 	player.moved.connect(_on_player_moved)
 	player.warp_requested.connect(_on_warp_requested)
 
@@ -76,7 +86,10 @@ func _ready() -> void:
 	_build_hud()
 	scripts = FieldScripts.create(field, player, _dialogue)
 	add_child(scripts)
-	_enter_zone(field.zone_at(START_TILE))
+	# Drapeaux de départ avant l'arrivée dans la zone : ils décident des PNJ présents.
+	scripts.new_game()
+	_enter_zone(field.zone_at(start_tile))
+	scripts.enter_zone()
 
 
 func _process(delta: float) -> void:
@@ -138,6 +151,7 @@ func _on_player_moved(tile: Vector2i) -> void:
 	if current != zone:
 		_enter_zone(current)
 		field.set_light_zone(current)
+		scripts.enter_zone()
 	scripts.check_triggers(tile)
 
 
@@ -156,7 +170,8 @@ func _on_warp_requested(index: int) -> void:
 	if step_out >= 0:
 		player.walk(step_out as CharacterSprite.Direction)
 	await faded
-	player.controllable = true
+	# Une scène a pu démarrer à l'arrivée : le héros ne reprend la main qu'à sa fin.
+	player.controllable = not scripts.is_running()
 	_warping = false
 
 
@@ -181,7 +196,9 @@ func _arrive(new_zone: int, warp_index: int) -> int:
 	var out: int = enter ^ 1 if enter >= 0 else player.facing
 	player.place(tile, out as CharacterSprite.Direction)
 	camera.follow(player.position)
-	return out if enter >= 0 and field.is_blocked(tile, player.position.y) else -1
+	var step_out := out if enter >= 0 and field.is_blocked(tile, player.position.y) else -1
+	scripts.enter_zone()
+	return step_out
 
 
 func _fade_to(alpha: float) -> Signal:

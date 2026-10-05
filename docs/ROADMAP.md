@@ -87,14 +87,19 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 - [ ] Rebords à sauter, animations NSBCA « porte » des bâtiments, comportements des cases (herbe, eau)
 - [ ] Chargement des morceaux de carte en arrière-plan (aujourd'hui : un court arrêt au passage)
 - [x] PNJ affichés d'après les événements (sprite, case, direction), qui bloquent leur case
-- [ ] PNJ : déplacements, apparition selon les drapeaux de l'histoire
+- [x] PNJ : apparition selon les drapeaux de l'histoire
+- [ ] PNJ : déplacements autonomes (codes de mouvement des événements)
 - [x] Commandes de script retrouvées dans le code (609, paramètres prouvés : 472 fichiers sur 472)
 - [x] Machine virtuelle : mécanique, variables, drapeaux, messages ; on parle aux PNJ et on lit les
       panneaux avec les scripts et les textes du jeu
-- [ ] **Moteur de scripts** (`a/0/5/7`) : le reste des commandes (mouvements, objets, combats...).
+- [x] Mouvements des personnages (378 actions retrouvées dans le code), apparitions, positions
+- [x] Scripts d'arrivée des zones et scènes qui démarrent seules ; nouvelle partie dans la chambre du
+      héros, avec l'intro (Tcheren, l'arrivée de Bianca) jouée par le script du jeu
+- [ ] **Moteur de scripts** (`a/0/5/7`) : le reste des commandes (caméra, musique, objets, combats...)
 	  C'est le cœur du portage. Les commandes inconnues s'étudient dans le code ARM9/overlays, avec
 	  Ghidra et un loader NDS
-- [ ] Drapeaux et variables d'histoire
+- [x] Drapeaux et variables d'histoire (en mémoire)
+- [ ] Sauvegarde des drapeaux et variables
 - [ ] Menu pause qui remplace le C-Gear et le menu de l'écran du bas
 
 ## Phase 4 — Les combats

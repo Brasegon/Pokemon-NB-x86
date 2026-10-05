@@ -1,11 +1,19 @@
 class_name FieldScripts
 extends Node
 ## Les scripts du terrain : on parle à un PNJ ou on lit un panneau en appuyant sur Valider devant
-## lui, on marche sur un déclencheur... et la machine virtuelle (ScriptVM) exécute le script du jeu.
-## Ce nœud est aussi son « hôte » : il affiche les messages, tourne les PNJ, joue les sons.
+## lui, on marche sur un déclencheur, on arrive dans une zone... et la machine virtuelle (ScriptVM)
+## exécute le script du jeu. Ce nœud est aussi son « hôte » : il affiche les messages, fait bouger
+## les personnages, joue les sons.
 
 signal script_started(id: int)
 signal script_finished(id: int)
+
+## Script lancé au début d'une nouvelle partie : il met une centaine de drapeaux qui cachent les PNJ
+## des moments suivants de l'histoire (premier script de la plage commune 9600-9699, fichier 866).
+const NEW_GAME_SCRIPT := 9600
+## Personnages spéciaux dans les commandes (0x021B1608) : le héros, celui à qui l'on parle.
+const PLAYER := 0xFF
+const TALKER := 0xF1
 
 var field: FieldMap
 var player: FieldPlayer
@@ -19,6 +27,8 @@ var talker: FieldNpc
 
 var _files: ScriptFiles
 var _rom: Node
+## Listes de mouvements en cours (commande 0x64).
+var _runners: Array[MovementRunner] = []
 
 
 static func create(map: FieldMap, hero: FieldPlayer, dialogue: DialogueBox) -> FieldScripts:
@@ -33,8 +43,44 @@ static func create(map: FieldMap, hero: FieldPlayer, dialogue: DialogueBox) -> F
 		push_error("Table des scripts communs introuvable dans l'overlay %d." % ScriptFiles.OVERLAY)
 	scripts.vm.host = scripts
 	scripts.vm.work = scripts.work
+	map.work = scripts.work
 	dialogue.visible = false
 	return scripts
+
+
+## Nouvelle partie : drapeaux et variables de départ.
+func new_game() -> void:
+	run_now(NEW_GAME_SCRIPT)
+
+
+## Arrivée dans une zone (ses événements viennent d'être chargés) : son script d'arrivée (type 4),
+## puis ses scènes qui démarrent toutes seules (type 1). Le jeu vérifie aussi ces scènes à d'autres
+## moments ; tant que toutes les commandes ne sont pas écrites, le moteur ne le fait qu'à l'arrivée,
+## pour qu'une commande sautée ne relance pas une scène en boucle.
+func enter_zone() -> void:
+	if field.events == null:
+		return
+	if field.events.init_scripts.has(4):
+		run_now(field.events.init_scripts[4])
+	check_conditions()
+
+
+## Table du type 1 : le premier script dont la variable vaut la valeur attendue (0x02158B0C).
+func check_conditions() -> bool:
+	if vm.running or field.events == null:
+		return false
+	for condition in field.events.conditions:
+		if work.get_var(condition[0]) == condition[1]:
+			return run(condition[2])
+	return false
+
+
+## Lance un script et l'exécute tout de suite jusqu'à sa première attente (ou sa fin).
+func run_now(id: int) -> void:
+	if run(id):
+		vm.update(0.0)
+		if not vm.running:
+			_finish()
 
 
 func is_running() -> bool:
@@ -89,16 +135,27 @@ func run(id: int, who: FieldNpc = null) -> bool:
 
 
 func _process(delta: float) -> void:
+	var moved_player := false
+	for runner in _runners:
+		runner.update(delta)
+		moved_player = moved_player or (runner.done and runner.target == player)
+	_runners = _runners.filter(func(runner: MovementRunner) -> bool: return not runner.done)
+	if moved_player:
+		field.update_around(player.tile)
 	if current < 0:
 		return
 	vm.update(delta)
 	if not vm.running:
-		var finished := current
-		current = -1
-		talker = null
-		close_message()
-		player.controllable = true
-		script_finished.emit(finished)
+		_finish()
+
+
+func _finish() -> void:
+	var finished := current
+	current = -1
+	talker = null
+	close_message()
+	player.controllable = true
+	script_finished.emit(finished)
 
 
 # --- Hôte de la machine virtuelle -----------------------------------------------------------
@@ -136,6 +193,52 @@ func close_message() -> void:
 func face_player() -> void:
 	if talker:
 		talker.face((int(player.facing) ^ 1) as CharacterSprite.Direction)
+
+
+## Personnage désigné par une commande : le héros (0xFF), celui à qui l'on parle (0xF1) ou un PNJ.
+func _character(id: int) -> Node3D:
+	match id:
+		PLAYER:
+			return player
+		TALKER:
+			return talker
+	return field.npc_by_id(id)
+
+
+func apply_movement(id: int, data: PackedByteArray, at: int) -> void:
+	var who := _character(id)
+	if who:
+		_runners.append(MovementRunner.create(who, field, data, at))
+
+
+func movements_done(_delta: float) -> bool:
+	return _runners.is_empty()
+
+
+func player_tile() -> Vector2i:
+	return player.tile
+
+
+func add_npc(id: int) -> void:
+	if field.npc_by_id(id) or field.events == null:
+		return
+	for entry: Dictionary in field.events.npcs:
+		if entry.id == id:
+			field.spawn_npc(entry)
+			return
+
+
+func remove_npc(id: int) -> void:
+	field.remove_npc(id)
+
+
+## Place un PNJ présent sur une case (0x0216E014), sans changer son entrée des événements.
+func set_npc_position(id: int, x: int, _y: int, z: int, direction: int) -> void:
+	var npc := field.npc_by_id(id)
+	if npc:
+		npc.tile = Vector2i(x, z)
+		npc.position = field.tile_position(npc.tile, npc.position.y)
+		npc.face(clampi(direction, 0, 3) as CharacterSprite.Direction)
 
 
 func play_sound(id: int) -> void:
