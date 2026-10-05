@@ -1,8 +1,8 @@
 class_name FieldPlayer
 extends Node3D
 ## Le héros sur le terrain : déplacement case par case comme sur DS (marche, course en maintenant
-## la touche « courir »), collisions lues dans les permissions de la carte, hauteur du sol lue sur
-## le modèle 3D, animation de marche et petite ombre au sol.
+## la touche « courir »), collisions et hauteur du sol lues dans les permissions de la carte (la
+## hauteur suit les plans du terrain tout au long du pas), animation de marche et petite ombre au sol.
 
 signal moved(tile: Vector2i)
 signal bumped(tile: Vector2i)
@@ -107,8 +107,7 @@ func _wanted_direction() -> int:
 
 func _try_step() -> void:
 	var target: Vector2i = tile + DIRECTIONS[facing]
-	var height := field.ground_height(target, position.y)
-	if field.is_blocked(target) or absf(height - position.y) > FieldMap.MAX_STEP:
+	if field.is_blocked(target, position.y):
 		# On marche sur place contre l'obstacle.
 		if _bump_cooldown > WALK_TIME:
 			_show(CharacterSprite.Step.LEFT_FOOT if _left_foot else CharacterSprite.Step.RIGHT_FOOT)
@@ -123,7 +122,7 @@ func _try_step() -> void:
 	_running = Input.is_action_pressed("courir")
 	_step_time = RUN_TIME if _running else WALK_TIME
 	_from = position
-	_to = Vector3(target.x + 0.5, height, target.y + 0.5)
+	_to = Vector3(target.x + 0.5, position.y, target.y + 0.5)
 	tile = target
 	_progress = 0.0
 	_moving = true
@@ -132,7 +131,8 @@ func _try_step() -> void:
 ## Première moitié du pas : un pied en avant (gauche et droit à tour de rôle), puis immobile.
 func _advance(delta: float) -> void:
 	_progress = minf(_progress + delta / _step_time, 1.0)
-	position = _from.lerp(_to, _progress)
+	var flat := _from.lerp(_to, _progress)
+	position = Vector3(flat.x, field.height_at(flat.x, flat.z, position.y), flat.z)
 	if _progress < 0.5:
 		_show(CharacterSprite.Step.LEFT_FOOT if _left_foot else CharacterSprite.Step.RIGHT_FOOT)
 	else:

@@ -28,6 +28,7 @@ func _initialize() -> void:
 	_check(rom.overlays9.size() > 0, "table des overlays ARM9")
 	_check(rom.all_file_paths().size() > 200, "système de fichiers NitroFS")
 	_check(rom.read_arm9().size() == rom.arm9["size"], "lecture de l'exécutable ARM9")
+	_test_overlays(rom)
 
 	_test_texts(rom)
 	_test_pokemon_sprites(rom)
@@ -36,6 +37,18 @@ func _initialize() -> void:
 	print("%d vérifications, %d échec(s), %d ms" % [_checks, _failures, Time.get_ticks_msec() - started])
 	print("Images de contrôle : ", ProjectSettings.globalize_path(OUTPUT_DIR))
 	quit(1 if _failures > 0 else 0)
+
+
+## Overlays ARM9 compressés en BLZ : chacun doit retrouver exactement sa taille en mémoire.
+func _test_overlays(rom: NDSRom) -> void:
+	var compressed := 0
+	var exact := 0
+	for i in rom.overlays9.size():
+		if rom.overlays9[i].compressed:
+			compressed += 1
+			if rom.read_overlay(i).size() == rom.overlays9[i].ram_size:
+				exact += 1
+	_check(compressed > 0 and exact == compressed, "overlays décompressés à leur taille en mémoire (%d/%d)" % [exact, compressed])
 
 
 func _test_texts(rom: NDSRom) -> void:

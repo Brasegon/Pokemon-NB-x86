@@ -109,3 +109,52 @@ static func decompress_if_needed(data: PackedByteArray) -> PackedByteArray:
 		if not out.is_empty():
 			return out
 	return data
+
+
+## Décompression « LZ à l'envers » (BLZ) de l'exécutable ARM9 et des overlays : la fin du fichier
+## est compressée et se lit en reculant, le début reste en clair. Les 8 derniers octets donnent la
+## taille de la partie compressée (24 bits), celle de ce pied de fichier (8 bits) et le nombre
+## d'octets gagnés (u32, 0 = pas compressé). Ensuite, des groupes de 8 blocs précédés d'un octet de
+## drapeaux (bit 7 d'abord) : bit à 1 = référence sur 2 octets (longueur - 3 sur 4 bits, distance
+## - 3 sur 12 bits, vers la fin du fichier), bit à 0 = octet brut. Renvoie un tableau vide si le
+## fichier est incohérent.
+static func decompress_backward(data: PackedByteArray) -> PackedByteArray:
+	var failed := PackedByteArray()
+	var n := data.size()
+	if n < 8:
+		return failed
+	var extra := data.decode_u32(n - 4)
+	if extra == 0:
+		return data
+	var footer: int = data[n - 5]
+	var start := n - (data.decode_u32(n - 8) & 0xFFFFFF)
+	if start < 0 or footer < 8 or start > n - footer:
+		return failed
+	var out := data.slice(0, n - footer)
+	out.resize(n + extra)
+	var src := n - footer
+	var dst := out.size()
+	while src > start:
+		src -= 1
+		var flags: int = data[src]
+		for bit in 8:
+			if src <= start:
+				break
+			if dst <= start:
+				return failed
+			if flags & (0x80 >> bit) == 0:
+				src -= 1
+				dst -= 1
+				out[dst] = data[src]
+				continue
+			if src - 2 < start:
+				return failed
+			var pair: int = (data[src - 1] << 8) | data[src - 2]
+			src -= 2
+			var disp := (pair & 0xFFF) + 3
+			if dst + disp > out.size():
+				return failed
+			for i in mini((pair >> 12) + 3, dst - start):
+				dst -= 1
+				out[dst] = out[dst + disp]
+	return out

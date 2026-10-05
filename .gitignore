@@ -5,6 +5,11 @@
 *.sav
 export/
 extracted/
+# Désassemblage du code du jeu (tools/re/disasm.py).
+tools/re/out/
+
+# Python
+__pycache__/
 
 # Godot
 .godot/

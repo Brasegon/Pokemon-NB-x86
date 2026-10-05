@@ -12,8 +12,6 @@ const UNIT := 1.0 / 16.0
 const CHUNK_TILES := MapContainer.TILES
 ## Morceaux chargés autour du joueur : 1 = un carré de 3x3 morceaux (96x96 cases).
 const LOAD_RADIUS := 1
-## Marche la plus haute que l'on peut monter d'une case à l'autre, en cases.
-const MAX_STEP := 0.75
 
 var zones: ZoneTable
 var areas: AreaTable
@@ -38,7 +36,7 @@ var show_collisions := false:
 				chunk.overlay.visible = value
 
 var _rom: Node
-## Vector2i (morceau) -> { node, container, zone, heights, models, overlay }.
+## Vector2i (morceau) -> { node, container, zone, models, overlay }.
 var _chunks := {}
 ## « zone de textures/saison » -> { textures, clips, patterns, pack, pack_textures }.
 var _areas := {}
@@ -157,35 +155,30 @@ func zone_at(tile: Vector2i) -> int:
 	return zone if zone >= 0 else default_zone
 
 
-## Vrai si la case est infranchissable (ou pas encore chargée).
-func is_blocked(tile: Vector2i) -> bool:
-	var chunk: Dictionary = _chunks.get(chunk_of(tile), {})
-	if chunk.is_empty() or chunk.container.ground() == null:
-		return true
-	return chunk.container.ground().is_blocked(posmod(tile.x, CHUNK_TILES), posmod(tile.y, CHUNK_TILES))
+## Vrai si la case est infranchissable (ou pas encore chargée), sur la couche de permissions où l'on
+## se trouve à la hauteur `from` (voir height_at()).
+func is_blocked(tile: Vector2i, from := 0.0) -> bool:
+	var ground := _ground_at(tile.x + 0.5, tile.y + 0.5, from)
+	return ground.is_empty() or ground.layer.is_blocked(ground.tile.x, ground.tile.y)
 
 
-func behavior(tile: Vector2i) -> int:
-	var chunk: Dictionary = _chunks.get(chunk_of(tile), {})
-	if chunk.is_empty() or chunk.container.ground() == null:
-		return 0
-	return chunk.container.ground().behavior(posmod(tile.x, CHUNK_TILES), posmod(tile.y, CHUNK_TILES))
+func behavior(tile: Vector2i, from := 0.0) -> int:
+	var ground := _ground_at(tile.x + 0.5, tile.y + 0.5, from)
+	return 0 if ground.is_empty() else ground.layer.behavior(ground.tile.x, ground.tile.y)
 
 
-## Hauteur du sol au centre de la case, en unités Godot : la surface la plus haute que l'on peut
-## atteindre depuis la hauteur `from` (marche de MAX_STEP au plus), sinon la plus basse.
+## Hauteur du sol (unités Godot) au point (x, z), calculée comme dans le jeu : chaque couche de
+## permissions du morceau donne le plan du sol, et l'on garde celle dont la hauteur est la plus
+## proche de `from` (le pont quand on est dessus, le sol en dessous sinon). Renvoie `from` hors des
+## morceaux chargés, sans permissions ou si le plan est inconnu.
+func height_at(x: float, z: float, from := 0.0) -> float:
+	var ground := _ground_at(x, z, from)
+	return from if ground.is_empty() or is_nan(ground.height) else ground.height
+
+
+## Hauteur du sol au centre de la case.
 func ground_height(tile: Vector2i, from := 0.0) -> float:
-	var chunk: Dictionary = _chunks.get(chunk_of(tile), {})
-	if chunk.is_empty():
-		return from
-	var heights: PackedFloat32Array = chunk.heights[posmod(tile.y, CHUNK_TILES) * CHUNK_TILES + posmod(tile.x, CHUNK_TILES)]
-	if heights.is_empty():
-		return from
-	var best := heights[0]
-	for h in heights:
-		if h <= from + MAX_STEP:
-			best = h
-	return best
+	return height_at(tile.x + 0.5, tile.y + 0.5, from)
 
 
 ## Position Godot du centre d'une case, au niveau du sol.
@@ -193,8 +186,35 @@ func tile_position(tile: Vector2i, from := 0.0) -> Vector3:
 	return Vector3(tile.x + 0.5, ground_height(tile, from), tile.y + 0.5)
 
 
+## Couche de permissions retenue au point (x, z) : { layer, tile (case dans le morceau), height },
+## ou {} hors des morceaux chargés ou sans permissions. Comme le jeu (overlay 21, 0x0218DA8C) :
+## parmi les couches où la case existe, celle dont la hauteur est la plus proche de `from`, sinon
+## la première.
+func _ground_at(x: float, z: float, from: float) -> Dictionary:
+	var key := Vector2i(floori(x / CHUNK_TILES), floori(z / CHUNK_TILES))
+	var chunk: Dictionary = _chunks.get(key, {})
+	if chunk.is_empty() or chunk.container == null or chunk.container.permissions.is_empty():
+		return {}
+	var layers: Array[MapPermissions] = chunk.container.permissions
+	var tile := Vector2i(floori(x) - key.x * CHUNK_TILES, floori(z) - key.y * CHUNK_TILES)
+	var center: Vector3 = chunk.node.position
+	var chosen := 0
+	var chosen_height := NAN
+	var best := INF
+	for i in layers.size():
+		# Repère du modèle du morceau : unités DS depuis son centre.
+		var h := layers[i].height_at((x - center.x) / UNIT, (z - center.z) / UNIT) * UNIT + center.y
+		if i == 0:
+			chosen_height = h
+		if layers[i].has_ground(tile.x, tile.y) and absf(h - from) < best:
+			chosen = i
+			chosen_height = h
+			best = absf(h - from)
+	return {"layer": layers[chosen], "tile": tile, "height": chosen_height}
+
+
 func _load_chunk(key: Vector2i) -> void:
-	var container := MapContainer.parse(_rom.narc(BWFiles.MAPS).get_file(matrix.map_at(key.x, key.y)))
+	var container := MapContainer.parse(_rom.narc(BWFiles.MAPS).get_file(matrix.map_at(key.x, key.y)), _rom.terrain_planes())
 	var node := Node3D.new()
 	node.name = "Morceau_%d_%d" % [key.x, key.y]
 	node.position = Vector3(key.x * CHUNK_TILES + CHUNK_TILES / 2, 0, key.y * CHUNK_TILES + CHUNK_TILES / 2)
@@ -202,7 +222,7 @@ func _load_chunk(key: Vector2i) -> void:
 	var zone := matrix.zone_at(key.x, key.y)
 	if zone < 0:
 		zone = default_zone
-	var chunk := {"node": node, "container": container, "zone": zone, "heights": [], "models": []}
+	var chunk := {"node": node, "container": container, "zone": zone, "models": []}
 	_chunks[key] = chunk
 	if container == null:
 		return
@@ -218,7 +238,6 @@ func _load_chunk(key: Vector2i) -> void:
 				ground.play_texture_pattern(clip, pattern.textures)
 		node.add_child(ground)
 		chunk.models.append(ground)
-		chunk.heights = _heights(ground.mesh_builder())
 	if area.pack:
 		for building in container.buildings:
 			_add_building(node, area, building.id, building.position, building.rotation, chunk.models)
@@ -226,23 +245,21 @@ func _load_chunk(key: Vector2i) -> void:
 		for instance: G3DModelInstance in chunk.models:
 			instance.apply_light(light)
 	if container.ground():
-		chunk.overlay = _collision_overlay(container.ground(), chunk.heights)
+		chunk.overlay = _collision_overlay(container.ground())
 		chunk.overlay.visible = show_collisions
 		node.add_child(chunk.overlay)
 
 
 ## Carrés rouges translucides sur les cases bloquées, à la hauteur du sol.
-static func _collision_overlay(ground: MapPermissions, heights: Array) -> MeshInstance3D:
+static func _collision_overlay(ground: MapPermissions) -> MeshInstance3D:
 	var vertices := PackedVector3Array()
 	var half := CHUNK_TILES / 2.0
 	for y in ground.height:
 		for x in ground.width:
 			if not ground.is_blocked(x, y):
 				continue
-			var h := 0.05
-			var index := y * CHUNK_TILES + x
-			if index < heights.size() and not heights[index].is_empty():
-				h += heights[index][heights[index].size() - 1]
+			var h := ground.height_at((x + 0.5 - half) / UNIT, (y + 0.5 - half) / UNIT) * UNIT
+			h = (0.0 if is_nan(h) else h) + 0.05
 			var x0 := x - half + 0.1
 			var z0 := y - half + 0.1
 			var x1 := x0 + 0.8
@@ -343,58 +360,3 @@ func _area(base_area: int) -> Dictionary:
 		data.pack_textures = NSBTX.parse(_rom.narc(pack_textures).get_file(base.buildings))
 	_areas[key] = data
 	return data
-
-
-## Hauteurs des surfaces au centre de chaque case du morceau : les triangles sont répartis dans
-## les cases qu'ils touchent, puis chaque centre de case est testé contre ses triangles.
-static func _heights(builder: G3DMeshBuilder) -> Array:
-	var buckets := []
-	buckets.resize(CHUNK_TILES * CHUNK_TILES)
-	for i in buckets.size():
-		buckets[i] = PackedVector3Array()
-	var half := MapContainer.SIZE / 2
-	for s in builder.surfaces:
-		var p := s.positions
-		for t in range(0, p.size() - 2, 3):
-			var a := p[t]
-			var b := p[t + 1]
-			var c := p[t + 2]
-			var x0 := clampi(floori((minf(a.x, minf(b.x, c.x)) + half) / MapContainer.TILE_SIZE - 0.5), 0, CHUNK_TILES - 1)
-			var x1 := clampi(floori((maxf(a.x, maxf(b.x, c.x)) + half) / MapContainer.TILE_SIZE - 0.5) + 1, 0, CHUNK_TILES - 1)
-			var z0 := clampi(floori((minf(a.z, minf(b.z, c.z)) + half) / MapContainer.TILE_SIZE - 0.5), 0, CHUNK_TILES - 1)
-			var z1 := clampi(floori((maxf(a.z, maxf(b.z, c.z)) + half) / MapContainer.TILE_SIZE - 0.5) + 1, 0, CHUNK_TILES - 1)
-			for z in range(z0, z1 + 1):
-				for x in range(x0, x1 + 1):
-					var bucket: PackedVector3Array = buckets[z * CHUNK_TILES + x]
-					bucket.append(a)
-					bucket.append(b)
-					bucket.append(c)
-					buckets[z * CHUNK_TILES + x] = bucket
-	var heights := []
-	heights.resize(CHUNK_TILES * CHUNK_TILES)
-	for z in CHUNK_TILES:
-		for x in CHUNK_TILES:
-			var px := -half + (x + 0.5) * MapContainer.TILE_SIZE
-			var pz := -half + (z + 0.5) * MapContainer.TILE_SIZE
-			var found := PackedFloat32Array()
-			var tris: PackedVector3Array = buckets[z * CHUNK_TILES + x]
-			for t in range(0, tris.size(), 3):
-				var h := _height_in_triangle(tris[t], tris[t + 1], tris[t + 2], px, pz)
-				if not is_nan(h):
-					found.append(h * UNIT)
-			found.sort()
-			heights[z * CHUNK_TILES + x] = found
-	return heights
-
-
-## Hauteur du triangle à la verticale de (x, z), ou NAN s'il ne passe pas au-dessus.
-static func _height_in_triangle(a: Vector3, b: Vector3, c: Vector3, x: float, z: float) -> float:
-	var d := (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z)
-	if absf(d) < 0.0001:
-		return NAN
-	var u := ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / d
-	var v := ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / d
-	var w := 1.0 - u - v
-	if u < -0.001 or v < -0.001 or w < -0.001:
-		return NAN
-	return u * a.y + v * b.y + w * c.y

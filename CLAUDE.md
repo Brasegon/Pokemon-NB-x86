@@ -54,6 +54,11 @@ Autres tests : `test_explorer`, `test_ui`, `test_sound`, `test_navigation`, `tes
   de changer de scène.
 - Le serveur d'affichage headless ne gère pas `keyboard_get_keycode_from_physical` (garde
   `DisplayServer.get_name() == "headless"`).
+- Une erreur de script dans `_initialize` d'un script lancé par `--script` ne quitte pas Godot : le
+  processus reste ouvert sans rien faire. Écrire la sortie dans un fichier et la lire si un script
+  ne se termine pas.
+- Le projet traite comme une erreur un type déduit d'un Variant (`var x := dictionnaire.cle`) :
+  typer explicitement (`var x: Type = ...`).
 - Captures d'écran : lancer sans `--headless` et enregistrer `root.get_texture().get_image()` après
   quelques images.
 - `user://` = `%APPDATA%\Godot\app_userdata\Pokémon Blanc - Portage Windows`.
@@ -62,5 +67,7 @@ Autres tests : `test_explorer`, `test_ui`, `test_sound`, `test_navigation`, `tes
 
 - Python 3.13 avec capstone (désassemblage ARM/Thumb du code du jeu). Pas de compilateur C/C++ ni de
   SDK .NET. Écrire les gros scripts Python dans un fichier plutôt qu'en heredoc.
+- Outils de rétro-ingénierie dans [tools/re/](tools/re/) (lecture de la ROM, désassemblage, recherche
+  de motifs ; méthode dans son README). Le désassemblage va dans `tools/re/out/`, ignoré par git.
 - Mémoire de Claude exportée dans [.claude/memoire/](.claude/memoire/) (son README explique comment la
   restaurer sur un autre PC).

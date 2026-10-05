@@ -130,6 +130,15 @@ func read_arm7() -> PackedByteArray:
 	return _read(arm7["offset"], arm7["size"])
 
 
+## Overlay ARM9 n° index (code et données, chargés en mémoire à overlays9[index].ram_address),
+## décompressé s'il le faut. Vide si l'overlay n'existe pas.
+func read_overlay(index: int) -> PackedByteArray:
+	if index < 0 or index >= overlays9.size():
+		return PackedByteArray()
+	var data := read_file_by_id(overlays9[index].file_id)
+	return Lz.decompress_backward(data) if overlays9[index].compressed else data
+
+
 func _read(offset: int, length: int) -> PackedByteArray:
 	_file.seek(offset)
 	return _file.get_buffer(length)

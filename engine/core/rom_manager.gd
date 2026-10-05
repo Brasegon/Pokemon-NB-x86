@@ -14,6 +14,8 @@ const REFERENCE_CODE := "IRAF"
 var rom: NDSRom
 var _narc_cache := {}
 var _text_cache := {}
+var _terrain_planes: TerrainPlanes
+var _terrain_planes_read := false
 
 
 func is_loaded() -> bool:
@@ -30,6 +32,8 @@ func load_rom(path: String) -> String:
 	rom = candidate
 	_narc_cache.clear()
 	_text_cache.clear()
+	_terrain_planes = null
+	_terrain_planes_read = false
 	_save_rom_path(path)
 	rom_changed.emit()
 	return ""
@@ -52,6 +56,17 @@ func narc(path: String) -> NARC:
 	if not _narc_cache.has(path):
 		_narc_cache[path] = NARC.parse(rom.read_file(path))
 	return _narc_cache[path]
+
+
+## Tables des plans du terrain, lues une fois dans le code du jeu (overlay 21) ; null si elles sont
+## introuvables (les hauteurs des cartes restent alors inconnues).
+func terrain_planes() -> TerrainPlanes:
+	if not _terrain_planes_read:
+		_terrain_planes_read = true
+		_terrain_planes = TerrainPlanes.from_overlay(rom.read_overlay(TerrainPlanes.OVERLAY))
+		if _terrain_planes == null:
+			push_error("Tables des plans du terrain introuvables dans l'overlay %d." % TerrainPlanes.OVERLAY)
+	return _terrain_planes
 
 
 ## Fichier de textes n° index de l'archive TEXT_SYSTEM ou TEXT_STORY.
