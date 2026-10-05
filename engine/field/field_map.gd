@@ -387,7 +387,7 @@ func _load_chunk(key: Vector2i) -> void:
 	var zone := matrix.zone_at(key.x, key.y)
 	if zone < 0:
 		zone = default_zone
-	var chunk := {"node": node, "container": container, "zone": zone, "models": []}
+	var chunk := {"node": node, "container": container, "zone": zone, "models": [], "buildings": []}
 	_chunks[key] = chunk
 	if container == null:
 		return
@@ -405,7 +405,7 @@ func _load_chunk(key: Vector2i) -> void:
 		chunk.models.append(ground)
 	if area.pack:
 		for building in container.buildings:
-			_add_building(node, area, building.id, building.position, building.rotation, chunk.models)
+			_add_building(node, area, building.id, building.position, building.rotation, chunk)
 	if not light.is_empty():
 		for instance: G3DModelInstance in chunk.models:
 			instance.apply_light(light)
@@ -450,8 +450,9 @@ static func _collision_overlay(ground: MapPermissions) -> MeshInstance3D:
 	return overlay
 
 
-## Ajoute un bâtiment (et sa porte) à un morceau de carte.
-func _add_building(parent: Node3D, area: Dictionary, id: int, position_ds: Vector3, rotation_y: float, models: Array) -> void:
+## Ajoute un bâtiment (et sa porte) à un morceau de carte ; il est gardé dans chunk.buildings
+## pour ses animations (portes, commandes de script 0x127 à 0x12A).
+func _add_building(parent: Node3D, area: Dictionary, id: int, position_ds: Vector3, rotation_y: float, chunk: Dictionary) -> void:
 	var pack: BuildingPack = area.pack
 	var index := pack.find(id)
 	if index < 0:
@@ -462,7 +463,7 @@ func _add_building(parent: Node3D, area: Dictionary, id: int, position_ds: Vecto
 		return
 	var looping: bool = info.animation_mode in [BuildingPack.AnimationMode.LOOP, BuildingPack.AnimationMode.LOOPS]
 	var skeletal := false
-	if looping:
+	if looping or info.animation_mode == BuildingPack.AnimationMode.DOOR:
 		for bytes: PackedByteArray in info.animations:
 			skeletal = skeletal or bytes.slice(0, 4).get_string_from_ascii() == "BCA0"
 	var instance := G3DModelInstance.create(file.models[0], file.textures if file.textures else area.pack_textures, UNIT, skeletal)
@@ -473,10 +474,44 @@ func _add_building(parent: Node3D, area: Dictionary, id: int, position_ds: Vecto
 		for bytes: PackedByteArray in info.animations:
 			_play_animation(instance, bytes, area.pack_textures)
 	parent.add_child(instance)
-	models.append(instance)
+	chunk.models.append(instance)
+	chunk.buildings.append({"instance": instance, "info": info, "position": parent.position + instance.position})
 	if info.door != BuildingPack.NO_DOOR:
 		var offset: Vector3 = Basis(Vector3.UP, rotation_y) * info.door_offset
-		_add_building(parent, area, info.door, position_ds + offset, rotation_y, models)
+		_add_building(parent, area, info.door, position_ds + offset, rotation_y, chunk)
+
+
+## Bâtiment d'un genre (BuildingRules) près d'une case, comme 0x0218C778 : le premier dont la
+## position est à 2 cases au plus en x et 3 en z de la case (rectangle de 0x0218C964), ou {}.
+func find_building(kind: int, tile: Vector2i) -> Dictionary:
+	var rules: BuildingRules = _rom.building_rules()
+	for chunk: Dictionary in _chunks.values():
+		for building: Dictionary in chunk.buildings:
+			var position: Vector3 = building.position
+			if rules and rules.kind_of(building.info.kind) == kind and absf(position.x - tile.x) <= 2.0 and absf(position.z - tile.y) <= 3.0:
+				return building
+	return {}
+
+
+## Joue une fois l'animation n° animation d'un bâtiment (pour une porte : 0 elle s'ouvre, 1 elle se
+## ferme), avec le son de son type (0x0218C82C, puis 0x0218C930). Renvoie sa durée en secondes :
+## elle avance d'une image par image du terrain.
+func animate_building(building: Dictionary, animation: int) -> float:
+	var info: Dictionary = building.info
+	if animation < 0 or animation >= info.animations.size():
+		return 0.0
+	var duration := 0.0
+	var bytes: PackedByteArray = info.animations[animation]
+	if bytes.slice(0, 4).get_string_from_ascii() == "BCA0":
+		var joints := NSBCA.parse(bytes)
+		if joints and not joints.animations.is_empty():
+			building.instance.play_joints_once(joints.animations[0])
+			duration = joints.animations[0].frame_count * FRAME
+	var rules: BuildingRules = _rom.building_rules()
+	var sound := Autoloads.sound()
+	if rules and sound:
+		sound.play_effect_id(rules.sound(info.kind, animation))
+	return duration
 
 
 ## Joue en boucle une animation d'un bâtiment : textures qui défilent (fontaines, mer qui

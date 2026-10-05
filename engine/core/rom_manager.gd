@@ -18,6 +18,10 @@ var _terrain_planes: TerrainPlanes
 var _terrain_planes_read := false
 var _jump_curves: JumpCurves
 var _jump_curves_read := false
+var _building_rules: BuildingRules
+var _building_rules_read := false
+## Overlays décompressés, gardés en cache (l'overlay 21 sert à plusieurs tables).
+var _overlay_cache := {}
 
 
 func is_loaded() -> bool:
@@ -38,6 +42,9 @@ func load_rom(path: String) -> String:
 	_terrain_planes_read = false
 	_jump_curves = null
 	_jump_curves_read = false
+	_building_rules = null
+	_building_rules_read = false
+	_overlay_cache.clear()
 	_save_rom_path(path)
 	rom_changed.emit()
 	return ""
@@ -62,12 +69,24 @@ func narc(path: String) -> NARC:
 	return _narc_cache[path]
 
 
+## Overlay ARM9 n° index décompressé, gardé en cache.
+func overlay(index: int) -> PackedByteArray:
+	if not _overlay_cache.has(index):
+		_overlay_cache[index] = rom.read_overlay(index)
+	return _overlay_cache[index]
+
+
+## Adresse en mémoire de l'overlay n° index (celle que citent ses pointeurs).
+func overlay_address(index: int) -> int:
+	return rom.overlays9[index].ram_address if index >= 0 and index < rom.overlays9.size() else 0
+
+
 ## Tables des plans du terrain, lues une fois dans le code du jeu (overlay 21) ; null si elles sont
 ## introuvables (les hauteurs des cartes restent alors inconnues).
 func terrain_planes() -> TerrainPlanes:
 	if not _terrain_planes_read:
 		_terrain_planes_read = true
-		_terrain_planes = TerrainPlanes.from_overlay(rom.read_overlay(TerrainPlanes.OVERLAY))
+		_terrain_planes = TerrainPlanes.from_overlay(overlay(TerrainPlanes.OVERLAY))
 		if _terrain_planes == null:
 			push_error("Tables des plans du terrain introuvables dans l'overlay %d." % TerrainPlanes.OVERLAY)
 	return _terrain_planes
@@ -78,10 +97,20 @@ func terrain_planes() -> TerrainPlanes:
 func jump_curves() -> JumpCurves:
 	if not _jump_curves_read:
 		_jump_curves_read = true
-		_jump_curves = JumpCurves.from_overlay(rom.read_overlay(JumpCurves.OVERLAY), rom.overlays9[JumpCurves.OVERLAY].ram_address)
+		_jump_curves = JumpCurves.from_overlay(overlay(JumpCurves.OVERLAY), overlay_address(JumpCurves.OVERLAY))
 		if _jump_curves == null:
 			push_error("Courbes de saut introuvables dans l'overlay %d." % JumpCurves.OVERLAY)
 	return _jump_curves
+
+
+## Règles des bâtiments animés (genres, sons des portes), lues une fois dans l'overlay 21.
+func building_rules() -> BuildingRules:
+	if not _building_rules_read:
+		_building_rules_read = true
+		_building_rules = BuildingRules.from_overlay(overlay(BuildingRules.OVERLAY), overlay_address(BuildingRules.OVERLAY))
+		if _building_rules == null:
+			push_error("Règles des bâtiments introuvables dans l'overlay %d." % BuildingRules.OVERLAY)
+	return _building_rules
 
 
 ## Fichier de textes n° index de l'archive TEXT_SYSTEM ou TEXT_STORY.

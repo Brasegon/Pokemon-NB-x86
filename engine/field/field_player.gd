@@ -9,12 +9,16 @@ signal moved(tile: Vector2i)
 signal bumped(tile: Vector2i)
 ## Le héros prend la porte n° index des événements de la zone (FieldMap.events).
 signal warp_requested(index: int)
+## Fin d'une action du jeu jouée par play_action() (avant l'arrivée sur la case).
+signal action_finished
 
 ## Durée d'un pas d'une case : 8 images du terrain en marchant (action 0x0C), 4 en courant (0x10).
 const WALK_TIME := 8 * FieldMap.FRAME
 const RUN_TIME := 4 * FieldMap.FRAME
 ## Saut d'un rebord : action 0x38 + direction (choisie par 0x021A4E78), deux cases en 16 images.
 const LEDGE_JUMP := 0x38
+## Pas ordinaire : action 0x0C + direction (8 images).
+const WALK_STEP := 0x0C
 ## Un appui bref sur une direction tourne le héros sans le faire avancer.
 const TURN_DELAY := 0.1
 const BUMP_SOUND := "SEQ_SE_WALL_HIT"
@@ -91,6 +95,7 @@ func _process(delta: float) -> void:
 		_action.update(delta)
 		if _action.done:
 			_action = null
+			action_finished.emit()
 			_arrive()
 		return
 	if _moving:
@@ -194,9 +199,15 @@ func _arrive() -> void:
 
 ## Saute le rebord de devant avec l'action du jeu (deux cases, courbe de saut et sons du jeu).
 func _jump() -> void:
+	play_action(LEDGE_JUMP + facing)
+
+
+## Joue une action de mouvement du jeu (MovementActions) sur le héros, sans tenir compte des
+## collisions : saut d'un rebord, pas dans une porte qui vient de s'ouvrir.
+func play_action(code: int) -> void:
 	var list := PackedByteArray()
 	list.resize(8)
-	list.encode_u16(0, LEDGE_JUMP + facing)
+	list.encode_u16(0, code)
 	list.encode_u16(2, 1)
 	list.encode_u16(4, MovementActions.END)
 	_running = false

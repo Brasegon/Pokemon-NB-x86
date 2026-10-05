@@ -182,15 +182,36 @@ func _on_warp_requested(index: int) -> void:
 	_warping = true
 	player.controllable = false
 	var warp: Dictionary = field.events.warps[index]
+	# La porte d'un bâtiment sur la case de devant : elle s'ouvre, puis le héros y entre d'un pas.
+	var tile := field.events.warp_tile(index)
+	var door := field.find_building(BuildingRules.DOOR, tile)
+	if not door.is_empty() and tile == player.facing_tile():
+		await _wait(field.animate_building(door, BuildingRules.OPEN))
+		player.play_action(FieldPlayer.WALK_STEP + player.facing)
+		await player.action_finished
 	await _fade_to(1.0)
 	var step_out := _arrive(warp.zone, warp.warp)
-	var faded := _fade_to(0.0)
-	if step_out >= 0:
+	# En sortant par la porte d'un bâtiment : fondu, la porte s'ouvre, le héros sort, elle se ferme.
+	var exit_door := field.find_building(BuildingRules.DOOR, player.tile) if step_out >= 0 else {}
+	if exit_door.is_empty():
+		var faded := _fade_to(0.0)
+		if step_out >= 0:
+			player.walk(step_out as CharacterSprite.Direction)
+		await faded
+	else:
+		await _fade_to(0.0)
+		await _wait(field.animate_building(exit_door, BuildingRules.OPEN))
 		player.walk(step_out as CharacterSprite.Direction)
-	await faded
+		await player.moved
+		field.animate_building(exit_door, BuildingRules.CLOSE)
 	# Une scène a pu démarrer à l'arrivée : le héros ne reprend la main qu'à sa fin.
 	player.controllable = not scripts.is_running()
 	_warping = false
+
+
+func _wait(seconds: float) -> void:
+	if seconds > 0.0:
+		await get_tree().create_timer(seconds).timeout
 
 
 ## Pose le héros sur la porte n° warp_index de la zone (après avoir chargé sa matrice s'il le faut).

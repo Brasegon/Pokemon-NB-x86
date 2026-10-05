@@ -22,6 +22,9 @@ var _srt: Array = []
 var _patterns: Array = []
 var _joints: Array = []
 var _frame := 0.0
+## Animation de squelette jouée une seule fois (une porte qui s'ouvre), et son image.
+var _once: NSBCA.Clip
+var _once_frame := 0.0
 
 
 ## Construit l'affichage d'un modèle. `textures` peut être null (modèle sans texture). Les sommets
@@ -167,10 +170,27 @@ func play_joints(animation: NSBCA.Clip) -> void:
 	_apply(_frame)
 
 
+## Joue une seule fois une animation de squelette : elle s'arrête sur sa dernière image (la porte
+## reste ouverte jusqu'à l'animation suivante).
+func play_joints_once(animation: NSBCA.Clip) -> void:
+	if skeleton == null:
+		push_warning("Animation de squelette sur un modèle sans squelette : %s" % model.name)
+		return
+	_once = animation
+	_once_frame = 0.0
+	_apply_joints(animation, 0.0)
+
+
+## Vrai tant que l'animation jouée une seule fois n'est pas finie.
+func is_playing_once() -> bool:
+	return _once != null and _once_frame < _once.frame_count - 1
+
+
 func stop_animations() -> void:
 	_srt.clear()
 	_patterns.clear()
 	_joints.clear()
+	_once = null
 	if skeleton:
 		skeleton.reset_bone_poses()
 
@@ -183,6 +203,9 @@ func _process(delta: float) -> void:
 	if playing and has_animations():
 		_frame += delta * ANIMATION_FPS
 		_apply(_frame)
+	if playing and is_playing_once():
+		_once_frame = minf(_once_frame + delta * ANIMATION_FPS, _once.frame_count - 1)
+		_apply_joints(_once, _once_frame)
 
 
 func _apply(frame: float) -> void:
@@ -212,14 +235,17 @@ func _apply(frame: float) -> void:
 				var p := source.find_palette(key.palette)
 				G3DMaterials.set_texture(materials[i], source.texture(t, p), true)
 	for animation: NSBCA.Clip in _joints:
-		var f := fmod(frame, maxf(animation.frame_count, 1))
-		for node in mini(animation.node_count(), model.nodes.size()):
-			var local := animation.sample(node, f, model.nodes[node].transform)
-			var parent := skeleton.get_bone_parent(node)
-			if parent < 0 and _builder.node_parent[node] >= 0:
-				# Os sans parent Godot (parent déclaré après lui) : on recompose sa transformation.
-				local = _builder.node_world[_builder.node_parent[node]] * local
-			var pose := _scaled(local)
-			skeleton.set_bone_pose_position(node, pose.origin)
-			skeleton.set_bone_pose_rotation(node, G3DModel.safe_rotation(pose.basis))
-			skeleton.set_bone_pose_scale(node, pose.basis.get_scale())
+		_apply_joints(animation, fmod(frame, maxf(animation.frame_count, 1)))
+
+
+func _apply_joints(animation: NSBCA.Clip, f: float) -> void:
+	for node in mini(animation.node_count(), model.nodes.size()):
+		var local := animation.sample(node, f, model.nodes[node].transform)
+		var parent := skeleton.get_bone_parent(node)
+		if parent < 0 and _builder.node_parent[node] >= 0:
+			# Os sans parent Godot (parent déclaré après lui) : on recompose sa transformation.
+			local = _builder.node_world[_builder.node_parent[node]] * local
+		var pose := _scaled(local)
+		skeleton.set_bone_pose_position(node, pose.origin)
+		skeleton.set_bone_pose_rotation(node, G3DModel.safe_rotation(pose.basis))
+		skeleton.set_bone_pose_scale(node, pose.basis.get_scale())

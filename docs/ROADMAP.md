@@ -88,7 +88,8 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
       sombres, eau ; groupe de rencontres de chaque case, retrouvé dans le test de rencontre du jeu
       (le tirage lui-même est pour la phase 4)
 - [x] Images du terrain à 30 par seconde (durées des mouvements et attentes des scripts)
-- [ ] Animations NSBCA « porte » des bâtiments
+- [x] Animations NSBCA « porte » des bâtiments : la porte s'ouvre, le héros entre ou sort, elle se
+      ferme, avec ses sons ; les scripts animent aussi les bâtiments (portes, chambre en désordre)
 - [ ] Chargement des morceaux de carte en arrière-plan (aujourd'hui : un court arrêt au passage)
 - [x] PNJ affichés d'après les événements (sprite, case, direction), qui bloquent leur case
 - [x] PNJ : apparition selon les drapeaux de l'histoire

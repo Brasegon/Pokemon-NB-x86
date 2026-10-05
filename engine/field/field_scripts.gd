@@ -39,6 +39,10 @@ var _runners: Array[MovementRunner] = []
 var _yes_no_answer := -1
 ## Choix du starter : -1 tant que le joueur n'a pas choisi.
 var _starter_answer := -1
+## Bâtiments gardés par la commande 0x127 (numéro = indice + 1 ; {} une fois libérés), et le temps
+## qui reste à l'animation de chacun.
+var _buildings: Array[Dictionary] = []
+var _building_time := {}
 var _battle_time := 0.0
 ## Temps écoulé depuis le début d'une fanfare ou d'un effet sonore attendu.
 var _sound_time := 0.0
@@ -199,6 +203,8 @@ func _finish() -> void:
 	close_message()
 	# Les mots variables appartiennent au contexte du script (0x02158F14) : ils disparaissent avec lui.
 	box.buffers.clear()
+	_buildings.clear()
+	_building_time.clear()
 	player.controllable = true
 	script_finished.emit(finished)
 
@@ -297,6 +303,37 @@ func party_count(mode: int) -> int:
 
 func receive_pokedex() -> void:
 	state.has_pokedex = true
+
+
+## Bâtiment d'un genre près de la case (x, z) (commande 0x127) : son numéro, ou 0.
+func find_building(kind: int, x: int, z: int) -> int:
+	var building := field.find_building(kind, Vector2i(x, z))
+	if building.is_empty():
+		return 0
+	_buildings.append(building)
+	return _buildings.size()
+
+
+func animate_building(handle: int, animation: int) -> void:
+	var building := _building(handle)
+	if not building.is_empty():
+		_building_time[handle] = field.animate_building(building, animation)
+
+
+## Attente de la commande 0x12A : vrai quand l'animation du bâtiment est finie.
+func building_animation_done(handle: int, delta: float) -> bool:
+	var left: float = _building_time.get(handle, 0.0) - delta
+	_building_time[handle] = left
+	return left <= 0.0
+
+
+func release_building(handle: int) -> void:
+	if handle >= 1 and handle <= _buildings.size():
+		_buildings[handle - 1] = {}
+
+
+func _building(handle: int) -> Dictionary:
+	return _buildings[handle - 1] if handle >= 1 and handle <= _buildings.size() else {}
 
 
 ## Crée un PNJ qui n'est pas dans les événements de la zone (commande 0x69).

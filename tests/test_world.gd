@@ -93,6 +93,13 @@ func _test_warps() -> void:
 			with_sprite += 1
 	_check(map.npcs.size() == 6 and with_sprite == 6, "6 PNJ à Renouet sans drapeau, avec leur sprite")
 	_check(map.is_blocked(map.npcs[0].tile), "un PNJ bloque sa case")
+	# Les portes sont des bâtiments de genre 1 (table 0x021D3D54) avec deux animations NSBCA.
+	var rules: BuildingRules = _rom.building_rules()
+	_check(rules != null and rules.kind_of(1) == 1 and rules.kind_of(11) == 8 and rules.sound(1, 0) == 1669,
+		"règles des bâtiments de l'overlay 21 : genres et sons des portes")
+	var door := map.find_building(BuildingRules.DOOR, Vector2i(782, 748))
+	_check(not door.is_empty() and door.info.animations.size() == 2 and map.animate_building(door, BuildingRules.OPEN) > 0.0,
+		"porte de la maison du héros : deux animations, l'ouverture dure %.2f s" % (map.animate_building(door, BuildingRules.OPEN) if not door.is_empty() else 0.0))
 
 	_check(map.load_zone(390), "rez-de-chaussée de la maison du héros (zone 390)")
 	map.set_events_zone(390)

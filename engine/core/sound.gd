@@ -81,6 +81,14 @@ func is_effect_playing() -> bool:
 	return _effects != null and _effects.sequence.is_busy()
 
 
+## Effet sonore par son numéro de séquence dans le SDAT (comme les appels de 0x020061E4).
+func play_effect_id(id: int) -> bool:
+	var archive := sdat()
+	if archive == null or id <= 0 or id >= archive.sequence_names.size():
+		return false
+	return play_effect(archive.sequence_names[id])
+
+
 ## Cri d'un Pokémon : la séquence SEQ_PV001 jouée avec la banque de l'espèce (BANK_PV001...).
 func play_cry(species: int) -> bool:
 	var archive := sdat()

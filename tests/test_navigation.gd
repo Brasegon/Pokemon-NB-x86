@@ -50,9 +50,10 @@ func _initialize() -> void:
 	_press_times("bas", 1)
 	_press("valider", 30)
 	_expect("res://scenes/field/field.tscn")
-	# La porte de la maison du héros est juste au nord de la case de départ : on entre (fondu au
-	# noir). Le rez-de-chaussée lance alors sa scène (l'histoire n'a pas avancé) : retour au menu.
-	_hold("haut", 45)
+	# La porte de la maison du héros est juste au nord de la case de départ : elle s'ouvre, le héros
+	# entre (fondu au noir). Le rez-de-chaussée lance alors sa scène (l'histoire n'a pas avancé) :
+	# retour au menu.
+	_hold("haut", 100)
 	_expect_zone(390)
 	_press("menu")
 	_expect(DEV_MENU)

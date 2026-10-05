@@ -415,6 +415,24 @@ func _step() -> bool:
 			var species := _value()
 			var form := _value()
 			work.set_var(id, int(host.give_pokemon(species, form, _value())))
+		0x127:
+			# Chercher un bâtiment d'un genre près d'une case (0x0218C778) et le garder : son numéro
+			# va dans la variable (0x0218BA6C). Genre 1 : une porte ; 8 : la chambre en désordre.
+			var id := _u16()
+			var kind := _value()
+			var x := _value()
+			work.set_var(id, host.find_building(kind, x, _value()))
+		0x128:
+			host.release_building(_value())
+		0x129:
+			# Jouer l'animation n° x du bâtiment, avec son son (0x0218C82C, 0x0218C930).
+			var handle := _value()
+			host.animate_building(handle, _value())
+		0x12A:
+			# Attendre la fin de son animation (0x0218C878, 0x0218C944).
+			var handle := _value()
+			_wait = func(delta: float) -> bool: return host.building_animation_done(handle, delta)
+			return false
 		0x14A, 0x14B:
 			# Quitter le terrain pour une application (0x020144F8), puis le retrouver (0x020145E8) :
 			# ici, les applications se posent sur le terrain.

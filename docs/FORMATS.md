@@ -605,6 +605,18 @@ Lot « AB » : nombre de fichiers (2 x N), positions ; N descriptions puis N mod
 2 porte qui s'ouvre et se ferme, 3 plusieurs boucles), 13 nombre d'animations, 14 positions (depuis
 la position 10). L'éolienne du laboratoire tourne avec une animation NSBCA en boucle.
 
+**Portes et bâtiments animés** (`building_rules.gd`). Les portes sont des bâtiments à part (types 1
+ou 2 à Renouet, mode 2, deux animations NSBCA : 0 elle s'ouvre, 1 elle se ferme). Le genre d'un
+type se lit dans la table de 16 octets 0x021D3D54 de l'overlay 21 (0x0218BC50) : 1 pour les types
+1, 2, 3, 13, 14 et 15 (les portes), 8 pour le type 11 (la chambre en désordre)... 0x0218C778
+cherche un bâtiment d'un genre près d'une position : rectangle de 2 cases en x et 3 en z autour
+d'elle (0x0218C964), puis le premier bâtiment chargé de ce genre dans le rectangle (0x0218C524).
+0x0218C82C joue son animation, 0x0218C930 donne son son (table de 6 entrées de 10 octets en
+0x021D3D18, lue par 0x0218C8E4 : type, puis un son par animation ; type 1 : 1669
+`SEQ_SE_FLD_20` à l'ouverture, 1670 à la fermeture). Une animation avance d'une image par image du
+terrain. Passer une porte (tâche 0x021A7C88) : la porte s'ouvre (0x021A8218, animation 0), le héros
+y entre, puis la porte se ferme (0x021A8248, animation 1) ; 0x021A81E4 attend la fin.
+
 ### Éclairage (`a/0/6/1`, `field_light.gd`)
 
 56 fichiers de 15 images clés de 52 octets : 00 heure (u16 période : 0 matin, 1 jour, 2 soir, 3 nuit,
@@ -746,6 +758,10 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 104 | | soigner l'équipe (0x0201BA50) |
 | 10C | variable, valeurs : espèce, forme, niveau | donner un Pokémon : 0x0215C4B0 le crée si l'équipe a moins de 6 membres (0x0201AA30, 0x0201AA34), l'ajoute (0x0201A9A8) et l'inscrit au Pokédex (0x0200CDE0) ; 1 dans la variable, 0 si l'équipe est pleine |
 | 110 | variable, valeurs : Pokémon, champ | un champ d'un Pokémon de l'équipe (0x02017E38), parmi les 12 de la table 0x02171112 (5 espèce, 117...) |
+| 127 | variable, valeurs : genre, x, z | chercher un bâtiment d'un genre près de la case (0x0218C778) et le garder : son numéro dans la variable (0x0218BA6C) |
+| 128 | valeur | le libérer (0x0218C800) |
+| 129 | valeurs : bâtiment, animation | jouer une animation du bâtiment, avec son son (0x0218C82C, 0x0218C930) |
+| 12A | valeur | attendre la fin de l'animation (0x0218C878, 0x0218C944) |
 | 14B, 14A | | quitter le terrain pour une application (0x020144F8), le retrouver (0x020145E8) |
 | 153 | variable | choix du starter : application de l'overlay 223 (0x0215C5DC), voir plus bas |
 | 155 | valeur | application de l'overlay 174 (le Vokit qui sonne au bout de la Route 1) : pas encore |
@@ -784,8 +800,7 @@ mettent le script 1 en attente avec 0x21), Route 1 (317/1, la démonstration de 
 Comme le jeu (0x0218A6D8, à chaque image), le moteur regarde le script en attente et les scènes
 de la zone à la fin de chaque script, dans la zone où le script a laissé le héros.
 
-Encore sautées sur ce chemin : la caméra (0x13F à 0x147), les animations des bâtiments (0x127 à
-0x12A : portes de Renouet, chambre en désordre), 0x21C (deux valeurs rangées dans un champ de bits
+Encore sautées sur ce chemin : la caméra (0x13F à 0x147), 0x21C (deux valeurs rangées dans un champ de bits
 de la sauvegarde, 0x0200E3E8), 0xDA (donne aux variables 0x4031 à 0x403A une valeur de la table
 0x02170F40 ; aucun script ne les lit), 0xD9 (une valeur de 1 à 17 rangée dans la sauvegarde,
 0x02012900), 0xE7 (un bit de l'octet +0x45 du profil, 0x0200C2F0), 0x19F et 0x240 (des numéros
