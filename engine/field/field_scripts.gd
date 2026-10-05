@@ -7,6 +7,8 @@ extends Node
 
 signal script_started(id: int)
 signal script_finished(id: int)
+## Un combat commence (commande 0x85) ; la phase 4 s'y branchera.
+signal battle_started(trainer: int, partner: int)
 
 ## Script lancé au début d'une nouvelle partie : il met une centaine de drapeaux qui cachent les PNJ
 ## des moments suivants de l'histoire (premier script de la plage commune 9600-9699, fichier 866).
@@ -379,6 +381,7 @@ func starter_answer() -> int:
 ## court passage au noir, et le joueur gagne.
 func start_battle(trainer: int, partner: int, _flags: int) -> void:
 	print("Combat contre le dresseur n° %d%s (phase 4)" % [trainer, " et %d" % partner if partner else ""])
+	battle_started.emit(trainer, partner)
 	_battle_time = 0.0
 	fade_screen(3, 0, 16, -1)
 
@@ -459,13 +462,21 @@ func remove_npc(id: int) -> void:
 	field.remove_npc(id)
 
 
-## Place un PNJ présent sur une case (0x0216E014), sans changer son entrée des événements.
-func set_npc_position(id: int, x: int, _y: int, z: int, direction: int) -> void:
-	var npc := field.npc_by_id(id)
-	if npc:
-		npc.tile = Vector2i(x, z)
-		npc.position = field.tile_position(npc.tile, npc.position.y)
-		npc.face(clampi(direction, 0, 3) as CharacterSprite.Direction)
+## Commande 0x6D : pose un personnage au centre d'une case, tourné dans une direction. Le jeu le
+## cherche avec 0x0216DE24, comme le héros (numéro 0xFF), puis le pose avec 0x0216E014 ; le moteur
+## le met sur le sol de la case (le jeu prend la hauteur y, en cases). Les entrées des événements
+## ne changent pas.
+func set_character_position(id: int, x: int, _y: int, z: int, direction: int) -> void:
+	var tile := Vector2i(x, z)
+	var facing := clampi(direction, 0, 3) as CharacterSprite.Direction
+	var who := _character(id)
+	if who is FieldPlayer:
+		(who as FieldPlayer).place(tile, facing)
+	elif who is FieldNpc:
+		var npc := who as FieldNpc
+		npc.tile = tile
+		npc.position = field.tile_position(tile, npc.position.y)
+		npc.face(facing)
 
 
 ## Au plus quelques secondes d'attente pour un son : sans pilote audio (tests), il ne finit pas.

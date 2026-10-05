@@ -306,7 +306,7 @@ func _step() -> bool:
 			var x := _value()
 			var y := _value()
 			var z := _value()
-			host.set_npc_position(id, x, y, z, _value())
+			host.set_character_position(id, x, y, z, _value())
 		0x74:
 			host.face_player()
 		0x98:

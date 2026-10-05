@@ -321,10 +321,20 @@ func _test_scripts() -> void:
 	_check(map.npc_by_id(1) != null and not scripts.work.get_flag(501), "Bianca est arrivée (drapeau 501 enlevé, commande 0x6B)")
 
 	# Le cadeau (PNJ n° 2, script 9) : choix du starter, deux combats, la chambre en désordre.
+	# Avant le premier combat, pendant le noir, la commande 0x6D pose le héros en (4, 6) tourné
+	# vers la droite et Bianca en (6, 7) ; elle monte d'une case et piétine vers la gauche.
+	var duel := {}
+	scripts.battle_started.connect(func(_trainer: int, _partner: int) -> void:
+		if duel.is_empty():
+			duel.merge({"hero": hero.tile, "facing": hero.facing, "bianca": map.npc_by_id(1).tile,
+				"bianca_facing": map.npc_by_id(1).facing}))
 	scripts.vm.skipped.clear()
 	_check(scripts.run(9, map.npc_by_id(2)), "le cadeau lance le script 9")
 	frames = _play(scripts, box)
 	print("   Cadeau : %d images, commandes sautées : %s" % [frames, scripts.vm.skipped])
+	_check(duel.get("hero") == Vector2i(4, 6) and duel.get("facing") == CharacterSprite.Direction.RIGHT
+		and duel.get("bianca") == Vector2i(6, 6) and duel.get("bianca_facing") == CharacterSprite.Direction.LEFT,
+		"premier combat : le héros en (4, 6) face à Bianca en (6, 6) (commande 0x6D sur le héros)")
 	_check(not scripts.is_running() and scripts.work.get_var(0x4081) == 2, "le script du cadeau se termine : variable 0x4081 = 2")
 	_check(StarterChoice.read_species(_rom.rom) == [495, 498, 501], "starters de l'overlay 223 : Vipélierre, Gruikui, Moustillon")
 	_check(scripts.state.party.size() == 1 and scripts.state.party[0].species == 498 and scripts.state.party[0].level == 5,

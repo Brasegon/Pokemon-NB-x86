@@ -786,7 +786,7 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 64, 65 | valeur personnage, s32 / | lancer une liste de mouvements (« fin des paramètres + décalage ») ; attendre qu'elles soient finies |
 | 68 | variable, variable | case du héros (x, z) |
 | 6B, 6C | valeur | faire apparaître un PNJ des événements de la zone (0x0216CE74), le retirer |
-| 6D | valeurs : PNJ, x, y, z, direction | placer un PNJ présent (0x0216E014), sans changer son entrée des événements |
+| 6D | valeurs : personnage, x, y, z, direction | placer un personnage au centre d'une case (0x0216E014 ; y en cases), sans changer son entrée des événements. 0x0216DE24 le cherche par son numéro, héros compris : 0x0216DE70 l'appelle avec 0xFF pour trouver le héros. Dans la chambre, avant le combat contre Bianca, il pose le héros en (4, 6) |
 | 74 | | le PNJ se tourne vers le héros |
 | 85 | valeurs : dresseur, dresseur 2, ? | combat de dresseurs (0x0216E7A8) ; sans dresseur 2, le même si c'est un dresseur de combat double (0x0215A454). En attendant la phase 4 : un passage au noir et une victoire |
 | 8C | | après une défaite : fin du script et retour au dernier Centre (0x0215F678) |
