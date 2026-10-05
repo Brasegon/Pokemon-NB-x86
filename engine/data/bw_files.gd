@@ -19,15 +19,20 @@ const LEARNSETS := "a/0/1/8"
 const EVOLUTIONS := "a/0/1/9"
 const MOVES := "a/0/2/1"
 const FONTS := "a/0/2/3" ## vérifié (NFTR)
-const ITEMS := "a/0/2/4"
+## Caméras du terrain : fichier 0, 38 fiches de 44 octets (archive 60 ouverte par 0x0218DFB8).
+const FIELD_CAMERAS := "a/0/6/0" ## vérifié
+## Rectangles qui bornent le point visé par la caméra, un fichier par zone (champ 20 de l'en-tête).
+const CAMERA_AREAS := "a/1/0/8" ## vérifié
+const ITEMS := "a/0/2/4" ## vérifié (archive 0x18 de 0x02020ED0, un fichier par objet)
 const FIELD_OBJECTS := "a/0/4/9" ## vérifié (objets 3D du terrain, puis sprites des personnages en NSBTX)
+const FIELD_OBJECT_TABLE := "a/0/4/8" ## vérifié (fiches des objets du terrain : numéro -> fichier de a/0/4/9)
 const SCRIPTS := "a/0/5/7"
 const FIELD_LIGHTS := "a/0/6/1" ## vérifié (éclairages du terrain selon l'heure)
 const MAP_TEXTURE_ANIMATIONS := "a/0/6/9" ## vérifié (NSBTA des textures de cartes)
 const MAP_TEXTURE_PATTERNS := "a/0/7/0" ## vérifié (changements d'image des textures de cartes)
 const TRAINERS := "a/0/9/2"
 const TRAINER_TEAMS := "a/0/9/3"
-const ZONE_EVENTS := "a/1/2/5"
+const ZONE_EVENTS := "a/1/2/5" ## vérifié (objets à lire, PNJ, portes, déclencheurs)
 const ENCOUNTERS := "a/1/2/6"
 const SOUND := "wb_sound_data.sdat" ## vérifié
 const TITLE_SCREEN := "a/0/2/6" ## vérifié (logo, crédit, écran The Pokémon Company / Nintendo)
@@ -42,6 +47,12 @@ const INDOOR_BUILDINGS := "a/2/3/0" ## vérifié (lots « AB »)
 ## Index des fichiers de TEXT_SYSTEM (vérifiés sur la ROM IRAF).
 const TEXT_TYPE_NAMES := 199
 const TEXT_ITEM_NAMES := 54
+## Noms des poches du sac (OBJETS, MÉDICAMENTS...).
+const TEXT_POCKET_NAMES := 55
+## Noms des objets au pluriel (« Poké Balls »).
+const TEXT_ITEM_PLURALS := 280
+## Menus du terrain : « OUI », « NON »... (0x02190450 l'ouvre pour le menu Oui / Non).
+const TEXT_FIELD_MENUS := 233
 const TEXT_SPECIES_NAMES := 70
 const TEXT_LOCATION_NAMES := 89
 const TEXT_ABILITY_NAMES := 182
@@ -63,15 +74,16 @@ const DESCRIPTIONS := {
 	EVOLUTIONS: "Évolutions (à confirmer)",
 	MOVES: "Données des capacités (à confirmer)",
 	FONTS: "Polices du jeu",
-	ITEMS: "Données des objets (à confirmer)",
+	ITEMS: "Données des objets (prix, poche du sac...)",
 	FIELD_OBJECTS: "Objets 3D et sprites des personnages du terrain",
+	FIELD_OBJECT_TABLE: "Fiches des objets du terrain (numéro de PNJ -> image)",
 	SCRIPTS: "Scripts des événements (à confirmer)",
 	FIELD_LIGHTS: "Éclairages du terrain selon l'heure",
 	MAP_TEXTURE_ANIMATIONS: "Animations des textures des cartes",
 	MAP_TEXTURE_PATTERNS: "Changements d'image des textures des cartes (écume, cascades)",
 	TRAINERS: "Dresseurs (à confirmer)",
 	TRAINER_TEAMS: "Équipes des dresseurs (à confirmer)",
-	ZONE_EVENTS: "Événements des zones (à confirmer)",
+	ZONE_EVENTS: "Événements des zones : objets à lire, PNJ, portes, déclencheurs",
 	ENCOUNTERS: "Rencontres sauvages (à confirmer)",
 	SOUND: "Musiques et bruitages (SDAT)",
 	TITLE_SCREEN: "Écran titre (logo, crédits)",

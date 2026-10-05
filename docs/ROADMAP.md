@@ -81,16 +81,43 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 
 ## Phase 3 — Le monde
 
-- [ ] En-têtes de zones : météo, scripts, textes (carte, musique et nom du lieu : fait en phase 2)
-- [ ] Escaliers, rebords à sauter, portes (animations NSBCA « porte » des bâtiments), entrée dans les
-      maisons (événements de zone `a/1/2/5`), comportements des cases (herbe, eau)
-- [ ] Chargement des morceaux de carte en arrière-plan (aujourd'hui : un court arrêt au passage)
-- [ ] PNJ et sprites du monde extérieur
-- [ ] **Moteur de scripts** (`a/0/5/7`) : machine virtuelle qui exécute le bytecode des événements.
+- [x] En-têtes de zones : scripts, textes, caméra (champs 1C et 20), décor des combats (bits 5-9 du
+      champ 1E, pour la phase 4) ; carte, musique et nom du lieu : faits en phase 2
+- [ ] Météo : elle n'est pas dans l'en-tête de zone, sa table reste à retrouver (Renouet et la
+      Route 1 n'en ont pas)
+- [x] Événements des zones (`a/1/2/5`) : objets à lire, PNJ, portes, déclencheurs
+- [x] Portes, tapis et escaliers : entrée dans les maisons et changement d'étage, comme le jeu
+- [x] Rebords à sauter (action et courbe de saut du jeu), comportements des cases : herbes, herbes
+      sombres, eau ; groupe de rencontres de chaque case, retrouvé dans le test de rencontre du jeu
+      (le tirage lui-même est pour la phase 4)
+- [x] Images du terrain à 30 par seconde (durées des mouvements et attentes des scripts)
+- [x] Caméra du jeu : réglages de chaque type de caméra (`a/0/6/0`), rectangles des intérieurs
+      (`a/1/0/8`), plans de caméra des scripts (0x13F à 0x147)
+- [x] Animations NSBCA « porte » des bâtiments : la porte s'ouvre, le héros entre ou sort, elle se
+      ferme, avec ses sons ; les scripts animent aussi les bâtiments (portes, chambre en désordre)
+- [x] Chargement des morceaux de carte au fil de la marche : une couronne de morceaux préparée
+      d'avance, un morceau par image (3 à 25 ms chacun), plus d'arrêt au passage d'un morceau à
+      l'autre
+- [x] PNJ affichés d'après les événements (sprite, case, direction), qui bloquent leur case
+- [x] PNJ : apparition selon les drapeaux de l'histoire
+- [x] PNJ : déplacements autonomes (codes de mouvement des événements) : regarder autour, se promener
+      dans son étendue, regarder dans une direction ; les motifs de rotation et les rails restent
+      à faire
+- [x] Commandes de script retrouvées dans le code (609, paramètres prouvés : 472 fichiers sur 472)
+- [x] Machine virtuelle : mécanique, variables, drapeaux, messages ; on parle aux PNJ et on lit les
+      panneaux avec les scripts et les textes du jeu
+- [x] Mouvements des personnages (378 actions retrouvées dans le code), apparitions, positions
+- [x] Scripts d'arrivée des zones et scènes qui démarrent seules ; nouvelle partie dans la chambre du
+      héros, avec l'intro (Tcheren, l'arrivée de Bianca) jouée par le script du jeu
+- [ ] **Moteur de scripts** (`a/0/5/7`) : le reste des commandes (caméra, musique, objets, combats...)
 	  C'est le cœur du portage. Les commandes inconnues s'étudient dans le code ARM9/overlays, avec
 	  Ghidra et un loader NDS
-- [ ] Drapeaux et variables d'histoire
-- [ ] Menu pause qui remplace le C-Gear et le menu de l'écran du bas
+- [x] Drapeaux et variables d'histoire (en mémoire)
+- [x] Sauvegarde de la partie (profil, drapeaux et variables, équipe, sac, lieu) et reprise depuis le
+      menu de développement
+- [x] Menu pause qui remplace le menu de l'écran du bas : entrées et textes du jeu (Pokédex,
+      Pokémon, Sac, carte du héros, Sauver, Options) ; les écrans de l'équipe et du sac sont de
+      simples fiches en attendant leurs phases. Le C-Gear reste à faire.
 
 ## Phase 4 — Les combats
 

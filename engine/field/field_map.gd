@@ -12,6 +12,19 @@ const UNIT := 1.0 / 16.0
 const CHUNK_TILES := MapContainer.TILES
 ## Morceaux chargés autour du joueur : 1 = un carré de 3x3 morceaux (96x96 cases).
 const LOAD_RADIUS := 1
+## Morceaux préparés d'avance au-delà : une couronne de plus, chargée un morceau par image.
+const PREFETCH_RADIUS := LOAD_RADIUS + 1
+## Script d'un PNJ des événements qui le fait exister quel que soit son drapeau.
+const NO_SCRIPT := 0xFFFF
+## Sprites variables des PNJ (0x0216E368) ; sans variables, le sprite n° 10.
+const VARIABLE_SPRITES := 0xA2
+const VARIABLE_SPRITES_LAST := 0xB1
+const SPRITE_VARS := 0x4020
+const DEFAULT_VARIABLE_SPRITE := 0xA
+## Durée d'une image du terrain : le jeu l'anime à 30 images par seconde. Le héros fait un pas en
+## 8 images (action 0x0C, choisie par 0x021A4D60 ; 4 images en courant, action 0x10) et un pas dure
+## bien 16/60 s dans le jeu. Mouvements et attentes des scripts se comptent en ces images.
+const FRAME := 1.0 / 30.0
 
 var zones: ZoneTable
 var areas: AreaTable
@@ -26,6 +39,16 @@ var minutes := 12.0 * 60.0
 var light := {}
 ## Teinte des sprites des personnages pour cet éclairage.
 var sprite_tint := Color.WHITE
+
+## Événements de la zone où se trouve le joueur (portes, PNJ...), voir set_events_zone().
+var events: ZoneEvents
+var events_zone := -1
+## PNJ de cette zone.
+var npcs: Array[FieldNpc] = []
+## Drapeaux et variables de l'histoire : un PNJ dont le drapeau est mis reste caché.
+var work: EventWork
+## Inclinaison de la caméra, pour redresser les sprites des PNJ (réglée par la scène).
+var camera_pitch := 0.0
 
 ## Affiche les cases bloquées en rouge (outil de mise au point).
 var show_collisions := false:
@@ -43,6 +66,9 @@ var _areas := {}
 var _light_zone := -1
 var _light_file := -1
 var _light_source: FieldLight
+## Morceaux à charger, du plus proche au plus loin (un par image).
+var _queue: Array[Vector2i] = []
+var _objects: FieldObjectTable
 
 
 func _init() -> void:
@@ -50,6 +76,7 @@ func _init() -> void:
 	_rom = Autoloads.rom()
 	zones = ZoneTable.parse(_rom.narc(BWFiles.ZONE_HEADERS).get_file(0))
 	areas = AreaTable.parse(_rom.rom.read_file(BWFiles.AREA_DATA))
+	_objects = FieldObjectTable.parse(_rom.narc(BWFiles.FIELD_OBJECT_TABLE).get_file(0))
 
 
 ## Prépare l'affichage d'une zone (sa matrice). Les morceaux sont chargés par update_around().
@@ -93,6 +120,9 @@ func _update_light() -> void:
 		_light_source = FieldLight.parse(archive.get_file(file)) if archive and file >= 0 and file < archive.count() else null
 	light = _light_source.sample(season, minutes) if _light_source else {}
 	sprite_tint = _light_source.sprite_tint(season, minutes) if _light_source else Color.WHITE
+	for npc in npcs:
+		if npc.sprite:
+			npc.sprite.modulate = sprite_tint
 	if light.is_empty():
 		return
 	for chunk: Dictionary in _chunks.values():
@@ -104,6 +134,7 @@ func clear() -> void:
 	for chunk: Dictionary in _chunks.values():
 		chunk.node.queue_free()
 	_chunks.clear()
+	_queue.clear()
 
 
 ## Case au centre des morceaux d'une zone (pour y placer le joueur).
@@ -123,21 +154,52 @@ static func chunk_of(tile: Vector2i) -> Vector2i:
 	return Vector2i(floori(float(tile.x) / CHUNK_TILES), floori(float(tile.y) / CHUNK_TILES))
 
 
-## Charge les morceaux proches de la case et libère les autres. Renvoie le nombre de morceaux chargés.
-func update_around(tile: Vector2i) -> int:
+## Charge les morceaux proches de la case et libère les autres. now : charger tout de suite les 3x3
+## morceaux autour (arrivée par une porte, début) ; sinon seul celui de la case l'est, et les autres
+## passent par la file d'attente, comme la couronne préparée d'avance. Renvoie le nombre de
+## morceaux chargés tout de suite.
+func update_around(tile: Vector2i, now := true) -> int:
 	var center := chunk_of(tile)
 	var loaded := 0
 	for key: Vector2i in _chunks.keys():
-		if absi(key.x - center.x) > LOAD_RADIUS + 1 or absi(key.y - center.y) > LOAD_RADIUS + 1:
+		if absi(key.x - center.x) > PREFETCH_RADIUS + 1 or absi(key.y - center.y) > PREFETCH_RADIUS + 1:
 			_chunks[key].node.queue_free()
 			_chunks.erase(key)
-	for dy in range(-LOAD_RADIUS, LOAD_RADIUS + 1):
-		for dx in range(-LOAD_RADIUS, LOAD_RADIUS + 1):
+	_queue.clear()
+	for dy in range(-PREFETCH_RADIUS, PREFETCH_RADIUS + 1):
+		for dx in range(-PREFETCH_RADIUS, PREFETCH_RADIUS + 1):
 			var key := center + Vector2i(dx, dy)
-			if not _chunks.has(key) and matrix.map_at(key.x, key.y) >= 0:
+			if _chunks.has(key) or matrix.map_at(key.x, key.y) < 0:
+				continue
+			var near := absi(dx) <= LOAD_RADIUS and absi(dy) <= LOAD_RADIUS
+			if key == center or (now and near):
 				_load_chunk(key)
+				_place_npcs_on(key)
 				loaded += 1
+			else:
+				_queue.append(key)
+	_queue.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return (a - center).length_squared() < (b - center).length_squared())
 	return loaded
+
+
+## Un morceau de la file d'attente par image.
+func _process(_delta: float) -> void:
+	if not _queue.is_empty():
+		var key: Vector2i = _queue.pop_front()
+		if not _chunks.has(key):
+			_load_chunk(key)
+			_place_npcs_on(key)
+
+
+## Les PNJ qui se tiennent sur un morceau qui vient d'arriver se posent sur son sol.
+func _place_npcs_on(chunk: Vector2i) -> void:
+	for npc in npcs:
+		if chunk_of(npc.tile) == chunk:
+			_place_npc(npc)
+
+
+func pending_chunks() -> int:
+	return _queue.size()
 
 
 func is_chunk_loaded(chunk: Vector2i) -> bool:
@@ -156,15 +218,39 @@ func zone_at(tile: Vector2i) -> int:
 
 
 ## Vrai si la case est infranchissable (ou pas encore chargée), sur la couche de permissions où l'on
-## se trouve à la hauteur `from` (voir height_at()).
+## se trouve à la hauteur `from` (voir height_at()), ou si un PNJ s'y tient.
 func is_blocked(tile: Vector2i, from := 0.0) -> bool:
+	if npc_at(tile) != null:
+		return true
 	var ground := _ground_at(tile.x + 0.5, tile.y + 0.5, from)
 	return ground.is_empty() or ground.layer.is_blocked(ground.tile.x, ground.tile.y)
 
 
+## PNJ qui se tient sur la case, ou null.
+func npc_at(tile: Vector2i) -> FieldNpc:
+	for npc in npcs:
+		if npc.tile == tile:
+			return npc
+	return null
+
+
+## Comportement de la case (TileBehaviors), sur la couche où l'on se trouve à la hauteur `from`.
 func behavior(tile: Vector2i, from := 0.0) -> int:
 	var ground := _ground_at(tile.x + 0.5, tile.y + 0.5, from)
 	return 0 if ground.is_empty() else ground.layer.behavior(ground.tile.x, ground.tile.y)
+
+
+## Indicateurs de la case (bloquée, Pokémon sauvages...), sur la couche de la hauteur `from`.
+func tile_flags(tile: Vector2i, from := 0.0) -> int:
+	var ground := _ground_at(tile.x + 0.5, tile.y + 0.5, from)
+	return 0 if ground.is_empty() else ground.layer.flags_at(ground.tile.x, ground.tile.y)
+
+
+## Groupe de rencontres de la case (TileBehaviors.Encounter : NONE, herbes, herbes sombres, surf).
+## C'est là que la phase 4 tirera les rencontres, avec le taux de ce groupe dans les données de la
+## zone.
+func encounter_group(tile: Vector2i, from := 0.0) -> TileBehaviors.Encounter:
+	return TileBehaviors.encounter_group(behavior(tile, from), tile_flags(tile, from))
 
 
 ## Hauteur du sol (unités Godot) au point (x, z), calculée comme dans le jeu : chaque couche de
@@ -184,6 +270,134 @@ func ground_height(tile: Vector2i, from := 0.0) -> float:
 ## Position Godot du centre d'une case, au niveau du sol.
 func tile_position(tile: Vector2i, from := 0.0) -> Vector3:
 	return Vector3(tile.x + 0.5, ground_height(tile, from), tile.y + 0.5)
+
+
+## Musique d'une zone pour la saison en cours (n° de séquence du SDAT, -1 si aucune) : l'en-tête
+## en donne une par saison.
+func zone_music(zone: int) -> int:
+	var header := zones.get_zone(zone)
+	return header.music[season] if not header.is_empty() else -1
+
+
+## Inclinaison de la caméra : les sprites des PNJ s'étirent pour rester lisibles.
+func set_camera_pitch(pitch: float) -> void:
+	camera_pitch = pitch
+	for npc in npcs:
+		if npc.sprite:
+			npc.sprite.set_camera_pitch(pitch)
+
+
+## Charge les événements d'une zone (celle où se trouve le joueur).
+func set_events_zone(zone: int) -> void:
+	if zone == events_zone:
+		return
+	events_zone = zone
+	events = null
+	var header := zones.get_zone(zone)
+	var archive: NARC = _rom.narc(BWFiles.ZONE_EVENTS)
+	if not header.is_empty() and archive and header.events < archive.count():
+		events = ZoneEvents.parse(archive.get_file(header.events))
+	_spawn_npcs()
+
+
+## Crée les PNJ des événements de la zone. Un PNJ lié à un drapeau reste caché tant que ce
+## drapeau est mis : le script de début de partie (9600) en met une centaine, l'histoire les enlève.
+## PNJ de la zone, comme 0x0216CE3C au chargement (0x021894B0) : chacun est créé, sauf si son
+## drapeau est mis et que son script n'est pas 0xFFFF (0x0216E3A8, 0x0216E3BC).
+func _spawn_npcs() -> void:
+	for npc in npcs:
+		npc.queue_free()
+	npcs.clear()
+	if events == null:
+		return
+	for entry: Dictionary in events.npcs:
+		var hidden: bool = entry.flag != 0 and work != null and work.get_flag(entry.flag)
+		if entry.rail == 0 and (entry.script == NO_SCRIPT or not hidden):
+			spawn_npc(entry)
+
+
+## Sprite d'un PNJ : de 0xA2 à 0xB1, il est rangé dans les variables 0x4020 à 0x402F
+## (0x0216E368, appelée pour chaque PNJ par 0x0216CFD0 et par la commande 0x69).
+func npc_sprite(sprite: int) -> int:
+	if sprite >= VARIABLE_SPRITES and sprite <= VARIABLE_SPRITES_LAST:
+		return work.get_var(SPRITE_VARS + sprite - VARIABLE_SPRITES) if work else DEFAULT_VARIABLE_SPRITE
+	return sprite
+
+
+## Fait apparaître un PNJ des événements de la zone (commande de script 0x6B).
+func spawn_npc(entry: Dictionary) -> FieldNpc:
+	var archive: NARC = _rom.narc(BWFiles.FIELD_OBJECTS)
+	var file := _objects.file_of(npc_sprite(entry.sprite)) if _objects else -1
+	var textures: NSBTX = null
+	if archive and file >= 0 and file < archive.count():
+		textures = NSBTX.parse(archive.get_file(file))
+	var npc := FieldNpc.create(entry, textures)
+	add_child(npc)
+	npcs.append(npc)
+	if npc.sprite:
+		npc.sprite.set_camera_pitch(camera_pitch)
+		npc.sprite.modulate = sprite_tint
+	_place_npc(npc)
+	return npc
+
+
+## Déplacements autonomes des PNJ : un pas commencé se termine toujours ; new_moves autorise de
+## nouveaux mouvements (pas pendant un script, une porte ou un menu). occupied : cases interdites
+## (celle du héros).
+func update_npcs(delta: float, occupied: Array[Vector2i], new_moves: bool) -> void:
+	for npc in npcs:
+		if npc.movement and (new_moves or npc.movement.is_walking()):
+			npc.movement.update(delta, npc, self, occupied)
+
+
+## PNJ présent de numéro id (champ 00 des événements), ou null.
+func npc_by_id(id: int) -> FieldNpc:
+	for npc in npcs:
+		if npc.data.id == id:
+			return npc
+	return null
+
+
+## Retire un PNJ (commande de script 0x6C).
+func remove_npc(id: int) -> void:
+	var npc := npc_by_id(id)
+	if npc:
+		npcs.erase(npc)
+		npc.queue_free()
+
+
+## Pose un PNJ sur sa case, au niveau du sol (ou à sa hauteur, s'il en a une : un objet sur une
+## table).
+func _place_npc(npc: FieldNpc) -> void:
+	var y: float = npc.data.y / 4096.0 * UNIT
+	npc.position = tile_position(npc.tile, y) if y == 0.0 else Vector3(npc.tile.x + 0.5, y, npc.tile.y + 0.5)
+
+
+## Porte à prendre en poussant vers `direction` depuis `tile` quand la case de devant est bloquée,
+## ou -1. Comme le jeu (0x0218AE74) : d'abord un tapis sous les pieds, puis une porte sur la case
+## de devant.
+func warp_for_push(tile: Vector2i, direction: int) -> int:
+	if events == null:
+		return -1
+	var under := events.warp_at(tile)
+	if under >= 0 and events.warps[under].kind == ZoneEvents.MAT_KIND and _usable_warp(under, direction):
+		return under
+	var front := events.warp_at(tile + ZoneEvents.STEPS[direction])
+	return front if front >= 0 and _usable_warp(front, direction) else -1
+
+
+## Porte qui se prend toute seule en arrivant sur la case (genres 0, 5 et 6 : 0x0218AC70), ou -1.
+func warp_on_arrival(tile: Vector2i) -> int:
+	if events == null:
+		return -1
+	var index := events.warp_at(tile)
+	if index < 0 or events.warps[index].kind not in ZoneEvents.ANY_DIRECTION_KINDS:
+		return -1
+	return index if _usable_warp(index, -1) else -1
+
+
+func _usable_warp(index: int, direction: int) -> bool:
+	return events.is_warp_enabled(index) and events.warps[index].warp != ZoneEvents.SPECIAL_WARP and events.warp_accepts(index, direction)
 
 
 ## Couche de permissions retenue au point (x, z) : { layer, tile (case dans le morceau), height },
@@ -222,7 +436,7 @@ func _load_chunk(key: Vector2i) -> void:
 	var zone := matrix.zone_at(key.x, key.y)
 	if zone < 0:
 		zone = default_zone
-	var chunk := {"node": node, "container": container, "zone": zone, "models": []}
+	var chunk := {"node": node, "container": container, "zone": zone, "models": [], "buildings": []}
 	_chunks[key] = chunk
 	if container == null:
 		return
@@ -240,7 +454,7 @@ func _load_chunk(key: Vector2i) -> void:
 		chunk.models.append(ground)
 	if area.pack:
 		for building in container.buildings:
-			_add_building(node, area, building.id, building.position, building.rotation, chunk.models)
+			_add_building(node, area, building.id, building.position, building.rotation, chunk)
 	if not light.is_empty():
 		for instance: G3DModelInstance in chunk.models:
 			instance.apply_light(light)
@@ -285,8 +499,9 @@ static func _collision_overlay(ground: MapPermissions) -> MeshInstance3D:
 	return overlay
 
 
-## Ajoute un bâtiment (et sa porte) à un morceau de carte.
-func _add_building(parent: Node3D, area: Dictionary, id: int, position_ds: Vector3, rotation_y: float, models: Array) -> void:
+## Ajoute un bâtiment (et sa porte) à un morceau de carte ; il est gardé dans chunk.buildings
+## pour ses animations (portes, commandes de script 0x127 à 0x12A).
+func _add_building(parent: Node3D, area: Dictionary, id: int, position_ds: Vector3, rotation_y: float, chunk: Dictionary) -> void:
 	var pack: BuildingPack = area.pack
 	var index := pack.find(id)
 	if index < 0:
@@ -297,7 +512,7 @@ func _add_building(parent: Node3D, area: Dictionary, id: int, position_ds: Vecto
 		return
 	var looping: bool = info.animation_mode in [BuildingPack.AnimationMode.LOOP, BuildingPack.AnimationMode.LOOPS]
 	var skeletal := false
-	if looping:
+	if looping or info.animation_mode == BuildingPack.AnimationMode.DOOR:
 		for bytes: PackedByteArray in info.animations:
 			skeletal = skeletal or bytes.slice(0, 4).get_string_from_ascii() == "BCA0"
 	var instance := G3DModelInstance.create(file.models[0], file.textures if file.textures else area.pack_textures, UNIT, skeletal)
@@ -308,10 +523,44 @@ func _add_building(parent: Node3D, area: Dictionary, id: int, position_ds: Vecto
 		for bytes: PackedByteArray in info.animations:
 			_play_animation(instance, bytes, area.pack_textures)
 	parent.add_child(instance)
-	models.append(instance)
+	chunk.models.append(instance)
+	chunk.buildings.append({"instance": instance, "info": info, "position": parent.position + instance.position})
 	if info.door != BuildingPack.NO_DOOR:
 		var offset: Vector3 = Basis(Vector3.UP, rotation_y) * info.door_offset
-		_add_building(parent, area, info.door, position_ds + offset, rotation_y, models)
+		_add_building(parent, area, info.door, position_ds + offset, rotation_y, chunk)
+
+
+## Bâtiment d'un genre (BuildingRules) près d'une case, comme 0x0218C778 : le premier dont la
+## position est à 2 cases au plus en x et 3 en z de la case (rectangle de 0x0218C964), ou {}.
+func find_building(kind: int, tile: Vector2i) -> Dictionary:
+	var rules: BuildingRules = _rom.building_rules()
+	for chunk: Dictionary in _chunks.values():
+		for building: Dictionary in chunk.buildings:
+			var position: Vector3 = building.position
+			if rules and rules.kind_of(building.info.kind) == kind and absf(position.x - tile.x) <= 2.0 and absf(position.z - tile.y) <= 3.0:
+				return building
+	return {}
+
+
+## Joue une fois l'animation n° animation d'un bâtiment (pour une porte : 0 elle s'ouvre, 1 elle se
+## ferme), avec le son de son type (0x0218C82C, puis 0x0218C930). Renvoie sa durée en secondes :
+## elle avance d'une image par image du terrain.
+func animate_building(building: Dictionary, animation: int) -> float:
+	var info: Dictionary = building.info
+	if animation < 0 or animation >= info.animations.size():
+		return 0.0
+	var duration := 0.0
+	var bytes: PackedByteArray = info.animations[animation]
+	if bytes.slice(0, 4).get_string_from_ascii() == "BCA0":
+		var joints := NSBCA.parse(bytes)
+		if joints and not joints.animations.is_empty():
+			building.instance.play_joints_once(joints.animations[0])
+			duration = joints.animations[0].frame_count * FRAME
+	var rules: BuildingRules = _rom.building_rules()
+	var sound := Autoloads.sound()
+	if rules and sound:
+		sound.play_effect_id(rules.sound(info.kind, animation))
+	return duration
 
 
 ## Joue en boucle une animation d'un bâtiment : textures qui défilent (fontaines, mer qui

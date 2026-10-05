@@ -4,7 +4,9 @@ extends Control
 ## Entrées du menu : [libellé, scène] (scène vide = action particulière).
 const ENTRIES := [
 	["Intro et écran titre", "res://scenes/intro/intro.tscn"],
-	["Premiers pas dans Renouet (3D)", "res://scenes/field/field.tscn"],
+	["Premiers pas dans Renouet (3D)", "res://scenes/field/field.tscn", "promenade"],
+	["Nouvelle partie (chambre du héros, intro)", "res://scenes/field/field.tscn", "nouvelle partie"],
+	["Continuer la partie sauvegardée", "res://scenes/field/field.tscn", "continuer"],
 	["Démo des dialogues", "res://scenes/demo/dialogue_demo.tscn"],
 	["Pokémon animés", "res://scenes/demo/pokemon_viewer.tscn"],
 	["Modèles 3D", "res://scenes/demo/model_viewer.tscn"],
@@ -65,8 +67,19 @@ func _on_chosen(index: int) -> void:
 	var scene: String = ENTRIES[index][1]
 	if scene.is_empty():
 		get_tree().quit()
-	else:
-		get_tree().change_scene_to_file(scene)
+		return
+	# Le terrain s'ouvre en promenade dans Renouet, en nouvelle partie (chambre du héros) ou sur la
+	# partie sauvegardée.
+	match ENTRIES[index][2] if ENTRIES[index].size() > 2 else "":
+		"promenade":
+			Game.new_walk()
+		"nouvelle partie":
+			Game.new_game()
+		"continuer":
+			if not Game.load_game():
+				_info.text = "Aucune partie sauvegardée."
+				return
+	get_tree().change_scene_to_file(scene)
 
 
 func _update_info() -> void:

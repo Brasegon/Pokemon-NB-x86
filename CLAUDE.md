@@ -37,7 +37,7 @@ Ne pas reproposer d'autre approche sans raison sérieuse.
 godot --headless --path . --script res://tests/test_formats.gd
 ```
 
-Autres tests : `test_explorer`, `test_ui`, `test_sound`, `test_navigation`, `test_3d` ; plus long
+Autres tests : `test_explorer`, `test_ui`, `test_sound`, `test_navigation`, `test_3d`, `test_world` ; plus long
 (2 à 3 minutes) : `test_models`. Captures de référence de la 3D (avec une fenêtre, sans
 `--headless`) : `tests/capture_3d.gd`. Après l'ajout d'une classe
 (`class_name`), lancer d'abord `godot --headless --path . --import`. La ROM vient de la variable
@@ -57,6 +57,9 @@ Autres tests : `test_explorer`, `test_ui`, `test_sound`, `test_navigation`, `tes
 - Une erreur de script dans `_initialize` d'un script lancé par `--script` ne quitte pas Godot : le
   processus reste ouvert sans rien faire. Écrire la sortie dans un fichier et la lire si un script
   ne se termine pas.
+- Pendant `_initialize`, `root` n'est pas encore dans l'arbre : les nœuds qu'on lui ajoute non plus
+  (pas de `global_position`, pas de `_process` automatique ; les tests appellent `_process` à la
+  main).
 - Le projet traite comme une erreur un type déduit d'un Variant (`var x := dictionnaire.cle`) :
   typer explicitement (`var x: Type = ...`).
 - Captures d'écran : lancer sans `--headless` et enregistrer `root.get_texture().get_image()` après

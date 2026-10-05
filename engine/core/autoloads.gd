@@ -1,6 +1,6 @@
 class_name Autoloads
 extends RefCounted
-## Accès aux autoloads (Settings, Controls, Display, Rom, Sound) depuis les classes du moteur.
+## Accès aux autoloads (Settings, Controls, Display, Rom, Sound, Game) depuis les classes du moteur.
 ##
 ## Les classes nommées (class_name) peuvent être compilées avant que les autoloads n'existent, par
 ## exemple quand un test en ligne de commande les charge : elles ne doivent donc pas écrire « Rom »
@@ -25,6 +25,10 @@ static func rom() -> Node:
 
 static func sound() -> Node:
 	return _find("Sound")
+
+
+static func game() -> Node:
+	return _find("Game")
 
 
 static func _find(autoload_name: String) -> Node:

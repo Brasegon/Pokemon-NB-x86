@@ -420,8 +420,8 @@ Renouet (le laboratoire est au nord-ouest, pas sur l'eau).
 ### Permissions et hauteur du sol (`map_permissions.gd`, `terrain_planes.gd`)
 
 Largeur et hauteur (u16), puis 8 octets par case : 00 terrain (u32), 04 comportement (u16),
-06 indicateurs (u16 : bit 0 = bloquée, bit 7 toujours à 1, bit 15 = diagonale). Terrain, bits 0-1
-= type :
+06 indicateurs (u16 : bit 0 = bloquée, bit 1 = eau, bit 2 = Pokémon sauvages, bit 7 toujours à 1,
+bit 15 = diagonale ; voir « Comportements des cases »). Terrain, bits 0-1 = type :
 
 - **type 0** (679 781 cases) : un plan ; bits 2-15 = n° de normale, bits 16-31 = n° de distance ;
 - **type 2** (5 275 cases) : case coupée en deux triangles ; bits 16-31 = n° d'une fiche de
@@ -482,20 +482,124 @@ Preuves (overlay 21 chargé en 0x02187EA0, overlay 10 en 0x02155100) :
   le modèle découpe selon l'autre diagonale (mêmes hauteurs aux quatre coins, pas au milieu). Ailleurs
   (eau où l'on surfe, intérieurs, Forêt Blanche en `RD`), le modèle n'est pas une référence.
 
+### Comportements des cases (`tile_behaviors.gd`)
+
+Le jeu lit les attributs d'une case comme un u32 : comportement = 16 bits du bas (0x021AB090),
+indicateurs = 16 bits du haut (0x021AB098). L'overlay 21 a une petite fonction de test par
+comportement à partir de 0x021AB0E0 (`cmp r0, #comportement`) ; le sens de chacun se retrouve en
+suivant qui appelle ces tests.
+
+**Rebords.** Tests 0x021AB0F8 (0x74), 0x021AB104 (0x75), 0x021AB110 (0x73) et 0x021AB11C (0x72),
+appelés par 0x021A4538, qui décide du pas du héros : si la case de devant est bloquée, il en lit le
+comportement, le change en direction (0x74 → 0 haut, 0x75 → 1 bas, 0x73 → 2 gauche, 0x72 →
+3 droite) et, si c'est la direction de la marche, renvoie 5. Pour 5, 0x021A4E78 donne au héros
+l'action `0x02197E1C(direction, 0x38)` (table des actions par direction en 0x021D5CFC : 0x38-0x3B,
+sauter de deux cases en 16 images) et joue le son 0x55E, `SEQ_SE_DANSA` (« dansa » = rebord en
+japonais). Les autres résultats : 2 marcher, 4 bloqué (marche sur place 0x1C + direction). La
+case d'arrivée n'est pas testée. La Route 1 n'a pas de rebord ; le test en saute un sur la Route 2,
+en (774, 624).
+
+**Rencontres.** 0x021A9EE0 (overlay 21) est le test de rencontre : il vérifie que les données de
+rencontres de la zone sont chargées (bit 7 de l'octet 7, mis par 0x0215E248 qui les lit, 0xE8 octets
+par saison), demande le groupe de la case sous le héros à **0x021AA2FC**, puis le taux à 0x021AA380
+(`données[groupe]` pour un groupe < 7, plus un ajout s'il est positif) et tire au sort avec
+0x021AA39C (taux plafonné à 100). Groupe d'un pas ordinaire (0x021AA2FC) :
+
+- pas d'indicateur 0x04 → aucune rencontre (0xFF) ;
+- indicateur 0x02 (eau) → 3, le surf ;
+- comportement de 0x021AB23C (0x06, 0x22, 0x07 par 0x021AB1F0 ; 0x09 par 0x021AB210) → 1, herbes
+  sombres ;
+- sinon → 0, hautes herbes (et sol des grottes, sable...).
+
+Les comportements 0x08 et 0x09 (test 0x021AB0E0) ajoutent 10 au taux. Les autres groupes (2 et 4)
+servent dans un autre mode de 0x021AA2FC. Sur toute la ROM, l'indicateur 0x04 n'est mis que sur des
+cases d'herbe (0x04 à 0x09, 0x21, 0x22), de grotte (0x0A, 0x30...), de sable (0x1C, 0x23...) ou
+d'eau (0x3D, 0x3F, 0x43), jamais sur un chemin ; l'indicateur 0x02 marque l'eau (0x3D à 0x44,
+0x94 à 0x97, 0x9C), où l'on ne marche pas sans surfer (0x021A4538). Route 1 : 177 cases de hautes
+herbes (0x04), 155 d'herbes sombres (0x06, à l'ouest) et 132 d'eau (0x3F).
+
+Autres tests reconnus : 0x021AB21C (0x04, 0x21, 0x05, 0x08) et 0x021AB23C forment 0x021AB25C,
+« herbe », dont 0x021CF568 se sert pour le décor des combats ; 0x021AB4A4 donne aux cases
+d'indicateur 0x04 un genre de phénomène (0 : 0x04, 1 : 0x05, 2 : 0x21, 3 : 0x08, 4 : 0x0A grottes,
+5 : 0x3D, 6 : 0x3F et 0x43 mer, 7 : 0x20 ponts, même sans l'indicateur), lu par 0x021AAC74 qui liste
+ces cases autour du héros (herbe qui bouge, poussière, remous, ombres sur les ponts).
+
 ### Matrices (`a/0/0/9`), zones (`a/0/1/2`) et zones de textures (`a/0/1/3`)
 
 - **Matrice** : indicateur (u32, 1 = numéros de zones présents), largeur, hauteur (u16), numéro de
   morceau de chaque case (u32, `FFFFFFFF` = vide), puis le numéro de zone de chaque case. La matrice
   n° 0 est la carte d'Unys (29 x 27) : Renouet est le morceau n° 0, en (24, 23).
 - **Zone** (48 octets) : 00 type, 02 zone de textures, 04 matrice, 06 script, 08 script de niveau,
-  0A textes, 0C-12 musiques des 4 saisons (n° de séquence du SDAT), 14 rencontres, 16 numéro, 18 parent,
-  1A nom du lieu (u8). Renouet = zone 389 (lieu n° 4, `SEQ_BGM_T_01`), Route 1 = 317.
+  0A textes, 0C-12 musiques des 4 saisons (n° de séquence du SDAT), 14 rencontres, 16 fichier des
+  événements (`a/1/2/5`, lu par 0x02013EE8 ; égal au numéro de la zone), 18 parent (la ville d'un
+  intérieur), 1A nom du lieu (u8), 1C bits 9-15 type de caméra (0x02013BCC, voir « Caméra du
+  terrain »), 1C bits 6-8 (0x02013BB8 : 1 dehors, 0 dedans), 1E bits 5-9 décor des combats
+  (0x02013EF4, recopié par 0x021AA2A4 avec le genre de la case et l'heure, pour la phase 4),
+  20 rectangles de la caméra (`a/1/0/8`), 24, 28, 2C position par défaut x, y, z (u32, en cases :
+  0x02013B84). La météo n'est pas dans l'en-tête (Désert Délassant et Tour Dragospire n'y ont rien
+  de particulier) : sa table reste à retrouver. Une nouvelle partie commence dans la zone 391 à cette position, (5, 6)
+  (0x02014280). Renouet = zone 389 (lieu n° 4, `SEQ_BGM_T_01`), Route 1 = 317 ;
+  ses intérieurs sont les zones 390 à 396, chacune avec sa matrice d'un seul morceau (390-391 : la
+  maison du héros, 396 : le laboratoire).
 - **Zone de textures** (fichier brut, 10 octets) : 00 lot de bâtiments, 02 textures des cartes
   (`a/0/1/4`), 04 animation NSBTA (u8, `a/0/6/9`), 05 animation par changement d'image (u8,
   `a/0/7/0`), `FF` = aucune, 06 extérieur, 07 éclairage (fichier de `a/0/6/1`). Les zones désignent
   l'entrée du **printemps** ; pour une zone extérieure, les 3 entrées suivantes sont **l'été,
   l'automne et l'hiver** (textures, animations et éclairage ; les bâtiments restent ceux du
   printemps). La saison change chaque mois : janvier printemps, février été, mars automne...
+
+### Événements des zones (`a/1/2/5`, `zone_events.gd`)
+
+Découpage de la fonction 0x02162440 (overlay 10), qui charge le fichier de la zone : taille (u32)
+de la partie qui suit, quatre nombres (u8), puis les quatre listes à la suite. Après la taille
+annoncée viennent les **scripts d'arrivée** (pointeur gardé en +0x120, rendu par 0x021623E0) ; ce
+sont les mêmes octets que le fichier du champ 08 de l'en-tête de zone dans `a/0/5/7`. Le dernier
+fichier (n° 427) ne fait que 4 octets à zéro. Directions du jeu : 0 haut (-z), 1 bas (+z),
+2 gauche (-x), 3 droite (+x) (case devant le joueur : 0x0218ADE8).
+
+| Liste | Taille | Champs |
+| --- | --- | --- |
+| Objets à lire | 20 | 00 script, 02 type, 04 ?, 08 x, 0C z (s32, cases), 10 y |
+| PNJ | 36 | 00 numéro, 02 sprite, 04 mouvement, 08 drapeau, 0A script, 0C direction, 0E-12 paramètres, 14-16 zone de déplacement, 18 type de position (u32 : 0 = grille, sinon rail), 1C x, 1E z (u16, cases), 20 y (fx32) |
+| Portes | 20 | 00 zone et 02 porte de destination (`FFFF` = désactivée), 04 direction d'entrée (u8), 05 genre (u8), 06 rail, 08 x, 0A y, 0C z (s16, unités DS, centre de la case), 0E largeur et 10 profondeur (cases) |
+| Déclencheurs | 22 | 00 script, 02 valeur, 04 variable, 06 ?, 08 rail, 0A x, 0C z (cases), 0E largeur, 10 profondeur, 12 y |
+
+Preuves des champs : 0x02162704 et 0x02162718 changent le sprite (02) et le script (0A) d'un PNJ ;
+0x021626D8 le déplace (direction 0C, x 1C, z 1E, y 20, seulement si 18 = 0) ; 0x021623EC
+désactive une porte (`FFFF` en 00 et 02) ; 0x02162CBC teste si une position est sur une porte
+(x, z en unités DS, y à ±2 près, largeur et profondeur en cases) ; 0x02162E9C fait de même pour
+un déclencheur (x, z en cases) ; 0x02162624 fabrique la destination d'une porte (00 et 02).
+
+**Portes** (overlay 21) :
+
+- direction d'entrée (0x02162648) : 1 = en allant vers le bas, 2 = vers le haut, 3 = vers la
+  droite, 4 = vers la gauche ; les genres 0, 5 et 6 se prennent sans condition de direction (masque
+  `0x61`, 0x0218AE4C) ;
+- en poussant contre une case bloquée (0x0218AE74) : d'abord une porte de genre 1 (tapis) sous les
+  pieds, puis une porte sur la case de devant (les portes des maisons et les escaliers sont sur des
+  cases bloquées, les tapis sur des cases libres) ;
+- en arrivant sur une case (0x0218AC70) : une porte de genre 0, 5 ou 6 s'y prend toute seule ;
+- arrivée : sur la porte de destination (0x02162C14 ; dans une porte large, le décalage vient d'une
+  valeur de la porte de départ, nulle pour une porte simple). Le moteur fait ressortir le joueur
+  d'un pas, dans le sens inverse de l'entrée, quand la porte est sur une case bloquée.
+- Genres vus à Renouet : 1 tapis, 2 escalier, 3 porte de maison. Porte de destination `0x100` :
+  cas spécial (0x02162578), pas encore géré.
+
+**Scripts d'arrivée** : entrées (type u16, valeur u32) jusqu'au type 0 (0x02158ADC).
+
+- Types 3 et 4 : numéro d'un script lancé au chargement de la zone (0x02188648 : le 4 en arrivant
+  par un changement de carte, sinon le 3). Celui de Renouet (13) place les PNJ selon les variables
+  de l'histoire.
+- Type 1 : décalage, depuis la fin de l'entrée, vers une table de triplets (variable, valeur,
+  script) terminée par une variable 0 ; le premier dont la variable vaut la valeur est lancé
+  (0x02158B0C, appelé par 0x0218A6D8). C'est ainsi que les scènes démarrent toutes seules : dans la
+  chambre du héros, « 0x4081 = 0 -> script 5 », l'intro.
+- Type 2 : un numéro de script (17 à Renouet), rôle pas encore trouvé.
+
+Exemple : la porte de la maison du héros est en (782, 748), case bloquée, direction d'entrée 2 ;
+elle mène au tapis (5, 10) de la zone 390 (3 cases de large, genre 1, direction 1), et ses
+escaliers (2, 2) à ceux de la chambre (9, 2) dans la zone 391, d'où l'on ressort en (8, 2), la case
+du déclencheur de l'intro.
 
 ### Bâtiments (`a/2/2/9` dehors, `a/2/3/0` dedans ; textures `a/1/7/6`, `a/1/7/7`)
 
@@ -504,6 +608,54 @@ Lot « AB » : nombre de fichiers (2 x N), positions ; N descriptions puis N mod
 (0xFFFF = aucune), 06-0A position de la porte (3 x s16), 10 mode des animations (1 en boucle,
 2 porte qui s'ouvre et se ferme, 3 plusieurs boucles), 13 nombre d'animations, 14 positions (depuis
 la position 10). L'éolienne du laboratoire tourne avec une animation NSBCA en boucle.
+
+**Portes et bâtiments animés** (`building_rules.gd`). Les portes sont des bâtiments à part (types 1
+ou 2 à Renouet, mode 2, deux animations NSBCA : 0 elle s'ouvre, 1 elle se ferme). Le genre d'un
+type se lit dans la table de 16 octets 0x021D3D54 de l'overlay 21 (0x0218BC50) : 1 pour les types
+1, 2, 3, 13, 14 et 15 (les portes), 8 pour le type 11 (la chambre en désordre)... 0x0218C778
+cherche un bâtiment d'un genre près d'une position : rectangle de 2 cases en x et 3 en z autour
+d'elle (0x0218C964), puis le premier bâtiment chargé de ce genre dans le rectangle (0x0218C524).
+0x0218C82C joue son animation, 0x0218C930 donne son son (table de 6 entrées de 10 octets en
+0x021D3D18, lue par 0x0218C8E4 : type, puis un son par animation ; type 1 : 1669
+`SEQ_SE_FLD_20` à l'ouverture, 1670 à la fermeture). Une animation avance d'une image par image du
+terrain. Passer une porte (tâche 0x021A7C88) : la porte s'ouvre (0x021A8218, animation 0), le héros
+y entre, puis la porte se ferme (0x021A8248, animation 1) ; 0x021A81E4 attend la fin.
+
+### Caméra du terrain (`a/0/6/0`, `a/1/0/8`, `field_camera.gd`)
+
+0x0218DFB8 (overlay 21) crée la caméra avec le **type de caméra de la zone** (bits 9 à 15 du
+champ 1C de l'en-tête, lus par 0x02013BCC) et ouvre les archives 60 (`a/0/6/0`) et 108
+(`a/1/0/8`). 0x0218E200 lit la fiche n° type (44 octets) du fichier 0 de `a/0/6/0` (38 fiches), et
+0x0218E12C l'applique :
+
+| Position | Contenu | Type 0 |
+| --- | --- | --- |
+| 00 | distance (u32, unités DS) | 237 (14,8 cases) |
+| 04, 08 | inclinaison, cap (u32, angles sur 65536) | 9688 (53,2°), 0 |
+| 11 | projection (u8 : 0 ou 1, 0x02046B78) | 0 |
+| 12 | demi-angle de vue vertical (u16), passé en sinus et cosinus (table 0x020A1AC0) | 3640 (20°, soit 40° de haut en bas) |
+| 14, 18 | plans proche et lointain (fx32) | 1, 1024 |
+| 1C | la caméra suit le héros (u32) | 1 |
+| 20 | décalage du point visé (3 x fx32) | (0, 4, 0) |
+
+365 des 427 zones ont le type 0 (Renouet, la Route 1, les maisons). La caméra se place au point
+visé + (sin cap x cos incl., sin incl., cos cap x cos incl.) x distance (0x0218E254, le cosinus de
+l'inclinaison gardé au-dessus de 0x200/4096). Structure de la caméra : point visé en +0x24 et
++0x48, angles en +0x78 et +0x7A, distance en +0x7C, demi-angle de vue en +0x80.
+
+**Rectangles de la caméra** : le champ 20 de l'en-tête de zone (0x02013BE0 ; 0xFFFF = aucun)
+désigne un fichier de `a/1/0/8` (0x0218F0EC) : nombre (u32), puis des fiches de 6 mots (genre,
+phase, x min, x max, z min, z max en unités DS), copiées en +0x88 (0x0218F0B4). À chaque image
+(0x0218E2F8), les fonctions de la table 0x021DD998 les appliquent : genre 1, phase 0 (282 fiches
+sur 283) : 0x0218F19C borne le point visé dans le rectangle. Dans la chambre du héros (fichier
+0x28), le point visé reste entre x 72 et 120, z 45 et 105 : la caméra ne montre pas le dehors.
+
+**Commandes des scripts** : 0x13F garde l'état de la caméra et 0x140 le reprend ; 0x141 et 0x142
+la détachent du héros et la rattachent (mot +0x1C de la caméra) ; 0x143 (u16 inclinaison, u16 cap,
+fx32 distance, 3 x fx32 point visé, u16 images) prépare un plan et 0x0218F8A0 l'y amène ; 0x144
+et 0x147 (u16 images) la ramènent à l'état gardé (0x0218F964) ou à la caméra de la zone
+(0x0218F9E0) ; 0x145 attend la fin du déplacement ; 0x146 prend un plan dans l'archive 0xA3. Le
+plan de l'intro : 9688, 0, 237, point (120, 0, 56), 40 images.
 
 ### Éclairage (`a/0/6/1`, `field_light.gd`)
 
@@ -523,9 +675,271 @@ hiver 7 h, 11 h, 17 h, 19 h. Fichier `0x20` (+ saison) dehors, `0x1C` dedans (co
   d'images. Elle remplace la texture des cartes qui porte le nom de sa première image (`sea_simi.1` :
   l'écume de la mer de Renouet).
 
-### Personnages (`a/0/4/9`)
+### Personnages (`a/0/4/9`) et fiches des objets (`a/0/4/8`, `field_object_table.gd`)
+
+`a/0/4/8` contient un seul fichier : nombre de fiches (u32, 799), puis 28 octets par fiche. 00 numéro
+de l'objet (le « sprite » des PNJ dans les événements de zone), 10 fichier de son image ou de son
+modèle dans `a/0/4/9` ; les autres champs (manière de dessiner, ombre...) restent à décoder.
+Vérifié : les objets 1 à 6 sont le héros et l'héroïne (marche, vélo, surf), fichiers 6 à 11. Le
+terrain ouvre les deux archives ensemble (overlay 10 : 0x0216CC6C pour `a/0/4/9`, 0x0216E210 pour
+`a/0/4/8`). Exemples : la mère du héros est l'objet 147 (fichier 144).
 
 Les 6 premiers fichiers sont des objets 3D (rochers...), les suivants des NSBTX d'images de 32x32 :
 6 = le héros (« t4x4hero », 32 images : dos, face, gauche, droite par groupes de 3 — immobile, pied
 gauche, pied droit — pour la marche puis la course), 7 = à vélo, 8 = en surf, 9-11 = l'héroïne ;
 les PNJ « t4x4flip » ont 7 images, la droite étant la gauche retournée.
+
+## Scripts du terrain (`a/0/5/7`)
+
+**Machine virtuelle** (ARM9) : 0x0201121C la crée, 0x02011298 l'exécute. Structure : +4 table des
+commandes, +8 nombre de commandes, +0C profondeur de la pile d'appels, +0D état (0 arrêtée,
+1 en marche, 2 en attente d'une fonction), +10 fonction d'attente, +14 position dans le script,
++18 pile d'appels, +20 contexte. Chaque tour : numéro de commande (u16, 0x02011330), arrêt s'il
+dépasse le nombre de commandes, appel de `table[numéro](machine, contexte)` ; la commande renvoie 1
+pour rendre la main (attente), 0 pour continuer. Utilitaires : 0x02011330 lit un u16, 0x0201134C un
+u32, 0x020113B0 saute, 0x020113B4 appelle (empile la position), 0x020113C4 revient, 0x020113D0 met
+la machine en attente d'une fonction, 0x02011290 l'arrête.
+
+**Table des commandes** : 609 fonctions en 0x021705BC (overlay 10), nombre lu en 0x02170568 ;
+installée par 0x02158B9C. 9 entrées sont vides (137, 143-145, 153, 154, 156, 157, 435). Les
+fonctions sont dans les overlays 10 et 21 (sauf 367-375 dans l'overlay 18, 382 dans le 48,
+450-457 dans le 20).
+
+**Fichier de scripts** : table de décalages (s32), chacun relatif à la fin de son entrée, souvent
+terminée par le marqueur `0xFD13` que le jeu ne lit pas (le fichier 865 n'en a pas) ; puis le code.
+Démarrage (fin de 0x02158B9C) : position = début du fichier + numéro local x 4, lecture du
+décalage (u32), position += décalage.
+
+**Numéros de scripts** (0x02158C70) : à partir de 2000, 46 plages de scripts communs (table en
+0x02170138 de l'overlay 10 : premier et dernier numéro, fichier de scripts, genre, fichier de
+textes ; par exemple 2000-2099 : fichier 854, textes 158) ; sinon un script de la zone (fichier =
+champ 06 de l'en-tête de zone, textes = champ 0A, numéro local = numéro - 1).
+
+**Paramètres des commandes** (`tools/re/scriptcmds.py`) : retrouvés dans le code de chaque
+commande, en suivant les lectures à la position du script : lecteurs u16 et u32, lectures écrites
+en ligne, sous-fonctions qui reçoivent la machine (appel, renvoi `bx`, machine rangée sur la pile)
+et fonction d'attente installée par 0x020113D0, qui lit parfois les paramètres plus tard (commande
+0x137). Les commandes qui appellent l'arrêt ou le retour, et le saut sans condition, terminent le
+code qui les suit (0x02, 0x05, 0x1D, 0x1E, 0x8C, 0x156, 0x167, 0x17A). Vérification
+(`tools/re/scripts.py --check`) : les **472 fichiers de scripts** de la ROM (zones et plages
+communes) se désassemblent sans erreur, en suivant sauts et appels depuis chaque script, sans
+chevauchement ni commande inconnue.
+
+**Paramètres de valeur** (0x02158F80) : un nombre < 0x4000 est une constante, de 0x4000 à 0x7FFF
+une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (contexte du script,
+0x02158F70). 0x02159AB0 lit un tel paramètre et donne sa valeur, 0x02159A88 donne la variable.
+
+**Commandes comprises** (rôle tiré de leur code et vérifié dans les scripts de Renouet) :
+
+| Commande | Paramètres | Rôle |
+| --- | --- | --- |
+| 00, 01 | | rien |
+| 02, 1D | | fin du script (0x02011290 ; 1D nettoie avant) |
+| 03 | valeur | attente en images |
+| 04, 05 | s32 / | appel, retour |
+| 08, 09 | u16 / valeur | empiler une constante, une valeur |
+| 0A | variable | dépiler dans une variable |
+| 10 | valeur | empiler l'état d'un drapeau (0x02014304) |
+| 11 | u16 | comparer les deux valeurs du sommet : 0 <, 1 ==, 2 >, 3 <=, 4 >=, 5 !=, 6 ou, 7 et |
+| 19, 1A | variable, u16 / variable, variable | comparer (résultat 0, 1, 2 gardé en +0E de la machine) |
+| 1C | u16 | appel d'un autre script (commun ou de la zone) : 0x02158940 crée une machine pour lui, 0x02159540 attend sa fin ; les variables temporaires sont partagées (390/1 passe l'objet et la quantité au script commun 2805 « recevoir un objet » par 0x8000 et 0x8001) |
+| 1E | s32 | saut |
+| 21 | u16 | script en attente, rangé dans la sauvegarde (+0x12 du bloc de 0x02012B38) : 0x0218A6D8 le lance dès que le terrain le peut, avant les scènes du type 1, et l'efface |
+| 1F, 20 | u8, s32 | saut, appel conditionnel : code 0xFF = dépiler, sauter si différent de 1 (« si ... alors ») ; codes 0-5 : table 0x0217056C appliquée au résultat gardé |
+| 23, 24 | valeur | mettre, enlever un drapeau (0x02014330, 0x02014358) |
+| 28, 29 | variable, u16 / variable, variable | donner une valeur, copier |
+| 2A | variable, valeur | donner une valeur (constante ou contenu d'une variable) |
+| 2E, 2F, 30 | | figer le jeu, tout relâcher, relâcher le PNJ |
+| 32 | | attendre une touche |
+| 34 | valeur message, u16 cadre | message dans la fenêtre simple (0x021B0384 la crée ; cadre 1 ou 0x13) ; attend la fin du texte |
+| 36, 39 | | fermer la fenêtre simple (0x021B0420), l'autre fenêtre simple (0x021B1044) |
+| 38, 4A | valeur message, u8 cadre | message dans une autre fenêtre simple (0x021B0FA8) |
+| 3C | valeurs : fichier, message, personnage, ?, ? | message dans la bulle d'un personnage (0x021B0B4C) |
+| 3D | valeurs : fichier, message, ?, ? | message du PNJ à qui l'on parle |
+| 3E, 3F | | fermer le message, toutes les fenêtres |
+| 43, 44 | u16 message, u16 style / | panneau (attend une touche), le fermer |
+| 47 | variable | menu Oui / Non (tâche 0x021B0024) : « OUI » et « NON » sont les messages 0 et 1 du fichier système 233 (0x02190450), avec les valeurs 0 et 1 (table 0x021D3DF8) ; Annuler donne 1 |
+| 48, 49 | valeurs : fichier, message, message pour une fille, personnage, ?, ? | comme 3C ; 48 prend le second message si le héros est une fille (octet +0x1D du profil, 0x02008550), 49 ne s'en sert pas |
+| 4B | | attendre Valider ou Annuler (son 0x547 `SEQ_SE_MESSAGE`) |
+| 4C | u8 mot | mot n° x des messages = nom du héros (0x0201EFD0) |
+| 4D, 4F | u8 mot, valeur | nom d'objet (fichier système 54, par 0x0201EEEC) |
+| 4E | u8 mot, valeur objet, valeur nombre, u8 | nom d'objet, au pluriel (fichier 280, 0x0201EF00) si le nombre dépasse 1 |
+| 50 | u8 mot, valeur objet | nom de la capacité d'une CT ou d'une CS (objets 328-425 et 618-620, table 0x0209EA38 de l'ARM9) : pas encore |
+| 51, 52, 56 | u8 mot, valeur | nom de capacité (fichier 203), de poche du sac (fichier 55), de type (fichier 199) |
+| 53, 54 | u8 mot, valeur | espèce, surnom d'un Pokémon de l'équipe (0x0201EE50 et 0x0201EEA0 lisent les champs 5 et 0x73 de 0x02017E38) ; pas encore de surnoms |
+| 57 | u8 mot, valeur | nom d'espèce (0x0201EE2C) |
+| 5C | u8 mot, valeur nombre, valeur chiffres | nombre (0x0201EF48) |
+| 69 | valeurs : x, z, direction, numéro, sprite, script | créer un PNJ qui n'est pas dans les événements (0x0216CDFC) : Tcheren (250) et Bianca (240) à la sortie nord de Renouet |
+| 26, 27 | variable, valeur | ajouter, soustraire |
+| 64, 65 | valeur personnage, s32 / | lancer une liste de mouvements (« fin des paramètres + décalage ») ; attendre qu'elles soient finies |
+| 68 | variable, variable | case du héros (x, z) |
+| 6B, 6C | valeur | faire apparaître un PNJ des événements de la zone (0x0216CE74), le retirer |
+| 6D | valeurs : PNJ, x, y, z, direction | placer un PNJ présent (0x0216E014), sans changer son entrée des événements |
+| 74 | | le PNJ se tourne vers le héros |
+| 85 | valeurs : dresseur, dresseur 2, ? | combat de dresseurs (0x0216E7A8) ; sans dresseur 2, le même si c'est un dresseur de combat double (0x0215A454). En attendant la phase 4 : un passage au noir et une victoire |
+| 8C | | après une défaite : fin du script et retour au dernier Centre (0x0215F678) |
+| 8D | variable | 1 si le joueur a gagné le dernier combat (table 0x02172568, 0x0216EF38) |
+| 8E | | transition de retour du combat (0x021BE8B8) |
+| 98 | u16 | musique d'événement (0x0202991C ; 1161 = `SEQ_BGM_E_FRIEND`), avec la marque 0xD (0x021590E4) |
+| 9E | | retour à la musique de la zone, en fondu (0x02029838) |
+| A6 | valeur | effet sonore n° N du SDAT (1351 = `SEQ_SE_MESSAGE`) |
+| A8 | | attendre la fin de l'effet sonore (0x021AF1DC) |
+| A9, AA | u16 / | fanfare (0x020297C8 ; 1304 = `SEQ_ME_POKEGET`) ; attendre sa fin, puis la musique reprend (0x020295B8) |
+| B3, B4 | u16 écrans, départ, arrivée, vitesse / | fondu de luminosité (0x0204E6B8, code ARM) ; attendre sa fin (0x0204E79C) |
+| B5 à B8 | valeurs : objet, quantité ; variable | sac : ajouter (0x02007E50), retirer (0x02007F1C), y a-t-il la place (0x02007E3C), en a-t-on assez (0x02007F68) ; 1 ou 0 dans la variable. Au plus 999 du même objet, 1 dans la poche des CT et CS (0x02007DF8) |
+| B9 | valeur objet, variable | nombre d'exemplaires dans le sac (0x02007FB8) |
+| BB | valeur objet, variable | poche de l'objet (paramètre 5 de ses données, 0x02020F80) |
+| DA | valeurs : numéro, oui, carte | une variable de la table 0x02170F40 (overlay 10 : 10 fiches de 6 octets ; numéro en +1, variable en +2, valeur en +4 ; variables 0x4031 à 0x403A, qu'aucun script ne lit) : sa valeur si « oui », sinon 0 (0x02159EC8) ; « carte » lance une mise à jour par 0x02159B34, pas encore suivie |
+| E0 | variable | version du jeu : 20 (0x14) dans Pokémon Blanc |
+| E1 | variable | sexe du héros (0x02008550) |
+| F9 | valeur | ajouter de l'argent (0x0200C278, plafond 9 999 999) |
+| 101 | variable, valeur | 1 si le Pokémon n° x de l'équipe a tous ses PV (champs 0xA0 et 0xA1 de 0x02017E38) ou est un œuf (champ 0x4C) |
+| 103 | variable, valeur | décompte de l'équipe : 0 tous, 1 sans les œufs, 2 en état de se battre, 3 et 4 des œufs, 5 places libres (structure : capacité en +0, nombre en +4) |
+| 105 | variable, valeurs : Pokémon, ? | écran du surnom (0x021C5A38) : pas encore, le Pokémon reste sans surnom |
+| 104 | | soigner l'équipe (0x0201BA50) |
+| 10C | variable, valeurs : espèce, forme, niveau | donner un Pokémon : 0x0215C4B0 le crée si l'équipe a moins de 6 membres (0x0201AA30, 0x0201AA34), l'ajoute (0x0201A9A8) et l'inscrit au Pokédex (0x0200CDE0) ; 1 dans la variable, 0 si l'équipe est pleine |
+| 110 | variable, valeurs : Pokémon, champ | un champ d'un Pokémon de l'équipe (0x02017E38), parmi les 12 de la table 0x02171112 (5 espèce, 117...) |
+| 127 | variable, valeurs : genre, x, z | chercher un bâtiment d'un genre près de la case (0x0218C778) et le garder : son numéro dans la variable (0x0218BA6C) |
+| 128 | valeur | le libérer (0x0218C800) |
+| 129 | valeurs : bâtiment, animation | jouer une animation du bâtiment, avec son son (0x0218C82C, 0x0218C930) |
+| 12A | valeur | attendre la fin de l'animation (0x0218C878, 0x0218C944) |
+| 14B, 14A | | quitter le terrain pour une application (0x020144F8), le retrouver (0x020145E8) |
+| 153 | variable | choix du starter : application de l'overlay 223 (0x0215C5DC), voir plus bas |
+| 155 | valeur | application de l'overlay 174 (le Vokit qui sonne au bout de la Route 1) : pas encore |
+| 17D | | démonstration de capture de la professeure (0x0216E8EC) ; 179 est la transition (0x021BE8B8) |
+| 1AD, 1AE, 1AF | | autour d'une application : fondu depuis le noir (écrans 3, de 16 à 0), vers le noir (de 0 à 16), depuis le blanc (écrans 0xC) ; vitesse -1 (tâche 0x021B2EB8) |
+| 1B1 | | attendre la fin de ce fondu (0x021899C4) |
+| 1D0 | | Pokédex reçu (bit 0 du mot +4 de ses données, 0x0200CA28) |
+| 25F | | fin de la marque de la musique d'événement (0x02159108(0xD)) : elle continue |
+
+**Mots variables** : les messages contiennent des commandes de texte `01xx` dont l'argument est un
+numéro de mot (`{0100:0}` : le nom du héros rangé dans le mot 0). Les commandes 4C à 57 remplissent
+ces mots (0x0201ED50) ; 0x0201ED9C y met le message n° x d'un fichier des textes système. Les mots
+appartiennent au contexte du script (0x02158F14) et disparaissent avec lui.
+
+**Fondus de luminosité** (0x0204E6B8) : écrans (bits), départ, arrivée, vitesse. 0x0204E7BC écrit la
+valeur dans les registres de luminosité de la DS (0x0400006C et 0x0400106C, de -16 noir à +16
+blanc) en changeant son signe pour les écrans des bits 1 et 2 : avec ces écrans, 16 est le noir ;
+avec ceux des bits 4 et 8, le blanc. Vitesse positive : un cran toutes les n images ; négative :
+1 - n crans par image.
+
+**Choix du starter** (commande 0x153) : l'application de l'overlay 223 lit les trois espèces dans
+sa table 0x021BC6B0 (495 Vipélierre, 498 Gruikui, 501 Moustillon) par l'indice choisi
+(0x021B9D4E), joue le cri du Pokémon choisi (0x021BC1EE) et met l'indice dans la variable. Ses
+textes sont ceux du fichier 430 (le même que la chambre du héros, chargé en 0x021BADDC) :
+types (16 Eau, 17 Feu, 18 Plante), « Choisissez un Pokémon! » (19), « Ce Pokémon vous convient? »
+(20), « C'est décidé! » (21), OUI / NON (22, 23). Le script du cadeau (391/9) donne ensuite
+l'espèce de l'indice (0x10C, niveau 5), lance les combats contre Bianca (dresseurs 59 à 61 selon
+le starter) puis Tcheren (53 à 55) et met 0x4081 à 2.
+
+**L'histoire jusqu'à la Route 1** (`test_world`) : chambre (391/5 l'intro, 391/9 le cadeau),
+rez-de-chaussée (390/1, la mère, quand 0x4085 = 0), laboratoire (396/1, le Pokédex : 0x4079 et
+0x4080 passent à 1), Renouet (389/16 puis 389/12, la Carte), sortie nord (déclencheur de
+0x4080 = 2 : 389/14, Tcheren et Bianca créés par 0x69 accompagnent le héros sur la Route 1 et
+mettent le script 1 en attente avec 0x21), Route 1 (317/1, la démonstration de capture et
+5 Poké Balls ; puis au bout de la route 317/5, Bianca compare les équipes, et 0x407C = 2).
+Comme le jeu (0x0218A6D8, à chaque image), le moteur regarde le script en attente et les scènes
+de la zone à la fin de chaque script, dans la zone où le script a laissé le héros.
+
+Encore sautées sur ce chemin : 0x21C (deux valeurs rangées dans un champ de bits
+de la sauvegarde, 0x0200E3E8), 0xD9 (une valeur de 1 à 17 rangée dans la sauvegarde,
+0x02012900), 0xE7 (un bit de l'octet +0x45 du profil, 0x0200C2F0), 0x19F et 0x240 (des numéros
+26 à 52 associés aux objets rares par la table 0x021DAA70, pour 0x021C1C3C), 0x241 (indicateur
+0x20 d'un personnage, 0x0216DB10), 0x252 (0x021BC52C), 0x24F et 0x250 (fonctions d'un overlay
+propre à la zone, chargé en 0x021F3640).
+
+Fichier de textes `0x400` : celui du script en cours (zone ou plage commune) ; c'est le premier
+paramètre de 0x3C et 0x3D dans 3 881 cas sur 3 884. Personnages des commandes (0x021B1608) :
+`0xFF` le héros, `0xF1` celui à qui l'on parle, `0xF2` un compagnon, sinon le numéro d'un PNJ.
+
+**Déplacements autonomes des PNJ** (`npc_movement.gd`). 0x0216CF54 recopie les 36 octets d'un
+PNJ dans le personnage : 00 numéro, 04 code de mouvement (+0x0E, 0x0216D52C), 06 ?, 08 drapeau,
+0A script, 0C direction, 0E à 12 trois paramètres, 14 et 16 étendue en x et en z (s16 : ± cases
+autour de l'origine, -1 sans limite). 0x0216E390 prend la description du code dans la table de
+0x021D5D94 (overlay 21, plus de 80 entrées : fonctions de création, de mise à jour, de fin).
+Familles retrouvées : 0 et 1 immobiles (1 483 PNJ sur 2 257) ; 2, 6 à 13, 45, 46 (mise à jour
+0x0219A0F0) regardent au hasard dans un ensemble de directions (table 0x021D5088 : 0x00 les
+quatre, 0x01 haut et gauche...), après une attente de 16, 32, 48 ou 64 images (table
+0x021D4F34) ; 3, 4, 5 et 67 (0x0219A258, création 0x0219A230) pareil (ensembles 0x0B, 0x0C,
+0x0D), puis un pas (action 0x0C + direction) si 0x0216385C ne trouve rien : étendue (bit 1,
+0x02163C2C), terrain (bit 2, 0x02163C94), dénivelé (bit 8)... ; 14 à 17 (0x0219A4EC) tournés vers le
+haut, le bas, la gauche ou la droite (0x0216D570). Les autres codes (motifs de rotation, rails...)
+restent immobiles pour l'instant.
+
+**Début de partie** : le script 9600 (premier de la plage 9600-9699, fichier 866) met 131 drapeaux
+et règle quelques valeurs de départ (dont 3000 d'argent) ; on n'a pas encore retrouvé l'appel dans
+le code, mais ses drapeaux donnent exactement la chambre du début du jeu.
+
+**PNJ des événements** : au chargement d'une zone, 0x0216CE3C (appelée en 0x021894B0) crée chaque
+PNJ de la liste (36 octets chacun), sauf si son drapeau (champ 08) est mis et que son script
+(champ 0A) n'est pas 0xFFFF (0x0216E3A8, puis 0x0216E3BC qui lit le drapeau comme la commande
+0x10). La commande 0x6B fait la même chose pour un seul numéro (0x0216CE74). Le sprite passe par
+0x0216E368 : de 0xA2 à 0xB1, il est rangé dans les variables 0x4020 à 0x402F. Avec le script 9600,
+Tcheren (drapeau 500) est
+dans la chambre, Bianca (501) n'est pas encore arrivée, le carton cadeau (680) est sur la table et
+les Poké Balls des starters (681-685) n'apparaissent pas encore.
+
+Exemples : 0x1E saut (s32 relatif à la fin du paramètre), 0x1F saut conditionnel (u8 condition,
+s32), 0x04 appel (s32), 0x05 retour, 0x02 fin, 0x03 attente (u16).
+
+## Menu du terrain et sauvegarde (`pause_menu.gd`, `game.gd`)
+
+0x021A8B58 (overlay 21) bâtit le menu du terrain avec le fichier système 34 : POKÉDEX (1),
+POKÉMON (2), SAC (3), le nom du héros (4, mis par 0x020084BC), SAUVER (5), OPTIONS (6). Le
+portage n'en montre le Pokédex et l'équipe qu'une fois reçus, et ajoute QUITTER. Textes de la
+sauvegarde : « Voulez-vous sauvegarder la partie? » (fichier système 46, message 25), OUI / NON
+(fichier 233), « Sauvegarde en cours... Ne pas éteindre. » et « {nom} a sauvegardé la partie. »
+(fichier 36, messages 3 et 4), son `SEQ_SE_SAVE` (1368). La partie (profil, drapeaux et variables
+de la sauvegarde, script en attente, équipe, sac, lieu) est enregistrée en JSON dans
+`user://sauvegarde.json` ; les variables temporaires (0x8000 et plus) ne sont pas gardées, comme
+dans le jeu.
+
+## Mouvements (`movement_runner.gd`, `movement_actions.gd`)
+
+Liste de mouvements (commande 0x64) : paires (action u16, nombre u16) terminées par l'action
+`0xFE`. La tâche 0x02197D6C (overlay 21, états en 0x021D49E0) attend que le personnage soit libre,
+lui donne l'action (0x0216D3A0, rangée en +0x26 du personnage, étape en +0x28), attend sa fin,
+puis compte les répétitions. L'action n° N est une suite d'étapes : 0x02197E54 lit l'action et son
+étape, 0x02197EC0 appelle `table[action][étape](personnage)`, la table étant en 0x021D5EE8
+(378 actions ; une autre en 0x021D61DC sert quand le bit 0x2000 du personnage est mis).
+
+La première fonction de chaque action appelle une fonction de « famille » avec des constantes
+(`tools/re/movements.py` les relève toutes) :
+
+| Fonction | Actions | Rôle et constantes |
+| --- | --- | --- |
+| 0x02197F0C | 00-03 | se tourner (haut, bas, gauche, droite) |
+| 0x02197F60 | 04-17 | marcher d'une case : vitesse x images = 16 unités ; 32, 16, 8, 4, 2 images |
+| 0x021982B8 | 18-2B | marcher sur place : 32, 16, 8... images |
+| 0x021984CC | 2C-3B, 5C-5F | sauter (distance = vitesse x images, 0 = sur place ; courbe et pas) |
+| 0x02198900 | 3C-42, F9-... | attendre 1, 2, 4, 8, 15, 16, 32 images |
+| 0x02198BA8 | 4C-63 | marcher d'une case avec une vitesse tirée d'une table (départ et arrivée doux) |
+| 0x0216D4D8, 0x0216D4E0 | 45-4A | mettre, enlever un bit des indicateurs du personnage (4, 8, 16) |
+
+162 actions sur 378 sont ainsi classées, dont toutes celles des scripts de Renouet et de la Route 1
+(sauf 45-48, 4B, 64, 9A, 9F, B5, encore sans effet). Exemple : Tcheren vient arrêter le héros avec
+« 0x13 x 6 » (6 cases vers la droite, 4 images chacune) et repart avec « 0x4E x 6 ».
+
+Sprites des personnages : la couleur 0 de leur palette est toujours transparente, même quand le
+paramètre de la texture ne le dit pas (celle de Tcheren, fichier 12 de `a/0/4/9`).
+
+**Images du terrain : 30 par seconde.** Le héros marche avec l'action 0x0C (8 images par case) et
+court avec 0x10 (4 images), choisies par 0x021A4D60 ; un pas dure 16/60 s dans le jeu, donc une
+image du terrain dure 1/30 s. Les durées des actions et les attentes des scripts (commande 0x03)
+se comptent en ces images (`FieldMap.FRAME`).
+
+**Sauts** (`jump_curves.gd`). 0x021984CC passe à 0x02198460 la direction, la vitesse, le nombre
+d'images et, sur la pile, une courbe (rangée en +0x0F) et un pas (+0x08), avec le son 0x55E joué
+au départ. À chaque image, 0x021984F0 avance le personnage, ajoute le pas à un compteur (+0x0A,
+plafonné à 0xF00) et place le sprite au-dessus du sol (0x0216D850) à la hauteur n° compteur >> 8 de
+la courbe ; à la dernière image, il remet le sprite au sol et joue 0x67B (`SEQ_SE_FLD_10`). Les
+courbes : table de trois pointeurs en 0x021DDB54, 16 hauteurs fx32 chacune, en unités DS :
+
+| Courbe | Hauteurs | Actions |
+| --- | --- | --- |
+| 0 | 4, 6, 8, 10, 11, 12, 12, 12, 11, 10, 9, 8, 6, 4, 0, 0 | 34-3B (rebords : pas 0x100, 16 images), 5C-5F |
+| 1 | 0, 2, 3, 4, 5, 6, 6, 6, 5, 5, 4, 3, 2, 0, 0, 0 | 2C-33 (sur place) |
+| 2 | 2, 4, 6, 8, 9, 10, 10, 10, 9, 8, 6, 5, 3, 2, 0, 0 | — |
+
+Seul le sprite monte : l'ombre reste au sol. Le moteur lit les courbes dans l'overlay 21 et
+interpole entre deux images du jeu.
