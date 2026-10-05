@@ -30,6 +30,10 @@ var sprite_tint := Color.WHITE
 ## Événements de la zone où se trouve le joueur (portes, PNJ...), voir set_events_zone().
 var events: ZoneEvents
 var events_zone := -1
+## PNJ de cette zone.
+var npcs: Array[FieldNpc] = []
+## Inclinaison de la caméra, pour redresser les sprites des PNJ (réglée par la scène).
+var camera_pitch := 0.0
 
 ## Affiche les cases bloquées en rouge (outil de mise au point).
 var show_collisions := false:
@@ -47,6 +51,7 @@ var _areas := {}
 var _light_zone := -1
 var _light_file := -1
 var _light_source: FieldLight
+var _objects: FieldObjectTable
 
 
 func _init() -> void:
@@ -54,6 +59,7 @@ func _init() -> void:
 	_rom = Autoloads.rom()
 	zones = ZoneTable.parse(_rom.narc(BWFiles.ZONE_HEADERS).get_file(0))
 	areas = AreaTable.parse(_rom.rom.read_file(BWFiles.AREA_DATA))
+	_objects = FieldObjectTable.parse(_rom.narc(BWFiles.FIELD_OBJECT_TABLE).get_file(0))
 
 
 ## Prépare l'affichage d'une zone (sa matrice). Les morceaux sont chargés par update_around().
@@ -97,6 +103,9 @@ func _update_light() -> void:
 		_light_source = FieldLight.parse(archive.get_file(file)) if archive and file >= 0 and file < archive.count() else null
 	light = _light_source.sample(season, minutes) if _light_source else {}
 	sprite_tint = _light_source.sprite_tint(season, minutes) if _light_source else Color.WHITE
+	for npc in npcs:
+		if npc.sprite:
+			npc.sprite.modulate = sprite_tint
 	if light.is_empty():
 		return
 	for chunk: Dictionary in _chunks.values():
@@ -141,6 +150,10 @@ func update_around(tile: Vector2i) -> int:
 			if not _chunks.has(key) and matrix.map_at(key.x, key.y) >= 0:
 				_load_chunk(key)
 				loaded += 1
+	# Les PNJ se posent sur le sol des morceaux qui viennent d'arriver.
+	if loaded > 0:
+		for npc in npcs:
+			_place_npc(npc)
 	return loaded
 
 
@@ -160,10 +173,20 @@ func zone_at(tile: Vector2i) -> int:
 
 
 ## Vrai si la case est infranchissable (ou pas encore chargée), sur la couche de permissions où l'on
-## se trouve à la hauteur `from` (voir height_at()).
+## se trouve à la hauteur `from` (voir height_at()), ou si un PNJ s'y tient.
 func is_blocked(tile: Vector2i, from := 0.0) -> bool:
+	if npc_at(tile) != null:
+		return true
 	var ground := _ground_at(tile.x + 0.5, tile.y + 0.5, from)
 	return ground.is_empty() or ground.layer.is_blocked(ground.tile.x, ground.tile.y)
+
+
+## PNJ qui se tient sur la case, ou null.
+func npc_at(tile: Vector2i) -> FieldNpc:
+	for npc in npcs:
+		if npc.tile == tile:
+			return npc
+	return null
 
 
 func behavior(tile: Vector2i, from := 0.0) -> int:
@@ -200,6 +223,39 @@ func set_events_zone(zone: int) -> void:
 	var archive: NARC = _rom.narc(BWFiles.ZONE_EVENTS)
 	if not header.is_empty() and archive and header.events < archive.count():
 		events = ZoneEvents.parse(archive.get_file(header.events))
+	_spawn_npcs()
+
+
+## Crée les PNJ des événements de la zone. Ceux qui sont liés à un drapeau n'apparaissent qu'à
+## certains moments de l'histoire : tant que les drapeaux ne sont pas gérés, ils restent cachés.
+func _spawn_npcs() -> void:
+	for npc in npcs:
+		npc.queue_free()
+	npcs.clear()
+	if events == null:
+		return
+	var archive: NARC = _rom.narc(BWFiles.FIELD_OBJECTS)
+	for entry: Dictionary in events.npcs:
+		if entry.rail != 0 or entry.flag != 0:
+			continue
+		var file := _objects.file_of(entry.sprite) if _objects else -1
+		var textures: NSBTX = null
+		if archive and file >= 0 and file < archive.count():
+			textures = NSBTX.parse(archive.get_file(file))
+		var npc := FieldNpc.create(entry, textures)
+		add_child(npc)
+		npcs.append(npc)
+		if npc.sprite:
+			npc.sprite.set_camera_pitch(camera_pitch)
+			npc.sprite.modulate = sprite_tint
+		_place_npc(npc)
+
+
+## Pose un PNJ sur sa case, au niveau du sol (ou à sa hauteur, s'il en a une : un objet sur une
+## table).
+func _place_npc(npc: FieldNpc) -> void:
+	var y: float = npc.data.y / 4096.0 * UNIT
+	npc.position = tile_position(npc.tile, y) if y == 0.0 else Vector3(npc.tile.x + 0.5, y, npc.tile.y + 0.5)
 
 
 ## Porte à prendre en poussant vers `direction` depuis `tile` quand la case de devant est bloquée,

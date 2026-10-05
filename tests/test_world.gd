@@ -1,8 +1,8 @@
 extends SceneTree
 ## Tests du monde (phase 3) sur la vraie ROM, à lancer en ligne de commande :
 ##   godot --headless --path . --script res://tests/test_world.gd
-## Événements des zones (objets à lire, PNJ, portes, déclencheurs) et règles des portes : celle de
-## la maison du héros, le tapis de sortie, les escaliers.
+## Événements des zones (objets à lire, PNJ, portes, déclencheurs), règles des portes (celle de la
+## maison du héros, le tapis de sortie, les escaliers) et PNJ.
 
 var _failures := 0
 var _checks := 0
@@ -17,6 +17,7 @@ func _initialize() -> void:
 		return
 	var started := Time.get_ticks_msec()
 	_test_events()
+	_test_objects()
 	_test_warps()
 	print("%d vérifications, %d échec(s), %d ms" % [_checks, _failures, Time.get_ticks_msec() - started])
 	quit(1 if _failures > 0 else 0)
@@ -60,7 +61,19 @@ func _test_events() -> void:
 	_check(zones_of_doors == [390, 392, 394, 396], "les 4 bâtiments de Renouet : zones 390, 392, 394, 396")
 
 
-## Règles des portes sur les vraies cartes : porte d'une maison, tapis de sortie, escaliers.
+## Fiches des objets du terrain : numéro de sprite des PNJ -> fichier de a/0/4/9.
+func _test_objects() -> void:
+	var table := FieldObjectTable.parse(_rom.narc(BWFiles.FIELD_OBJECT_TABLE).get_file(0))
+	_check(table != null and table.count() == 799, "799 fiches d'objets du terrain")
+	var files := []
+	for code in range(1, 7):
+		files.append(table.file_of(code))
+	_check(files == [6, 7, 8, 9, 10, 11], "objets 1 à 6 = héros et héroïne (fichiers 6 à 11)")
+	var hero := NSBTX.parse(_rom.narc(BWFiles.FIELD_OBJECTS).get_file(table.file_of(1)))
+	_check(hero != null and hero.textures.size() == 32, "l'objet 1 est le sprite du héros (32 images)")
+
+
+## Règles des portes sur les vraies cartes : porte d'une maison, tapis de sortie, escaliers ; PNJ.
 func _test_warps() -> void:
 	var map := FieldMap.new()
 	root.add_child(map)
@@ -70,6 +83,13 @@ func _test_warps() -> void:
 	_check(map.is_blocked(Vector2i(782, 748)) and not map.is_blocked(Vector2i(782, 749)), "porte bloquée, case de devant libre")
 	_check(map.warp_for_push(Vector2i(782, 749), CharacterSprite.Direction.UP) == 0, "pousser vers la porte la prend")
 	_check(map.warp_for_push(Vector2i(781, 749), CharacterSprite.Direction.UP) == -1, "à côté de la porte : rien")
+	# Les 3 habitants sans drapeau ; les 3 autres (liés à l'histoire) attendent les drapeaux.
+	var with_sprite := 0
+	for npc in map.npcs:
+		if npc.sprite:
+			with_sprite += 1
+	_check(map.npcs.size() == 3 and with_sprite == 3, "3 PNJ visibles à Renouet, avec leur sprite")
+	_check(map.is_blocked(map.npcs[0].tile), "un PNJ bloque sa case")
 
 	_check(map.load_zone(390), "rez-de-chaussée de la maison du héros (zone 390)")
 	map.set_events_zone(390)

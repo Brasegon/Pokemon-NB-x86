@@ -66,6 +66,7 @@ func _ready() -> void:
 	add_child(camera)
 	camera.make_current()
 	camera.follow(player.position)
+	field.camera_pitch = camera.pitch()
 	if player.sprite:
 		player.sprite.set_camera_pitch(camera.pitch())
 		player.sprite.modulate = field.sprite_tint

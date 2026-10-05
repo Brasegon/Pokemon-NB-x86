@@ -86,7 +86,8 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 - [x] Portes, tapis et escaliers : entrée dans les maisons et changement d'étage, comme le jeu
 - [ ] Rebords à sauter, animations NSBCA « porte » des bâtiments, comportements des cases (herbe, eau)
 - [ ] Chargement des morceaux de carte en arrière-plan (aujourd'hui : un court arrêt au passage)
-- [ ] PNJ et sprites du monde extérieur
+- [x] PNJ affichés d'après les événements (sprite, case, direction), qui bloquent leur case
+- [ ] PNJ : déplacements, apparition selon les drapeaux de l'histoire
 - [ ] **Moteur de scripts** (`a/0/5/7`) : machine virtuelle qui exécute le bytecode des événements.
 	  C'est le cœur du portage. Les commandes inconnues s'étudient dans le code ARM9/overlays, avec
 	  Ghidra et un loader NDS

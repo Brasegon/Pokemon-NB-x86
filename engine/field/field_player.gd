@@ -55,7 +55,7 @@ static func create(map: FieldMap, textures: NSBTX) -> FieldPlayer:
 	player.sprite = CharacterSprite.create(textures)
 	if player.sprite:
 		player.add_child(player.sprite)
-	player.add_child(_make_shadow())
+	player.add_child(CharacterSprite.make_shadow())
 	return player
 
 
@@ -171,26 +171,3 @@ func _show(step: CharacterSprite.Step) -> void:
 	if sprite:
 		sprite.show_frame(facing, step, _running and _moving)
 
-
-## Ombre ronde et douce sous les pieds.
-static func _make_shadow() -> MeshInstance3D:
-	var size := 24
-	var image := Image.create_empty(size, size, false, Image.FORMAT_RGBA8)
-	for y in size:
-		for x in size:
-			var d := Vector2(x + 0.5 - size / 2.0, (y + 0.5 - size / 2.0) * 1.6).length() / (size / 2.0)
-			image.set_pixel(x, y, Color(0, 0, 0, 0.35 if d < 0.85 else 0.0))
-	var material := StandardMaterial3D.new()
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	material.albedo_texture = ImageTexture.create_from_image(image)
-	var quad := QuadMesh.new()
-	quad.size = Vector2(0.9, 0.9)
-	quad.orientation = PlaneMesh.FACE_Y
-	quad.material = material
-	var shadow := MeshInstance3D.new()
-	shadow.name = "Ombre"
-	shadow.mesh = quad
-	shadow.position.y = 0.02
-	return shadow

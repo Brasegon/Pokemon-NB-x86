@@ -21,6 +21,7 @@ const MOVES := "a/0/2/1"
 const FONTS := "a/0/2/3" ## vérifié (NFTR)
 const ITEMS := "a/0/2/4"
 const FIELD_OBJECTS := "a/0/4/9" ## vérifié (objets 3D du terrain, puis sprites des personnages en NSBTX)
+const FIELD_OBJECT_TABLE := "a/0/4/8" ## vérifié (fiches des objets du terrain : numéro -> fichier de a/0/4/9)
 const SCRIPTS := "a/0/5/7"
 const FIELD_LIGHTS := "a/0/6/1" ## vérifié (éclairages du terrain selon l'heure)
 const MAP_TEXTURE_ANIMATIONS := "a/0/6/9" ## vérifié (NSBTA des textures de cartes)
@@ -65,6 +66,7 @@ const DESCRIPTIONS := {
 	FONTS: "Polices du jeu",
 	ITEMS: "Données des objets (à confirmer)",
 	FIELD_OBJECTS: "Objets 3D et sprites des personnages du terrain",
+	FIELD_OBJECT_TABLE: "Fiches des objets du terrain (numéro de PNJ -> image)",
 	SCRIPTS: "Scripts des événements (à confirmer)",
 	FIELD_LIGHTS: "Éclairages du terrain selon l'heure",
 	MAP_TEXTURE_ANIMATIONS: "Animations des textures des cartes",

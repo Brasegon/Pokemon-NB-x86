@@ -14,8 +14,6 @@ extends Sprite3D
 enum Direction { UP, DOWN, LEFT, RIGHT }
 enum Step { STAND, LEFT_FOOT, RIGHT_FOOT }
 
-const FRAME_SIZE := 32
-
 var frames: Array[ImageTexture] = []
 var direction := Direction.DOWN
 var _flip_layout := false
@@ -35,8 +33,8 @@ static func create(textures: NSBTX) -> CharacterSprite:
 	sprite.shaded = false
 	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
 	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	# Les pieds (bas de l'image) sur l'origine du nœud.
-	sprite.offset = Vector2(0, FRAME_SIZE / 2.0)
+	# Les pieds (bas de l'image) sur l'origine du nœud ; les grands PNJ ont des images de 64x64.
+	sprite.offset = Vector2(0, sprite.frames[0].get_height() / 2.0)
 	sprite.show_frame(Direction.DOWN, Step.STAND)
 	return sprite
 
@@ -68,3 +66,27 @@ func show_frame(facing: Direction, step: Step, running := false) -> void:
 	index = clampi(index, 0, frames.size() - 1)
 	texture = frames[index]
 	flip_h = mirrored
+
+
+## Ombre ronde et douce sous les pieds.
+static func make_shadow() -> MeshInstance3D:
+	var size := 24
+	var image := Image.create_empty(size, size, false, Image.FORMAT_RGBA8)
+	for y in size:
+		for x in size:
+			var d := Vector2(x + 0.5 - size / 2.0, (y + 0.5 - size / 2.0) * 1.6).length() / (size / 2.0)
+			image.set_pixel(x, y, Color(0, 0, 0, 0.35 if d < 0.85 else 0.0))
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	material.albedo_texture = ImageTexture.create_from_image(image)
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.9, 0.9)
+	quad.orientation = PlaneMesh.FACE_Y
+	quad.material = material
+	var shadow := MeshInstance3D.new()
+	shadow.name = "Ombre"
+	shadow.mesh = quad
+	shadow.position.y = 0.02
+	return shadow

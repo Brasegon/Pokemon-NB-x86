@@ -567,7 +567,14 @@ hiver 7 h, 11 h, 17 h, 19 h. Fichier `0x20` (+ saison) dehors, `0x1C` dedans (co
   d'images. Elle remplace la texture des cartes qui porte le nom de sa première image (`sea_simi.1` :
   l'écume de la mer de Renouet).
 
-### Personnages (`a/0/4/9`)
+### Personnages (`a/0/4/9`) et fiches des objets (`a/0/4/8`, `field_object_table.gd`)
+
+`a/0/4/8` contient un seul fichier : nombre de fiches (u32, 799), puis 28 octets par fiche. 00 numéro
+de l'objet (le « sprite » des PNJ dans les événements de zone), 10 fichier de son image ou de son
+modèle dans `a/0/4/9` ; les autres champs (manière de dessiner, ombre...) restent à décoder.
+Vérifié : les objets 1 à 6 sont le héros et l'héroïne (marche, vélo, surf), fichiers 6 à 11. Le
+terrain ouvre les deux archives ensemble (overlay 10 : 0x0216CC6C pour `a/0/4/9`, 0x0216E210 pour
+`a/0/4/8`). Exemples : la mère du héros est l'objet 147 (fichier 144).
 
 Les 6 premiers fichiers sont des objets 3D (rochers...), les suivants des NSBTX d'images de 32x32 :
 6 = le héros (« t4x4hero », 32 images : dos, face, gauche, droite par groupes de 3 — immobile, pied
