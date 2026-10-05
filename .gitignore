@@ -1,0 +1,18 @@
+# Données Nintendo / Game Freak : ne jamais les versionner ni les redistribuer.
+# Le moteur les lit directement depuis la ROM du joueur.
+*.nds
+*.srl
+*.sav
+export/
+extracted/
+
+# Godot
+.godot/
+.import/
+*.tmp
+/android/
+
+# Builds
+build/
+*.exe
+*.pck

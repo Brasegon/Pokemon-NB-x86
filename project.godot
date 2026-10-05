@@ -1,0 +1,43 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Pokémon Blanc - Portage Windows"
+config/description="Moteur natif qui rejoue Pokémon Version Blanche à partir de la ROM du joueur."
+run/main_scene="res://scenes/boot/boot.tscn"
+config/features=PackedStringArray("4.7", "Forward Plus")
+
+[autoload]
+
+Settings="*res://engine/core/settings.gd"
+Controls="*res://engine/core/controls.gd"
+Display="*res://engine/core/display.gd"
+Rom="*res://engine/core/rom_manager.gd"
+Sound="*res://engine/core/sound.gd"
+
+[debug]
+
+gdscript/warnings/integer_division=0
+
+[display]
+
+window/size/viewport_width=480
+window/size/viewport_height=270
+window/size/window_width_override=1440
+window/size/window_height_override=810
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/stretch/scale_mode="integer"
+
+[rendering]
+
+textures/canvas_textures/default_texture_filter=0
+2d/snap/snap_2d_transforms_to_pixel=true
