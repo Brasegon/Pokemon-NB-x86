@@ -15,6 +15,15 @@ signal battle_started(trainer: int, partner: int)
 const NEW_GAME_SCRIPT := 9600
 ## Personnages spéciaux dans les commandes (0x021B1608) : le héros, celui à qui l'on parle.
 const PLAYER := 0xFF
+## Remis à zéro à chaque changement de zone (0x02158994) : drapeaux 0 à 99 (0x02014384) et variables
+## 0x4000 à 0x401E (0x020143F4 efface (0x401F - 0x4000) mots).
+const LOCAL_FLAGS := 100
+const LOCAL_VARS := 0x4000
+const LOCAL_VARS_END := 0x401F
+## Types des scripts d'arrivée (ZoneEvents.init_scripts).
+const ZONE_CHANGE_SCRIPT := 2
+const LOAD_SCRIPT := 3
+const MAP_CHANGE_SCRIPT := 4
 const TALKER := 0xF1
 
 var field: FieldMap
@@ -23,6 +32,9 @@ var player: FieldPlayer
 var state: GameState
 var work: EventWork
 var vm := ScriptVM.new()
+## Scripts d'arrivée des zones : le jeu les joue d'un trait dans un contexte à part (0x021589D4),
+## même pendant une scène.
+var _zone_vm := ScriptVM.new()
 var box: DialogueBox
 ## Menu Oui / Non (commande 0x47), posé au-dessus de la boîte de dialogue.
 var yes_no: ChoiceMenu
@@ -68,6 +80,9 @@ static func create(map: FieldMap, hero: FieldPlayer, dialogue: DialogueBox, game
 		push_error("Table des scripts communs introuvable dans l'overlay %d." % ScriptFiles.OVERLAY)
 	scripts.vm.host = scripts
 	scripts.vm.work = scripts.work
+	scripts._zone_vm.host = scripts
+	scripts._zone_vm.work = scripts.work
+	scripts._zone_vm.clears_temp_vars = false
 	map.work = scripts.work
 	dialogue.visible = false
 	scripts._make_yes_no()
@@ -92,16 +107,40 @@ func new_game() -> void:
 	run_now(NEW_GAME_SCRIPT)
 
 
-## Arrivée dans une zone (ses événements viennent d'être chargés) : son script d'arrivée (type 4),
-## puis ses scènes qui démarrent toutes seules (type 1). Le jeu vérifie aussi ces scènes à d'autres
+## Changement de zone, en marchant (0x02189360) ou par un changement de carte (overlay 20,
+## 0x0218583A) : les événements de la nouvelle zone sont chargés, ses PNJ pas encore. Comme
+## 0x02158A80 : drapeaux et variables locaux remis à zéro (0x02158994), puis le script d'arrivée de
+## type 2, qui règle les drapeaux des PNJ (au laboratoire, celui de la professeure).
+func zone_changed() -> void:
+	for id in LOCAL_FLAGS:
+		work.set_flag(id, false)
+	for id in range(LOCAL_VARS, LOCAL_VARS_END):
+		work.set_var(id, 0)
+	_run_zone_script(ZONE_CHANGE_SCRIPT)
+
+
+## Le terrain démarre dans la zone, ses PNJ posés (0x02188648) : le script d'arrivée de type 4 si l'on
+## arrive d'un changement de carte, sinon le type 3 (reprise d'une partie, retour d'un menu) ; puis
+## les scènes qui démarrent toutes seules (type 1). Le jeu vérifie aussi ces scènes à d'autres
 ## moments ; tant que toutes les commandes ne sont pas écrites, le moteur ne le fait qu'à l'arrivée,
 ## pour qu'une commande sautée ne relance pas une scène en boucle.
-func enter_zone() -> void:
-	if field.events == null:
-		return
-	if field.events.init_scripts.has(4):
-		run_now(field.events.init_scripts[4])
+func field_started(map_change: bool) -> void:
+	_run_zone_script(MAP_CHANGE_SCRIPT if map_change else LOAD_SCRIPT)
 	check_conditions()
+
+
+## Le script d'arrivée d'un type, joué d'un trait dans sa propre machine.
+func _run_zone_script(type: int) -> void:
+	if field.events == null or not field.events.init_scripts.has(type):
+		return
+	var script := load_script(field.events.init_scripts[type])
+	if script.is_empty():
+		return
+	_zone_vm.start(script.bytes, script.start, script.messages)
+	_zone_vm.update(0.0)
+	if _zone_vm.running:
+		push_warning("Script d'arrivée n° %d : il attend, on l'arrête." % field.events.init_scripts[type])
+		_zone_vm.stop()
 
 
 ## Comme 0x0218A6D8 : d'abord le script en attente (commande 0x21), qu'on efface en le lançant ;

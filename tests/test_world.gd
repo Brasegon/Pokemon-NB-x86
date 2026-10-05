@@ -333,14 +333,25 @@ func _test_scripts() -> void:
 	map.events_zone = -1
 	map.set_events_zone(ZoneTable.NUVEMA)
 	_check(map.npcs.size() == 5 and map.npc_by_id(5) == null, "la mère du héros n'est plus dehors")
+	# Changement de zone (0x02158A80) : drapeaux 0 à 99 et variables 0x4000 à 0x401E remis à zéro,
+	# puis le script d'arrivée de type 2 de Renouet (17), qui enlève le drapeau 368.
+	scripts.work.set_flag(7)
+	scripts.work.set_flag(368)
+	scripts.work.set_var(0x4005, 3)
+	scripts.work.set_var(0x401F, 5)
+	scripts.zone_changed()
+	_check(not scripts.work.get_flag(7) and scripts.work.get_var(0x4005) == 0 and scripts.work.get_var(0x401F) == 5,
+		"changement de zone : drapeaux 0 à 99 et variables 0x4000 à 0x401E remis à zéro")
+	_check(not scripts.work.get_flag(368) and not scripts.is_running(), "script d'arrivée de type 2 de Renouet (17) : drapeau 368 enlevé")
+	scripts.work.set_var(0x401F, 0)
 
 	# L'intro dans la chambre (zone 391) démarre toute seule : variable 0x4081 = 0 -> script 5.
 	map.load_zone(391)
-	map.set_events_zone(391)
+	_change_zone(map, scripts, 391)
 	map.update_around(Vector2i(8, 2))
 	hero.place(Vector2i(8, 2), CharacterSprite.Direction.LEFT)
 	_check(map.npc_by_id(0) != null and map.npc_by_id(1) == null, "chambre : Tcheren là, Bianca pas encore arrivée")
-	scripts.enter_zone()
+	scripts.field_started(true)
 	_check(scripts.is_running() and scripts.current == 5, "l'intro démarre toute seule (script 5)")
 	var frames := _play(scripts, box)
 	print("   Intro : %d images, commandes sautées : %s" % [frames, scripts.vm.skipped])
@@ -418,14 +429,22 @@ func _test_story(map: FieldMap, hero: FieldPlayer, scripts: FieldScripts, box: D
 	_check(scripts.work.get_var(0x407C) == 2, "la Route 1 est libre : 0x407C = 2")
 
 
-## Entre dans une zone comme par une porte : événements, héros sur la case, scènes d'arrivée.
+## Entre dans une zone comme par une porte : événements, script de type 2, PNJ, héros sur la case,
+## script de type 4 et scènes d'arrivée.
 func _enter(map: FieldMap, hero: FieldPlayer, scripts: FieldScripts, zone: int, tile: Vector2i) -> void:
 	map.load_zone(zone)
-	map.set_events_zone(zone)
+	_change_zone(map, scripts, zone)
 	map.update_around(tile)
 	hero.place(tile, CharacterSprite.Direction.UP)
 	scripts.vm.skipped.clear()
-	scripts.enter_zone()
+	scripts.field_started(true)
+
+
+## Comme FieldScene._enter_zone : les événements de la zone, son script de type 2, puis ses PNJ.
+func _change_zone(map: FieldMap, scripts: FieldScripts, zone: int) -> void:
+	if map.load_events(zone):
+		scripts.zone_changed()
+		map.spawn_npcs()
 
 
 ## Joue les scripts qui démarrent (scène, script en attente...) et affiche les commandes sautées.
@@ -441,8 +460,7 @@ func _story_step(scripts: FieldScripts, box: DialogueBox, label: String) -> void
 		var map := scripts.field
 		var zone := map.zone_at(scripts.player.tile)
 		if zone != map.events_zone:
-			map.set_events_zone(zone)
-			scripts.enter_zone()
+			_change_zone(map, scripts, zone)
 	print("   %s : scripts %s, %d images, commandes sautées : %s" % [label, played, frames, scripts.vm.skipped])
 
 
@@ -471,10 +489,10 @@ func _test_story_scenes() -> void:
 			tile = Vector2i(header.x, header.z)
 		map.update_around(tile)
 		map.work = state.work
-		map.set_events_zone(scene.zone)
+		_change_zone(map, scripts, scene.zone)
 		hero.place(tile, scene.facing)
 		StoryScenes.prepare(index, scripts)
-		scripts.enter_zone()
+		scripts.field_started(true)
 		StoryScenes.start(index, scripts)
 		var started: bool = scripts.is_running() and scripts.current == scene.script
 		var frames := _play(scripts, box)

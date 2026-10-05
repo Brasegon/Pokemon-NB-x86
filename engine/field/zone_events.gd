@@ -39,8 +39,9 @@ var triggers: Array[Dictionary] = []
 ## Section qui suit la taille annoncée : les scripts d'arrivée.
 var tail := PackedByteArray()
 ## Scripts d'arrivée : type -> valeur (entrées type u16, valeur u32, jusqu'au type 0 : 0x02158ADC).
-## Types 3 et 4 : numéro du script lancé au chargement de la zone (0x02188648 : le 4 en arrivant
-## par un changement de carte, sinon le 3).
+## Type 2 : script joué à chaque changement de zone, avant la création des PNJ (0x02158A80) ;
+## types 3 et 4 : au démarrage du terrain, PNJ posés (0x02188648 : le 4 en arrivant par un
+## changement de carte, sinon le 3). Voir FieldScripts.zone_changed() et field_started().
 var init_scripts := {}
 ## Type 1 : [variable, valeur, script], le premier dont la variable vaut la valeur est lancé
 ## (0x02158B0C, table placée à « fin de l'entrée + valeur », terminée par une variable 0).

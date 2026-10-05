@@ -31,6 +31,9 @@ var pc := 0
 var running := false
 ## Commandes sautées faute d'être écrites : numéro -> nombre de fois.
 var skipped := {}
+## Faux pour la machine des scripts d'arrivée : jouée pendant une scène, elle ne doit pas effacer
+## les variables temporaires de celle-ci en finissant.
+var clears_temp_vars := true
 
 var _calls: Array[int] = []
 var _stack: Array[int] = []
@@ -58,7 +61,8 @@ func start(bytes: PackedByteArray, start_at: int, messages: MsgFile) -> void:
 func stop() -> void:
 	running = false
 	_callers.clear()
-	work.clear_temp_vars()
+	if clears_temp_vars:
+		work.clear_temp_vars()
 
 
 ## Fin du script : on revient au script appelant s'il y en a un (0x1C), sinon la machine s'arrête.

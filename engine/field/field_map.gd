@@ -281,25 +281,33 @@ func zone_music(zone: int) -> int:
 	return header.music[season] if not header.is_empty() else -1
 
 
-## Charge les événements d'une zone (celle où se trouve le joueur).
+## Charge les événements d'une zone (celle où se trouve le joueur) et y pose ses PNJ.
 func set_events_zone(zone: int) -> void:
+	if load_events(zone):
+		spawn_npcs()
+
+
+## Première moitié d'un changement de zone : comme 0x02189360, les personnages sans la marque de la
+## commande 0x241 s'en vont et les événements de la zone se chargent ; le script d'arrivée de type 2
+## passe avant spawn_npcs(). Faux si le joueur était déjà dans cette zone.
+func load_events(zone: int) -> bool:
 	if zone == events_zone:
-		return
+		return false
 	events_zone = zone
 	events = null
 	var header := zones.get_zone(zone)
 	var archive: NARC = _rom.narc(BWFiles.ZONE_EVENTS)
 	if not header.is_empty() and archive and header.events < archive.count():
 		events = ZoneEvents.parse(archive.get_file(header.events))
-	_spawn_npcs()
+	_remove_npcs(true)
+	return true
 
 
 ## Crée les PNJ des événements de la zone. Un PNJ lié à un drapeau reste caché tant que ce
 ## drapeau est mis : le script de début de partie (9600) en met une centaine, l'histoire les enlève.
 ## PNJ de la zone, comme 0x0216CE3C au chargement (0x021894B0) : chacun est créé, sauf si son
 ## drapeau est mis et que son script n'est pas 0xFFFF (0x0216E3A8, 0x0216E3BC).
-func _spawn_npcs() -> void:
-	_remove_npcs(true)
+func spawn_npcs() -> void:
 	if events == null:
 		return
 	for entry: Dictionary in events.npcs:

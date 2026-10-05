@@ -10,7 +10,7 @@ var facing := CharacterSprite.Direction.DOWN
 var sprite: CharacterSprite
 ## Ses déplacements autonomes (code de mouvement des événements).
 var movement: NpcMovement
-## Reste au changement de zone (commande 0x241) : voir FieldMap._spawn_npcs().
+## Reste au changement de zone (commande 0x241) : voir FieldMap.load_events().
 var kept_on_zone_change := false
 
 

@@ -598,17 +598,22 @@ un déclencheur (x, z en cases) ; 0x02162624 fabrique la destination d'une porte
 
 **Scripts d'arrivée** : entrées (type u16, valeur u32) jusqu'au type 0 (0x02158ADC).
 
-- Types 3 et 4 : numéro d'un script lancé au chargement de la zone (0x02188648 : le 4 en arrivant
-  par un changement de carte, sinon le 3). Celui de Renouet (13) place les PNJ selon les variables
-  de l'histoire.
+- Types 3 et 4 : numéro d'un script lancé au démarrage du terrain, PNJ posés (0x02188648 : le 4
+  en arrivant par un changement de carte, via 0x02158A68, sinon le 3, via 0x02158A74). Celui de
+  Renouet (13) place les PNJ selon les variables de l'histoire. Le moteur joue le 4 en commençant
+  une partie et en passant une porte, le 3 en reprenant une partie (`FieldScripts.field_started`).
 - Type 1 : décalage, depuis la fin de l'entrée, vers une table de triplets (variable, valeur,
   script) terminée par une variable 0 ; le premier dont la variable vaut la valeur est lancé
   (0x02158B0C, appelé par 0x0218A6D8). C'est ainsi que les scènes démarrent toutes seules : dans la
   chambre du héros, « 0x4081 = 0 -> script 5 », l'intro.
-- Type 2 : script joué quand on change de zone en marchant : 0x02189360 appelle 0x02158A80, qui
-  remet à zéro des drapeaux et variables locaux (0x02158994), puis 0x02158A30 avec le type 2 (17 à
-  Renouet, 13 au laboratoire). 0x02158A68 joue le type 4, 0x02158A74 le type 3. Le moteur joue
-  encore le type 4 dans tous les cas.
+- Type 2 : script joué à chaque changement de zone, en marchant (0x02189360) comme en changeant de
+  carte (overlay 20, 0x0218583A), après le chargement des événements et avant la création des PNJ :
+  0x02158A80 remet à zéro les drapeaux 0 à 99 (0x02014384) et les variables 0x4000 à 0x401E
+  (0x020143F4 efface (0x401F - 0x4000) mots), puis 0x02158A30 joue le type 2 dans son propre
+  contexte (0x021589D4). Il règle les drapeaux des PNJ : celui du laboratoire (13) cache ou montre
+  la professeure (drapeau 505) ; celui de Renouet (17) enlève le drapeau 368. Le moteur fait de même
+  (`FieldScripts.zone_changed`), dans une seconde machine qui n'efface pas les variables
+  temporaires de la scène en cours.
 
 **Changement de zone en marchant** : la mise à jour du terrain (0x021886F8) appelle 0x0218926C à
 chaque image, avant de regarder si une scène est en cours. 0x02189310 compare la zone de la case du
@@ -617,8 +622,8 @@ héros à la zone actuelle ; si elle diffère, 0x02189360 retire les personnages
 joue son script de type 2. Un mouvement de script fait donc changer de zone en pleine scène : à la
 sortie nord de Renouet, le groupe entre sur la Route 1 en marchant et la professeure y apparaît au
 loin. Le moteur suit les pas du héros faits par les scripts (`MovementRunner.stepped`) et change de
-zone aussitôt ; les scripts d'arrivée attendent la fin de la scène, car le jeu les joue dans un
-contexte à part. Avant la musique de zone (0x02029C88), 0x021894B8 vérifie un état de la partie
+zone aussitôt, script de type 2 compris ; les scènes de la nouvelle zone (type 1) attendent la fin
+de celle en cours. Avant la musique de zone (0x02029C88), 0x021894B8 vérifie un état de la partie
 (+0x40 de la structure en +0x114, 2 = pas de changement).
 
 Exemple : la porte de la maison du héros est en (782, 748), case bloquée, direction d'entrée 2 ;

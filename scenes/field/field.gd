@@ -49,8 +49,6 @@ var _banner_label: GameLabel
 var _banner_tween: Tween
 var _fade: ScreenFade
 var _warping := false
-## Le héros a changé de zone pendant une scène : les scripts d'arrivée attendent sa fin.
-var _zone_scripts_waiting := false
 var _dialogue: DialogueBox
 var _hud: Control
 var _pause: PauseMenu
@@ -105,16 +103,19 @@ func _ready() -> void:
 	# Drapeaux de départ avant l'arrivée dans la zone : ils décident des PNJ présents.
 	var story_scene := Game.story_scene
 	Game.story_scene = -1
+	# Une partie qui commence arrive par un changement de carte ; une partie reprise (ou le retour d'un
+	# écran) non : le jeu joue alors le script d'arrivée de type 3 (0x02188648).
+	var map_change := not state.started
 	if not state.started:
 		scripts.new_game()
 		state.started = true
 		# Scène choisie dans le menu de développement : la partie telle qu'au début de la scène.
 		if story_scene >= 0:
 			StoryScenes.apply(story_scene, state)
-	_enter_zone(field.zone_at(start_tile))
+	_enter_zone(field.zone_at(start_tile), map_change)
 	if story_scene >= 0:
 		StoryScenes.prepare(story_scene, scripts)
-	scripts.enter_zone()
+	scripts.field_started(map_change)
 	if story_scene >= 0:
 		StoryScenes.start(story_scene, scripts)
 
@@ -254,12 +255,9 @@ func _on_player_moved(tile: Vector2i) -> void:
 	if current != zone:
 		_enter_zone(current)
 		field.set_light_zone(current)
-		# Le jeu lance le script d'arrivée dans un contexte à part (0x02158A80) ; ici, il ne doit pas
-		# remplacer la scène en cours : il attend sa fin.
-		if scripts.is_running():
-			_zone_scripts_waiting = true
-		else:
-			scripts.enter_zone()
+		# Pendant une scène, les scènes de la nouvelle zone attendent sa fin (_on_script_finished).
+		if not scripts.is_running():
+			scripts.check_conditions()
 	scripts.check_triggers(tile)
 
 
@@ -274,12 +272,7 @@ func _on_script_finished(_id: int) -> void:
 	if current != zone:
 		_enter_zone(current)
 		field.set_light_zone(current)
-		_zone_scripts_waiting = true
-	if _zone_scripts_waiting:
-		_zone_scripts_waiting = false
-		scripts.enter_zone()
-	else:
-		scripts.check_conditions()
+	scripts.check_conditions()
 
 
 ## Passage par une porte : fondu au noir, chargement de la zone de destination, héros posé sur la
@@ -350,7 +343,7 @@ func _arrive(new_zone: int, warp_index: int, code: int) -> int:
 	player.place(tile, out as CharacterSprite.Direction)
 	camera.follow(player.position)
 	var step_out := out if enter >= 0 and field.is_blocked(tile, player.position.y) else -1
-	scripts.enter_zone()
+	scripts.field_started(true)
 	return step_out
 
 
@@ -369,12 +362,17 @@ func _use_zone_camera(new_zone: int) -> void:
 	camera.areas = FieldCamera.read_areas(header.camera_area)
 
 
-## Événements, musique de la saison (comme sur DS, une saison par mois : janvier printemps, février
-## été...), caméra et nom du lieu.
-func _enter_zone(new_zone: int) -> void:
+## Le héros entre dans une zone : ses événements, puis le script d'arrivée de type 2 (comme
+## 0x02189360 et le changement de carte, sauf à la reprise d'une partie : zone_change faux), puis
+## ses PNJ ; sa caméra, sa musique (celle de la saison : comme sur DS, une saison par mois) et son
+## nom.
+func _enter_zone(new_zone: int, zone_change := true) -> void:
 	var previous := zone
 	zone = new_zone
-	field.set_events_zone(zone)
+	if field.load_events(zone):
+		if zone_change:
+			scripts.zone_changed()
+		field.spawn_npcs()
 	var header := field.zones.get_zone(zone)
 	if header.is_empty():
 		return
