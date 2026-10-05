@@ -77,15 +77,17 @@ func _ready() -> void:
 	camera.target = player
 	add_child(camera)
 	camera.make_current()
+	camera.pitch_changed.connect(_on_camera_pitch_changed)
+	_use_zone_camera(field.zone_at(start_tile))
+	_on_camera_pitch_changed(camera.pitch())
 	camera.follow(player.position)
-	field.camera_pitch = camera.pitch()
 	if player.sprite:
-		player.sprite.set_camera_pitch(camera.pitch())
 		player.sprite.modulate = field.sprite_tint
 
 	_build_hud()
 	scripts = FieldScripts.create(field, player, _dialogue)
 	scripts.screen_fade = _fade
+	scripts.camera = camera
 	scripts.script_finished.connect(_on_script_finished)
 	add_child(scripts)
 	# Drapeaux de départ avant l'arrivée dans la zone : ils décident des PNJ présents.
@@ -244,8 +246,25 @@ func _fade_to(alpha: float) -> Signal:
 	return _fade.fade_to(alpha, FADE_TIME)
 
 
+## Caméra de la zone : son type (réglages de `a/0/6/0`) et ses rectangles (`a/1/0/8`).
+func _use_zone_camera(new_zone: int) -> void:
+	var header := field.zones.get_zone(new_zone)
+	if header.is_empty():
+		return
+	var settings := FieldCamera.read_settings(header.camera)
+	if settings != camera.settings:
+		camera.use_settings(settings)
+	camera.areas = FieldCamera.read_areas(header.camera_area)
+
+
+func _on_camera_pitch_changed(pitch: float) -> void:
+	field.set_camera_pitch(pitch)
+	if player and player.sprite:
+		player.sprite.set_camera_pitch(pitch)
+
+
 ## Événements, musique de la saison (comme sur DS, une saison par mois : janvier printemps, février
-## été...) et nom du lieu.
+## été...), caméra et nom du lieu.
 func _enter_zone(new_zone: int) -> void:
 	var previous := zone
 	zone = new_zone
@@ -253,6 +272,8 @@ func _enter_zone(new_zone: int) -> void:
 	var header := field.zones.get_zone(zone)
 	if header.is_empty():
 		return
+	if camera:
+		_use_zone_camera(zone)
 	var archive := Sound.sdat()
 	var music := field.zone_music(zone)
 	if archive and music >= 0 and music < archive.sequence_names.size():

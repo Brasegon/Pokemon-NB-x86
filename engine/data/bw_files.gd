@@ -19,6 +19,10 @@ const LEARNSETS := "a/0/1/8"
 const EVOLUTIONS := "a/0/1/9"
 const MOVES := "a/0/2/1"
 const FONTS := "a/0/2/3" ## vérifié (NFTR)
+## Caméras du terrain : fichier 0, 38 fiches de 44 octets (archive 60 ouverte par 0x0218DFB8).
+const FIELD_CAMERAS := "a/0/6/0" ## vérifié
+## Rectangles qui bornent le point visé par la caméra, un fichier par zone (champ 20 de l'en-tête).
+const CAMERA_AREAS := "a/1/0/8" ## vérifié
 const ITEMS := "a/0/2/4" ## vérifié (archive 0x18 de 0x02020ED0, un fichier par objet)
 const FIELD_OBJECTS := "a/0/4/9" ## vérifié (objets 3D du terrain, puis sprites des personnages en NSBTX)
 const FIELD_OBJECT_TABLE := "a/0/4/8" ## vérifié (fiches des objets du terrain : numéro -> fichier de a/0/4/9)

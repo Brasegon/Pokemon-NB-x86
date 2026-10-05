@@ -433,6 +433,28 @@ func _step() -> bool:
 			var handle := _value()
 			_wait = func(delta: float) -> bool: return host.building_animation_done(handle, delta)
 			return false
+		0x13F:
+			# Caméra des scènes (0x0218F098...) : on garde son état ; 0x140 le reprend.
+			host.camera_command(op)
+		0x140, 0x141, 0x142:
+			# 0x141 détache la caméra du héros (0x0218EBF4), 0x142 la rattache (0x0218EC00).
+			host.camera_command(op)
+		0x143:
+			# Plan de caméra (0x0218F8A0) : inclinaison, cap, distance, point visé, durée en images.
+			var pitch := _u16()
+			var yaw := _u16()
+			var distance := _u32_signed() / 4096.0
+			var x := _u32_signed() / 4096.0
+			var y := _u32_signed() / 4096.0
+			var z := _u32_signed() / 4096.0
+			host.camera_move(pitch, yaw, distance, Vector3(x, y, z), _u16())
+		0x144, 0x147:
+			# Retour en N images à l'état gardé (0x144, 0x0218F964) ou à la caméra de la zone
+			# (0x147, 0x0218F9E0).
+			host.camera_back(op == 0x147, _u16())
+		0x145:
+			_wait = host.camera_done
+			return false
 		0x14A, 0x14B:
 			# Quitter le terrain pour une application (0x020144F8), puis le retrouver (0x020145E8) :
 			# ici, les applications se posent sur le terrain.

@@ -20,6 +20,7 @@ func _initialize() -> void:
 	_test_objects()
 	_test_warps()
 	_test_tiles()
+	_test_camera()
 	_test_scripts()
 	print("%d vérifications, %d échec(s), %d ms" % [_checks, _failures, Time.get_ticks_msec() - started])
 	quit(1 if _failures > 0 else 0)
@@ -181,6 +182,42 @@ func _test_tiles() -> void:
 			nuvema_groups += 1
 	_check(nuvema_groups == 0, "aucune rencontre dans Renouet")
 	map.queue_free()
+
+
+## Caméra du terrain : réglages du type 0 (a/0/6/0), rectangle de la chambre (a/1/0/8), plan de
+## caméra d'un script (commande 0x143) puis retour derrière le héros (0x147).
+func _test_camera() -> void:
+	var zones := ZoneTable.parse(_rom.narc(BWFiles.ZONE_HEADERS).get_file(0))
+	_check(zones.get_zone(ZoneTable.NUVEMA).camera == 0 and zones.get_zone(ZoneTable.HERO_ROOM).camera_area == 0x28,
+		"Renouet : caméra de type 0 ; chambre du héros : rectangles n° 0x28")
+	var settings := FieldCamera.read_settings(0)
+	_check(settings.distance == 237.0 and settings.pitch == 9688.0 and settings.fov == 3640.0 and settings.offset == Vector3(0, 4, 0),
+		"caméra de type 0 : 237 unités, inclinaison 9688, demi-angle de vue 3640, point visé 4 unités plus haut")
+	var camera := FieldCamera.new()
+	root.add_child(camera)
+	camera.use_settings(settings)
+	_check(absf(camera.fov - 40.0) < 0.05, "angle de vue vertical : 40° (%.2f)" % camera.fov)
+	var areas := FieldCamera.read_areas(zones.get_zone(ZoneTable.HERO_ROOM).camera_area)
+	_check(areas.size() == 1 and areas[0].is_equal_approx(Rect2(4.5, 2.8125, 3.0, 3.75)), "chambre : le point visé reste entre x 4,5 et 7,5, z 2,8 et 6,6")
+	var hero := Node3D.new()
+	root.add_child(hero)
+	hero.position = Vector3(1.5, 0, 1.5)
+	camera.target = hero
+	camera.areas = areas
+	camera._process(0.0)
+	_check(camera._player_point().is_equal_approx(Vector3(4.5, 0.25, 2.8125)), "dans un coin de la chambre, la caméra vise le bord du rectangle")
+	# Le plan de l'intro : le point (120, 0, 56) en unités DS, en 40 images.
+	camera.detach()
+	camera.move_to(9688, 0, 237, Vector3(120, 0, 56), 40)
+	for i in 41:
+		camera._process(1.0 / 30.0)
+	_check(not camera.is_moving() and camera._fixed_point.is_equal_approx(Vector3(7.5, 0, 3.5)), "plan de l'intro : la caméra vise (7,5 ; 3,5) au bout de 40 images")
+	camera.back_to_zone(30)
+	for i in 31:
+		camera._process(1.0 / 30.0)
+	_check(not camera.is_moving() and camera._attached, "retour derrière le héros (0x147)")
+	camera.queue_free()
+	hero.queue_free()
 
 
 ## Scripts : où les trouver, puis le script de l'habitante de Renouet joué de bout en bout.

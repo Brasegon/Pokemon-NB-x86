@@ -247,6 +247,14 @@ func zone_music(zone: int) -> int:
 	return header.music[season] if not header.is_empty() else -1
 
 
+## Inclinaison de la caméra : les sprites des PNJ s'étirent pour rester lisibles.
+func set_camera_pitch(pitch: float) -> void:
+	camera_pitch = pitch
+	for npc in npcs:
+		if npc.sprite:
+			npc.sprite.set_camera_pitch(pitch)
+
+
 ## Charge les événements d'une zone (celle où se trouve le joueur).
 func set_events_zone(zone: int) -> void:
 	if zone == events_zone:

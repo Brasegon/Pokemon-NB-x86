@@ -26,6 +26,8 @@ var box: DialogueBox
 var yes_no: ChoiceMenu
 ## Fondu de l'écran (commande 0xB3) ; sans lui, les fondus sont instantanés.
 var screen_fade: ScreenFade
+## Caméra du terrain (commandes 0x13F à 0x147) ; sans elle, ces commandes sont sans effet.
+var camera: FieldCamera
 ## Numéro du script en cours (-1 : aucun).
 var current := -1
 ## PNJ qui a lancé le script (on lui a parlé), ou null.
@@ -515,3 +517,33 @@ func fade_screen(screens: int, from: int, to: int, speed: int) -> void:
 
 func fade_done(_delta: float) -> bool:
 	return screen_fade == null or not screen_fade.is_fading()
+
+
+## Commandes de caméra sans paramètres : 0x13F garder l'état, 0x140 le reprendre, 0x141 détacher,
+## 0x142 rattacher.
+func camera_command(op: int) -> void:
+	if camera == null:
+		return
+	match op:
+		0x13F: camera.save_state()
+		0x140: camera.restore_state()
+		0x141: camera.detach()
+		0x142: camera.attach()
+
+
+func camera_move(pitch: int, yaw: int, distance: float, point: Vector3, frames: int) -> void:
+	if camera:
+		camera.move_to(pitch, yaw, distance, point, frames)
+
+
+func camera_back(to_zone: bool, frames: int) -> void:
+	if camera == null:
+		return
+	if to_zone:
+		camera.back_to_zone(frames)
+	else:
+		camera.back_to_saved(frames)
+
+
+func camera_done(_delta: float) -> bool:
+	return camera == null or not camera.is_moving()

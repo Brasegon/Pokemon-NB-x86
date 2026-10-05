@@ -617,6 +617,42 @@ d'elle (0x0218C964), puis le premier bâtiment chargé de ce genre dans le recta
 terrain. Passer une porte (tâche 0x021A7C88) : la porte s'ouvre (0x021A8218, animation 0), le héros
 y entre, puis la porte se ferme (0x021A8248, animation 1) ; 0x021A81E4 attend la fin.
 
+### Caméra du terrain (`a/0/6/0`, `a/1/0/8`, `field_camera.gd`)
+
+0x0218DFB8 (overlay 21) crée la caméra avec le **type de caméra de la zone** (bits 9 à 15 du
+champ 1C de l'en-tête, lus par 0x02013BCC) et ouvre les archives 60 (`a/0/6/0`) et 108
+(`a/1/0/8`). 0x0218E200 lit la fiche n° type (44 octets) du fichier 0 de `a/0/6/0` (38 fiches), et
+0x0218E12C l'applique :
+
+| Position | Contenu | Type 0 |
+| --- | --- | --- |
+| 00 | distance (u32, unités DS) | 237 (14,8 cases) |
+| 04, 08 | inclinaison, cap (u32, angles sur 65536) | 9688 (53,2°), 0 |
+| 11 | projection (u8 : 0 ou 1, 0x02046B78) | 0 |
+| 12 | demi-angle de vue vertical (u16), passé en sinus et cosinus (table 0x020A1AC0) | 3640 (20°, soit 40° de haut en bas) |
+| 14, 18 | plans proche et lointain (fx32) | 1, 1024 |
+| 1C | la caméra suit le héros (u32) | 1 |
+| 20 | décalage du point visé (3 x fx32) | (0, 4, 0) |
+
+365 des 427 zones ont le type 0 (Renouet, la Route 1, les maisons). La caméra se place au point
+visé + (sin cap x cos incl., sin incl., cos cap x cos incl.) x distance (0x0218E254, le cosinus de
+l'inclinaison gardé au-dessus de 0x200/4096). Structure de la caméra : point visé en +0x24 et
++0x48, angles en +0x78 et +0x7A, distance en +0x7C, demi-angle de vue en +0x80.
+
+**Rectangles de la caméra** : le champ 20 de l'en-tête de zone (0x02013BE0 ; 0xFFFF = aucun)
+désigne un fichier de `a/1/0/8` (0x0218F0EC) : nombre (u32), puis des fiches de 6 mots (genre,
+phase, x min, x max, z min, z max en unités DS), copiées en +0x88 (0x0218F0B4). À chaque image
+(0x0218E2F8), les fonctions de la table 0x021DD998 les appliquent : genre 1, phase 0 (282 fiches
+sur 283) : 0x0218F19C borne le point visé dans le rectangle. Dans la chambre du héros (fichier
+0x28), le point visé reste entre x 72 et 120, z 45 et 105 : la caméra ne montre pas le dehors.
+
+**Commandes des scripts** : 0x13F garde l'état de la caméra et 0x140 le reprend ; 0x141 et 0x142
+la détachent du héros et la rattachent (mot +0x1C de la caméra) ; 0x143 (u16 inclinaison, u16 cap,
+fx32 distance, 3 x fx32 point visé, u16 images) prépare un plan et 0x0218F8A0 l'y amène ; 0x144
+et 0x147 (u16 images) la ramènent à l'état gardé (0x0218F964) ou à la caméra de la zone
+(0x0218F9E0) ; 0x145 attend la fin du déplacement ; 0x146 prend un plan dans l'archive 0xA3. Le
+plan de l'intro : 9688, 0, 237, point (120, 0, 56), 40 images.
+
 ### Éclairage (`a/0/6/1`, `field_light.gd`)
 
 56 fichiers de 15 images clés de 52 octets : 00 heure (u16 période : 0 matin, 1 jour, 2 soir, 3 nuit,
@@ -800,7 +836,7 @@ mettent le script 1 en attente avec 0x21), Route 1 (317/1, la démonstration de 
 Comme le jeu (0x0218A6D8, à chaque image), le moteur regarde le script en attente et les scènes
 de la zone à la fin de chaque script, dans la zone où le script a laissé le héros.
 
-Encore sautées sur ce chemin : la caméra (0x13F à 0x147), 0x21C (deux valeurs rangées dans un champ de bits
+Encore sautées sur ce chemin : 0x21C (deux valeurs rangées dans un champ de bits
 de la sauvegarde, 0x0200E3E8), 0xDA (donne aux variables 0x4031 à 0x403A une valeur de la table
 0x02170F40 ; aucun script ne les lit), 0xD9 (une valeur de 1 à 17 rangée dans la sauvegarde,
 0x02012900), 0xE7 (un bit de l'octet +0x45 du profil, 0x0200C2F0), 0x19F et 0x240 (des numéros
