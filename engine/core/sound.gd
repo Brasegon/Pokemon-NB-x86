@@ -1,0 +1,127 @@
+extends Node
+## Musique, bruitages et cris (autoload « Sound »), synthétisés en direct à partir du SDAT de la ROM.
+##
+## Trois canaux indépendants (musique, effets, cris), chacun avec son séquenceur et son flux
+## AudioStreamGenerator. Les volumes suivent les réglages « son/musique » et « son/effets » (0 à 10).
+
+const BUFFER_SECONDS := 0.3
+const VOLUME_STEPS := 10.0
+
+
+class Channel:
+	var player: AudioStreamPlayer
+	var playback: AudioStreamGeneratorPlayback
+	var sequence := SequencePlayer.new()
+	var setting := "musique"
+
+
+var _sdat: SDAT
+var _music: Channel
+var _effects: Channel
+var _cries: Channel
+
+
+func _ready() -> void:
+	_music = _make_channel("musique")
+	_effects = _make_channel("effets")
+	_cries = _make_channel("effets")
+	get_parent().get_node("Settings").changed.connect(_on_settings_changed)
+	_apply_volumes()
+
+
+## Archive son de la ROM, chargée au premier besoin (51 Mo).
+func sdat() -> SDAT:
+	if _sdat == null:
+		var rom: Node = get_parent().get_node("Rom")
+		if rom.is_loaded():
+			_sdat = SDAT.parse(rom.rom.read_file(BWFiles.SOUND))
+	return _sdat
+
+
+## Joue une musique par son nom (« SEQ_BGM_TITLE »...). Ne recommence pas si elle joue déjà.
+func play_music(sequence_name: String) -> bool:
+	if _music.sequence.playing and _music.sequence.sequence_name == sequence_name:
+		return true
+	return _play(_music, sequence_name)
+
+
+func stop_music() -> void:
+	_music.sequence.release_all()
+
+
+func current_music() -> String:
+	return _music.sequence.sequence_name if _music.sequence.playing else ""
+
+
+func play_effect(sequence_name: String) -> bool:
+	return _play(_effects, sequence_name)
+
+
+## Cri d'un Pokémon : la séquence SEQ_PV001 jouée avec la banque de l'espèce (BANK_PV001...).
+func play_cry(species: int) -> bool:
+	var archive := sdat()
+	if archive == null:
+		return false
+	return _play(_cries, "SEQ_PV001", archive.find_bank("BANK_PV%03d" % species))
+
+
+## Séquenceur de la musique (pour afficher son état, par exemple dans le juke-box).
+func music_sequence() -> SequencePlayer:
+	return _music.sequence
+
+
+func _play(channel: Channel, sequence_name: String, bank := -1) -> bool:
+	var archive := sdat()
+	if archive == null:
+		return false
+	var index := archive.find_sequence(sequence_name)
+	if index < 0 or not channel.sequence.load_sequence(archive, index, bank):
+		return false
+	if not channel.player.playing:
+		channel.player.play()
+		channel.playback = channel.player.get_stream_playback()
+	_fill(channel)
+	return true
+
+
+func _process(_delta: float) -> void:
+	for channel in [_music, _effects, _cries]:
+		_fill(channel)
+
+
+func _fill(channel: Channel) -> void:
+	if channel.playback == null:
+		return
+	var frames := channel.playback.get_frames_available()
+	if frames <= 0:
+		return
+	if channel.sequence.is_busy():
+		channel.playback.push_buffer(channel.sequence.mix(frames))
+	else:
+		# Plus rien à jouer : on arrête le flux pour ne pas consommer de temps de calcul.
+		channel.player.stop()
+		channel.playback = null
+
+
+func _make_channel(setting: String) -> Channel:
+	var channel := Channel.new()
+	channel.setting = setting
+	var stream := AudioStreamGenerator.new()
+	stream.mix_rate = SequencePlayer.OUTPUT_RATE
+	stream.buffer_length = BUFFER_SECONDS
+	channel.player = AudioStreamPlayer.new()
+	channel.player.stream = stream
+	add_child(channel.player)
+	return channel
+
+
+func _on_settings_changed(section: String, _key: String) -> void:
+	if section == "son":
+		_apply_volumes()
+
+
+func _apply_volumes() -> void:
+	var settings := get_parent().get_node("Settings")
+	for channel in [_music, _effects, _cries]:
+		var level: float = settings.get_value("son", channel.setting, VOLUME_STEPS) / VOLUME_STEPS
+		channel.player.volume_db = linear_to_db(maxf(level, 0.0001))
