@@ -662,8 +662,13 @@ phase, x min, x max, z min, z max en unités DS), copiées en +0x88 (0x0218F0B4)
 sur 283) : 0x0218F19C borne le point visé dans le rectangle. Dans la chambre du héros (fichier
 0x28), le point visé reste entre x 72 et 120, z 45 et 105 : la caméra ne montre pas le dehors.
 
-**Commandes des scripts** : 0x13F garde l'état de la caméra et 0x140 le reprend ; 0x141 et 0x142
-la détachent du héros et la rattachent (mot +0x1C de la caméra) ; 0x143 (u16 inclinaison, u16 cap,
+**Commandes des scripts** : 0x13F garde l'état de la caméra : angles, distance, point visé et mode
+de calcul (+0x14), copiés en +0xF0 par 0x0218F7B8, qui ne fait rien tant qu'un état est gardé
+(indicateur en +0xF0 + 0x98) ; le premier reste. 0x140 le libère : 0x0218F818 remet le mode et
+efface l'indicateur, sans toucher à la position ni au lien avec le héros. Seules 0x141 et 0x142
+détachent la caméra du héros et la rattachent (mot +0x1C). À la fin de la démonstration de la
+Route 1, le script garde l'état une deuxième fois caméra détachée, puis rattache (0x142) avant de
+libérer (0x140) : la caméra suit à nouveau le héros. 0x143 (u16 inclinaison, u16 cap,
 fx32 distance, 3 x fx32 point visé, u16 images) prépare un plan et 0x0218F8A0 l'y amène ; 0x144
 et 0x147 (u16 images) la ramènent à l'état gardé (0x0218F964) ou à la caméra de la zone
 (0x0218F9E0) ; 0x145 attend la fin du déplacement ; 0x146 prend un plan dans l'archive 0xA3. Le

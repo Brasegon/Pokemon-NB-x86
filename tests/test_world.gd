@@ -256,6 +256,15 @@ func _test_camera() -> void:
 	for i in 31:
 		camera._process(1.0 / 30.0)
 	_check(not camera.is_moving() and camera._attached, "retour derrière le héros (0x147)")
+	# Comme à la fin de la démonstration de la Route 1 : 0x13F ne garde que le premier état
+	# (0x0218F7B8), 0x140 le libère sans détacher la caméra (seules 0x141 et 0x142 le font).
+	camera.save_state()
+	camera.detach()
+	camera.save_state()
+	var first_kept: bool = camera._saved.attached
+	camera.attach()
+	camera.release_state()
+	_check(first_kept and camera._attached and camera._saved.is_empty(), "0x13F garde le premier état, 0x140 laisse la caméra suivre le héros")
 	camera.queue_free()
 	hero.queue_free()
 

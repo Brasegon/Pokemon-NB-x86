@@ -560,7 +560,7 @@ func camera_command(op: int) -> void:
 		return
 	match op:
 		0x13F: camera.save_state()
-		0x140: camera.restore_state()
+		0x140: camera.release_state()
 		0x141: camera.detach()
 		0x142: camera.attach()
 

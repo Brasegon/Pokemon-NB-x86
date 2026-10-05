@@ -445,7 +445,7 @@ func _step() -> bool:
 			_wait = func(delta: float) -> bool: return host.building_animation_done(handle, delta)
 			return false
 		0x13F:
-			# Caméra des scènes (0x0218F098...) : on garde son état ; 0x140 le reprend.
+			# Caméra des scènes (0x0218F098...) : on garde son état ; 0x140 le libère.
 			host.camera_command(op)
 		0x140, 0x141, 0x142:
 			# 0x141 détache la caméra du héros (0x0218EBF4), 0x142 la rattache (0x0218EC00).
