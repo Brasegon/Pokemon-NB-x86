@@ -18,7 +18,13 @@ extends Control
 ## - nom (0x02208094) : petite police, blanc ombré de noir (couleurs 1 et 4 de la palette), sur une
 ##   image copiée à partir de la tuile 2 (en face) ou 1 (joueur) du fond, texte à 8 pixels du bord
 ##   (2 s'il dépasse 48 pixels), 5 pixels sous le haut ;
-## - sexe (0x02208208) : tuiles 28-29 (mâle) ou 30-31 (femelle) en colonne juste avant le « N. ».
+## - sexe (0x02208208) : tuiles 28-29 (mâle) ou 30-31 (femelle) en colonne juste avant le « N. » ;
+## - niveau (0x022084F0) : écrit avec la même police juste après le « N. » ;
+## - statut : icône de `a/0/8/3` (archive 0x53 de 0x0202757C : palette 11, image 12, cellules 13),
+##   choisie par 0x0202765C (paralysie 1, sommeil 3, gel 2, brûlure 5, poison 4, K.O. 6), posée
+##   à (-30, 8) du centre de la jauge du joueur, (-38, 8) d'en face (table 0x0220AA60) ;
+## - en combat sauvage, une petite Ball (tuile 27) devant le nom si l'espèce est déjà capturée
+##   (0x022085F0).
 ##
 ## La barre de PV descend comme dans le jeu (0x02207F0C) : d'un PV par image (60 par seconde), ou
 ## d'un pixel par image quand le Pokémon a moins de 48 PV.
@@ -64,8 +70,22 @@ const SLASH_TILE := 3
 ## Couleurs du nom : 1 (blanc) et 4 (ombre) de la palette 162.
 const NAME_INK := Color("#ffffff")
 const NAME_SHADOW := Color("#212121")
+const CAUGHT_TILE := 27
+const CAUGHT_POSITION := Vector2(8, 8)
+## Icônes de statut (`a/0/8/3`).
+const STATUS_ARCHIVE := "a/0/8/3"
+const STATUS_PALETTE := 11
+const STATUS_GRAPHICS := 12
+const STATUS_CELLS := 13
+## Coin haut-gauche de l'icône (32 x 8) dans la jauge, joueur et en face.
+const STATUS_POSITIONS: Array[Vector2] = [Vector2(18, 16), Vector2(10, 16)]
+## Icône de chaque statut (0x0202765C) ; K.O. : 6.
+const STATUS_ICONS := {Pokemon.Status.PARALYSIS: 1, Pokemon.Status.SLEEP: 3, Pokemon.Status.FREEZE: 2,
+	Pokemon.Status.BURN: 5, Pokemon.Status.POISON: 4}
+const FAINTED_ICON := 6
 
 static var _textures := {}
+static var _status_textures := {}
 
 var side := BattleStage.Side.ENEMY
 var pokemon_name := ""
@@ -76,6 +96,9 @@ var max_hp := 1
 var shown_hp := 1.0
 ## Expérience affichée, en fraction du niveau (0 à 1).
 var shown_exp := 0.0
+## Statut affiché (Pokemon.Status) ; petite Ball « déjà capturé ».
+var status := Pokemon.Status.NONE
+var caught_mark := false
 
 var _hp_target := 1.0
 var _hp_speed := 0.0
@@ -100,6 +123,7 @@ func show_pokemon(pokemon: Pokemon) -> void:
 	pokemon_name = pokemon.name()
 	level = pokemon.level
 	gender = pokemon.gender
+	status = pokemon.status
 	max_hp = maxi(pokemon.max_hp(), 1)
 	shown_hp = pokemon.hp
 	_hp_target = shown_hp
@@ -200,7 +224,14 @@ func _draw() -> void:
 		var first := MALE_TILES if gender == Pokemon.Gender.MALE else FEMALE_TILES
 		_draw_tile(first, Vector2(level_x - 8, 0))
 		_draw_tile(first + 1, Vector2(level_x - 8, 8))
-	_draw_number(level, Vector2(level_x + 8, 8), false)
+	GameTheme.draw_text(self, Vector2(level_x + 8, NAME_Y), str(level), font, NAME_INK, NAME_SHADOW)
+	if caught_mark:
+		_draw_tile(CAUGHT_TILE, CAUGHT_POSITION)
+	var icon := status_icon_index(status, shown_hp <= 0.0 and _hp_target <= 0.0)
+	if icon >= 0:
+		var texture := status_texture(icon)
+		if texture:
+			draw_texture(texture, STATUS_POSITIONS[side])
 	if player:
 		# PV en chiffres : « courant/max », chacun aligné à droite sur trois tuiles.
 		var numbers := Vector2(HP_NUMBERS_POSITION)
@@ -229,6 +260,29 @@ func _draw_number(value: int, origin: Vector2, right_aligned: bool) -> void:
 func _draw_tile(tile: int, at: Vector2) -> void:
 	var atlas: Texture2D = _textures.atlas
 	draw_texture_rect_region(atlas, Rect2(at, Vector2(8, 8)), Rect2((tile % 32) * 8, (tile / 32) * 8, 8, 8))
+
+
+## Icône de statut (0x0202765C) : -1 s'il n'y en a pas.
+static func status_icon_index(pokemon_status: int, fainted: bool) -> int:
+	if fainted:
+		return FAINTED_ICON
+	return STATUS_ICONS.get(pokemon_status, -1)
+
+
+## Image d'une icône de statut de `a/0/8/3` (32 x 8), gardée en cache.
+static func status_texture(icon: int) -> Texture2D:
+	if not _status_textures.has(icon):
+		var archive: NARC = Autoloads.rom().narc(STATUS_ARCHIVE)
+		var texture: Texture2D = null
+		if archive:
+			var palette := NCLR.parse(archive.get_file(STATUS_PALETTE))
+			var gfx := NCGR.parse(archive.get_file(STATUS_GRAPHICS))
+			var cells := NCER.parse(archive.get_file(STATUS_CELLS))
+			if palette and gfx and cells and icon < cells.cells.size():
+				var image: Image = cells.cell_to_image(icon, gfx, palette)
+				texture = ImageTexture.create_from_image(image) if image else null
+		_status_textures[icon] = texture
+	return _status_textures[icon]
 
 
 ## Une tuile 8x8 de la planche des jauges (la petite Poké Ball 27 sert de Ball lancée).

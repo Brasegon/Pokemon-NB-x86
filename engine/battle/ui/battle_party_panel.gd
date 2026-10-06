@@ -71,6 +71,9 @@ func draw_button_content(index: int, rect: Rect2) -> void:
 		draw_rect(Rect2(bar.position + Vector2(1, 1), Vector2(pixels, 3)), color)
 	var hp_text := "%d/%d" % [pokemon.hp, max_hp]
 	GameTheme.draw_text(self, Vector2(bar.end.x + 6, rect.position.y + rect.size.y - 16), hp_text, small, TEXT_INK, TEXT_SHADOW)
+	var icon := BattleGauge.status_icon_index(pokemon.status, false)
+	if icon >= 0 and BattleGauge.status_texture(icon):
+		draw_texture(BattleGauge.status_texture(icon), Vector2(rect.position.x + 10 + GameTheme.text_width(name_text) + 18, rect.position.y + 7))
 	var note := ""
 	if pokemon.is_fainted():
 		note = rom.text(BWFiles.TEXT_BATTLE_PARTY, 26)

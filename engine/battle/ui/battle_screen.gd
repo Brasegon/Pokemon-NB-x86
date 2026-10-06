@@ -256,6 +256,9 @@ func _play(event: Dictionary) -> void:
 			_play_sound(event.name, event.get("fanfare", false))
 		"status":
 			_status[event.side] = event.status
+			if gauges[event.side]:
+				gauges[event.side].status = event.status
+				gauges[event.side].queue_redraw()
 		"stat":
 			if sprites[event.side]:
 				await _stat_flash(sprites[event.side], event.up)
@@ -371,6 +374,8 @@ func _send_out(event: Dictionary) -> void:
 	gauge.shown_hp = event.get("hp", mon.hp())
 	gauge.animate_hp(int(gauge.shown_hp))
 	_status[side] = event.get("status", Pokemon.Status.NONE)
+	gauge.status = _status[side]
+	gauge.caught_mark = battle.is_wild() and side == BattleSide.ENEMY and battle.state.caught.has(mon.pokemon.species)
 	var wild_intro: bool = battle.is_wild() and side == BattleSide.ENEMY and event.get("intro", false)
 	if wild_intro:
 		# Le Pokémon sauvage est là dès l'ouverture ; la caméra recule vers la vue du combat.
