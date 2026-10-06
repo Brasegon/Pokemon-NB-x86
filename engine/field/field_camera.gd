@@ -14,10 +14,8 @@ extends Camera3D
 ## x min, x max, z min, z max en unités DS ; genre 1, phase 0 : 0x0218F19C borne le point visé) :
 ## la caméra ne montre pas le dehors de la pièce.
 ##
-## Les scripts la déplacent (commandes 0x13F à 0x147) : save_state(), detach(), move_to(),
-## back_to_saved(), back_to_zone(), is_moving().
-
-signal pitch_changed(pitch: float)
+## Les scripts la déplacent (commandes 0x13F à 0x147) : save_state(), release_state(), detach(),
+## attach(), move_to(), back_to_saved(), back_to_zone(), is_moving().
 
 const ENTRY_SIZE := 44
 ## Angles du jeu : 65536 = un tour.
@@ -106,7 +104,6 @@ func use_settings(new_settings: Dictionary) -> void:
 	_state = {"distance": settings.distance, "pitch": settings.pitch, "yaw": settings.yaw}
 	_attached = true
 	_move = {}
-	pitch_changed.emit(pitch())
 
 
 ## Inclinaison actuelle, en radians.
@@ -127,7 +124,6 @@ func _process(delta: float) -> void:
 			_state[key] = lerpf(_move.from[key], _move.to[key], t)
 		var goal: Vector3 = _move.point_to if _move.point_to != null else _player_point()
 		_fixed_point = (_move.point_from as Vector3).lerp(goal, t)
-		pitch_changed.emit(pitch())
 		if t >= 1.0:
 			_attached = _move.attach
 			_move = {}
@@ -168,20 +164,18 @@ static func _angle(units: float) -> float:
 
 # --- Commandes des scripts ------------------------------------------------------------------
 
-## 0x13F : garde l'état de la caméra (0x140 le reprend).
+## 0x13F : garde l'état de la caméra (angles, distance, point visé) pour 0x144. Comme 0x0218F7B8,
+## rien n'est gardé tant qu'un état l'est déjà (indicateur en +0xF0 + 0x98) : le premier reste.
 func save_state() -> void:
-	_saved = {"state": _state.duplicate(), "attached": _attached, "point": _fixed_point}
-
-
-## 0x140 : reprend l'état gardé par 0x13F.
-func restore_state() -> void:
 	if _saved.is_empty():
-		return
-	_state = _saved.state.duplicate()
-	_attached = _saved.attached
-	_fixed_point = _saved.point
-	_move = {}
-	pitch_changed.emit(pitch())
+		_saved = {"state": _state.duplicate(), "attached": _attached, "point": _fixed_point}
+
+
+## 0x140 : libère l'état gardé. 0x0218F818 remet le mode de calcul de la caméra et efface
+## l'indicateur, sans toucher à sa position ni à son lien avec le héros : seules 0x141 et 0x142 la
+## détachent et la rattachent (mot +0x1C).
+func release_state() -> void:
+	_saved = {}
 
 
 ## 0x141 : la caméra ne suit plus le héros (0x0218EBF4) ; 0x142 la rattache (0x0218EC00).

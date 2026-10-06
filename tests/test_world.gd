@@ -22,6 +22,7 @@ func _initialize() -> void:
 	_test_tiles()
 	_test_camera()
 	_test_scripts()
+	_test_story_scenes()
 	_test_save()
 	print("%d vérifications, %d échec(s), %d ms" % [_checks, _failures, Time.get_ticks_msec() - started])
 	quit(1 if _failures > 0 else 0)
@@ -118,15 +119,42 @@ func _test_warps() -> void:
 	var rules: BuildingRules = _rom.building_rules()
 	_check(rules != null and rules.kind_of(1) == 1 and rules.kind_of(11) == 8 and rules.sound(1, 0) == 1669,
 		"règles des bâtiments de l'overlay 21 : genres et sons des portes")
+	# Passe-muraille (F6) : le héros traverse le mur de la maison, mais la porte se prend toujours.
+	var walker_hero := FieldPlayer.create(map, NSBTX.parse(_rom.narc(BWFiles.FIELD_OBJECTS).get_file(6)))
+	map.add_child(walker_hero)
+	walker_hero.controllable = false
+	var wall := Vector2i(781, 748)
+	walker_hero.place(wall + Vector2i(0, 1), CharacterSprite.Direction.UP)
+	walker_hero.walk(CharacterSprite.Direction.UP)
+	var blocked_before := walker_hero.tile == wall + Vector2i(0, 1)
+	walker_hero.pass_through = true
+	walker_hero.walk(CharacterSprite.Direction.UP)
+	_check(map.is_blocked(wall) and blocked_before and walker_hero.tile == wall, "passe-muraille : le héros entre dans le mur de sa maison")
+	var taken := []
+	walker_hero.warp_requested.connect(func(index: int) -> void: taken.append(index))
+	walker_hero.place(Vector2i(782, 749), CharacterSprite.Direction.UP)
+	walker_hero.walk(CharacterSprite.Direction.UP)
+	_check(taken == [0] and walker_hero.tile == Vector2i(782, 749), "passe-muraille : la porte de la maison se prend toujours")
+	walker_hero.queue_free()
 	var door := map.find_building(BuildingRules.DOOR, Vector2i(782, 748))
 	_check(not door.is_empty() and door.info.animations.size() == 2 and map.animate_building(door, BuildingRules.OPEN) > 0.0,
 		"porte de la maison du héros : deux animations, l'ouverture dure %.2f s" % (map.animate_building(door, BuildingRules.OPEN) if not door.is_empty() else 0.0))
 
+	var outside := map.events
 	_check(map.load_zone(390), "rez-de-chaussée de la maison du héros (zone 390)")
 	map.set_events_zone(390)
 	var mat := map.events.warp_tile(0)
 	map.update_around(mat)
-	_check(mat == Vector2i(5, 10) and not map.is_blocked(mat), "on arrive sur le tapis (5, 10), case libre")
+	_check(mat == Vector2i(5, 10) and not map.is_blocked(mat), "tapis de 3 cases en (5, 10), case libre")
+	# Repère de la porte de départ (0x02162AF8) et case d'arrivée (0x02162A34) : par la porte de la
+	# maison (une case), on arrive au milieu du tapis ; du tapis, on ressort sur la porte.
+	var code := outside.entry_code(0, Vector2i(782, 748))
+	_check(code == 0x110 and map.events.arrival_tile(0, code) == Vector2i(6, 10), "par la porte, on arrive au milieu du tapis (6, 10)")
+	_check(outside.arrival_tile(0, map.events.entry_code(0, Vector2i(7, 10))) == Vector2i(782, 748), "du tapis, on ressort sur la porte")
+	_check(ZoneEvents.arrival_offset(0x032, 0, 3) == 2 and ZoneEvents.arrival_offset(0x032, 3, 3) == 0
+		and ZoneEvents.arrival_offset(0x020, 0, 3) == 1 and ZoneEvents.arrival_offset(0x021, 0, 3) == 1
+		and ZoneEvents.arrival_offset(0x031, 0, 2) == 0 and ZoneEvents.arrival_offset(0, 0, 3) == 0,
+		"portes larges : même case, sens croisés, centres alignés")
 	_check(map.warp_for_push(mat, CharacterSprite.Direction.DOWN) == 0, "sur le tapis, pousser vers le bas fait sortir")
 	_check(map.warp_for_push(mat, CharacterSprite.Direction.UP) == -1, "sur le tapis, vers le haut : rien")
 	var stairs := map.events.warp_tile(1)
@@ -246,6 +274,15 @@ func _test_camera() -> void:
 	for i in 31:
 		camera._process(1.0 / 30.0)
 	_check(not camera.is_moving() and camera._attached, "retour derrière le héros (0x147)")
+	# Comme à la fin de la démonstration de la Route 1 : 0x13F ne garde que le premier état
+	# (0x0218F7B8), 0x140 le libère sans détacher la caméra (seules 0x141 et 0x142 le font).
+	camera.save_state()
+	camera.detach()
+	camera.save_state()
+	var first_kept: bool = camera._saved.attached
+	camera.attach()
+	camera.release_state()
+	_check(first_kept and camera._attached and camera._saved.is_empty(), "0x13F garde le premier état, 0x140 laisse la caméra suivre le héros")
 	camera.queue_free()
 	hero.queue_free()
 
@@ -296,14 +333,25 @@ func _test_scripts() -> void:
 	map.events_zone = -1
 	map.set_events_zone(ZoneTable.NUVEMA)
 	_check(map.npcs.size() == 5 and map.npc_by_id(5) == null, "la mère du héros n'est plus dehors")
+	# Changement de zone (0x02158A80) : drapeaux 0 à 99 et variables 0x4000 à 0x401E remis à zéro,
+	# puis le script d'arrivée de type 2 de Renouet (17), qui enlève le drapeau 368.
+	scripts.work.set_flag(7)
+	scripts.work.set_flag(368)
+	scripts.work.set_var(0x4005, 3)
+	scripts.work.set_var(0x401F, 5)
+	scripts.zone_changed()
+	_check(not scripts.work.get_flag(7) and scripts.work.get_var(0x4005) == 0 and scripts.work.get_var(0x401F) == 5,
+		"changement de zone : drapeaux 0 à 99 et variables 0x4000 à 0x401E remis à zéro")
+	_check(not scripts.work.get_flag(368) and not scripts.is_running(), "script d'arrivée de type 2 de Renouet (17) : drapeau 368 enlevé")
+	scripts.work.set_var(0x401F, 0)
 
 	# L'intro dans la chambre (zone 391) démarre toute seule : variable 0x4081 = 0 -> script 5.
 	map.load_zone(391)
-	map.set_events_zone(391)
+	_change_zone(map, scripts, 391)
 	map.update_around(Vector2i(8, 2))
 	hero.place(Vector2i(8, 2), CharacterSprite.Direction.LEFT)
 	_check(map.npc_by_id(0) != null and map.npc_by_id(1) == null, "chambre : Tcheren là, Bianca pas encore arrivée")
-	scripts.enter_zone()
+	scripts.field_started(true)
 	_check(scripts.is_running() and scripts.current == 5, "l'intro démarre toute seule (script 5)")
 	var frames := _play(scripts, box)
 	print("   Intro : %d images, commandes sautées : %s" % [frames, scripts.vm.skipped])
@@ -311,10 +359,20 @@ func _test_scripts() -> void:
 	_check(map.npc_by_id(1) != null and not scripts.work.get_flag(501), "Bianca est arrivée (drapeau 501 enlevé, commande 0x6B)")
 
 	# Le cadeau (PNJ n° 2, script 9) : choix du starter, deux combats, la chambre en désordre.
+	# Avant le premier combat, pendant le noir, la commande 0x6D pose le héros en (4, 6) tourné
+	# vers la droite et Bianca en (6, 7) ; elle monte d'une case et piétine vers la gauche.
+	var duel := {}
+	scripts.battle_started.connect(func(_trainer: int, _partner: int) -> void:
+		if duel.is_empty():
+			duel.merge({"hero": hero.tile, "facing": hero.facing, "bianca": map.npc_by_id(1).tile,
+				"bianca_facing": map.npc_by_id(1).facing}))
 	scripts.vm.skipped.clear()
 	_check(scripts.run(9, map.npc_by_id(2)), "le cadeau lance le script 9")
 	frames = _play(scripts, box)
 	print("   Cadeau : %d images, commandes sautées : %s" % [frames, scripts.vm.skipped])
+	_check(duel.get("hero") == Vector2i(4, 6) and duel.get("facing") == CharacterSprite.Direction.RIGHT
+		and duel.get("bianca") == Vector2i(6, 6) and duel.get("bianca_facing") == CharacterSprite.Direction.LEFT,
+		"premier combat : le héros en (4, 6) face à Bianca en (6, 6) (commande 0x6D sur le héros)")
 	_check(not scripts.is_running() and scripts.work.get_var(0x4081) == 2, "le script du cadeau se termine : variable 0x4081 = 2")
 	_check(StarterChoice.read_species(_rom.rom) == [495, 498, 501], "starters de l'overlay 223 : Vipélierre, Gruikui, Moustillon")
 	_check(scripts.state.party.size() == 1 and scripts.state.party[0].species == 498 and scripts.state.party[0].level == 5,
@@ -347,7 +405,17 @@ func _test_story(map: FieldMap, hero: FieldPlayer, scripts: FieldScripts, box: D
 	map.update_around(Vector2i(788, 739))
 	hero.place(Vector2i(788, 739), CharacterSprite.Direction.UP)
 	_check(scripts.check_triggers(Vector2i(788, 739)), "déclencheur de la sortie nord de Renouet")
+	# 0x241 garde Tcheren (250) et Bianca (240) au passage sur la Route 1 : ils sont là quand la
+	# démonstration de la professeure commence, et elle les retire à la fin (0x6C).
+	var on_route := {}
+	var watch := func(id: int) -> void:
+		if id == 1 and map.events_zone == 317 and on_route.is_empty():
+			on_route.merge({"cheren": map.npc_by_id(250) != null, "bianca": map.npc_by_id(240) != null})
+	scripts.script_started.connect(watch)
 	_story_step(scripts, box, "Sortie de Renouet")
+	scripts.script_started.disconnect(watch)
+	_check(on_route.get("cheren", false) and on_route.get("bianca", false) and map.npc_by_id(250) == null and map.npc_by_id(240) == null,
+		"Tcheren et Bianca suivent le héros sur la Route 1 (commande 0x241), puis s'en vont (0x6C)")
 	# La scène mène le héros sur la Route 1, où le script mis en attente (0x21) démarre : la
 	# démonstration de capture de la professeure.
 	_check(map.events_zone == 317 and scripts.work.get_var(0x4080) == 3, "le héros est sur la Route 1, 0x4080 = 3")
@@ -361,14 +429,22 @@ func _test_story(map: FieldMap, hero: FieldPlayer, scripts: FieldScripts, box: D
 	_check(scripts.work.get_var(0x407C) == 2, "la Route 1 est libre : 0x407C = 2")
 
 
-## Entre dans une zone comme par une porte : événements, héros sur la case, scènes d'arrivée.
+## Entre dans une zone comme par une porte : événements, script de type 2, PNJ, héros sur la case,
+## script de type 4 et scènes d'arrivée.
 func _enter(map: FieldMap, hero: FieldPlayer, scripts: FieldScripts, zone: int, tile: Vector2i) -> void:
 	map.load_zone(zone)
-	map.set_events_zone(zone)
+	_change_zone(map, scripts, zone)
 	map.update_around(tile)
 	hero.place(tile, CharacterSprite.Direction.UP)
 	scripts.vm.skipped.clear()
-	scripts.enter_zone()
+	scripts.field_started(true)
+
+
+## Comme FieldScene._enter_zone : les événements de la zone, son script de type 2, puis ses PNJ.
+func _change_zone(map: FieldMap, scripts: FieldScripts, zone: int) -> void:
+	if map.load_events(zone):
+		scripts.zone_changed()
+		map.spawn_npcs()
 
 
 ## Joue les scripts qui démarrent (scène, script en attente...) et affiche les commandes sautées.
@@ -384,9 +460,50 @@ func _story_step(scripts: FieldScripts, box: DialogueBox, label: String) -> void
 		var map := scripts.field
 		var zone := map.zone_at(scripts.player.tile)
 		if zone != map.events_zone:
-			map.set_events_zone(zone)
-			scripts.enter_zone()
+			_change_zone(map, scripts, zone)
 	print("   %s : scripts %s, %d images, commandes sautées : %s" % [label, played, frames, scripts.vm.skipped])
+
+
+## Scènes de l'histoire du menu de développement : chacune, préparée comme le fait le terrain,
+## démarre avec le script attendu et va jusqu'au bout.
+func _test_story_scenes() -> void:
+	var map := FieldMap.new()
+	root.add_child(map)
+	var hero := FieldPlayer.create(map, NSBTX.parse(_rom.narc(BWFiles.FIELD_OBJECTS).get_file(6)))
+	map.add_child(hero)
+	var box := DialogueBox.new()
+	root.add_child(box)
+	var played := []
+	for index in StoryScenes.SCENES.size():
+		var scene: Dictionary = StoryScenes.SCENES[index]
+		var state := StoryScenes.new_state(index)
+		var scripts := FieldScripts.create(map, hero, box, state)
+		root.add_child(scripts)
+		# Comme FieldScene._ready : début de partie, histoire avancée, zone, scène.
+		scripts.new_game()
+		StoryScenes.apply(index, state)
+		map.load_zone(scene.zone)
+		var tile: Vector2i = scene.tile
+		if tile.x < 0:
+			var header := map.zones.get_zone(scene.zone)
+			tile = Vector2i(header.x, header.z)
+		map.update_around(tile)
+		map.work = state.work
+		_change_zone(map, scripts, scene.zone)
+		hero.place(tile, scene.facing)
+		StoryScenes.prepare(index, scripts)
+		scripts.field_started(true)
+		StoryScenes.start(index, scripts)
+		var started: bool = scripts.is_running() and scripts.current == scene.script
+		var frames := _play(scripts, box)
+		if started and not scripts.is_running():
+			played.append(index)
+		else:
+			print("   scène « %s » : script %d au départ, %d images" % [scene.name, scripts.current, frames])
+		scripts.queue_free()
+	_check(played.size() == StoryScenes.SCENES.size(), "les %d scènes de l'histoire démarrent et vont au bout (%d)" % [StoryScenes.SCENES.size(), played.size()])
+	box.queue_free()
+	map.queue_free()
 
 
 ## Sauvegarde : l'état de la partie écrit puis relu par l'autoload Game (dans un fichier de test,

@@ -38,8 +38,8 @@ func _initialize() -> void:
 
 	_go(DEV_MENU)
 	# Chaque entrée du menu de développement, puis retour au menu avec Annuler.
-	for entry in [[4, "res://scenes/demo/dialogue_demo.tscn"], [5, "res://scenes/demo/pokemon_viewer.tscn"],
-			[7, "res://scenes/demo/sound_test.tscn"], [8, "res://scenes/options/options_menu.tscn"]]:
+	for entry in [[5, "res://scenes/demo/dialogue_demo.tscn"], [6, "res://scenes/demo/pokemon_viewer.tscn"],
+			[8, "res://scenes/demo/sound_test.tscn"], [9, "res://scenes/options/options_menu.tscn"]]:
 		_press_times("bas", entry[0])
 		_press("valider")
 		_expect(entry[1])
@@ -63,6 +63,17 @@ func _initialize() -> void:
 	_expect("res://scenes/field/field.tscn")
 	_hold("droite", 40)
 	_hold("haut", 30)
+	# Passe-muraille (F6) : contre le mur, le héros passe au travers ; F6 l'enlève.
+	var before := []
+	_steps.append([func() -> void: before.append(current_scene.player.tile), 0])
+	_press_key(KEY_F6)
+	_hold("haut", 30)
+	_steps.append([func() -> void:
+		var hero: FieldPlayer = current_scene.player
+		_check(hero.pass_through and hero.tile.y < before[0].y, "passe-muraille : le héros traverse le mur (%s -> %s)" % [before[0], hero.tile]), 0])
+	_press_key(KEY_F6)
+	_steps.append([func() -> void: _check(not current_scene.player.pass_through, "F6 enlève le passe-muraille"), 0])
+	_hold("bas", 30)
 	_hold("courir", 0)
 	_hold("gauche", 30)
 	_release("courir")
@@ -77,6 +88,30 @@ func _initialize() -> void:
 	_press("annuler")
 	_press("menu", 10)
 	_quit_field()
+	# Scènes de l'histoire (5e entrée) : la liste, Annuler pour revenir (le curseur reste sur
+	# l'entrée), puis la démonstration de capture (7e scène), qui démarre sur la Route 1.
+	_press_times("bas", 4)
+	_press("valider")
+	_steps.append([func() -> void: _check(current_scene.get("_in_scenes") == true, "liste des scènes de l'histoire"), 0])
+	_press("annuler")
+	_press("valider")
+	_press_times("bas", 6)
+	_press("valider", 30)
+	_expect("res://scenes/field/field.tscn")
+	_expect_zone(317)
+	_go(DEV_MENU)
+	_expect(DEV_MENU)
+	# La sortie nord (6e scène) : le groupe entre sur la Route 1 en marchant, pendant la scène (le
+	# script 14 tourne encore), et la professeure y est déjà, au loin.
+	_press_times("bas", 4)
+	_press("valider")
+	_press_times("bas", 5)
+	_press("valider", 30)
+	_advance_until(func() -> bool: return current_scene.get("zone") == 317, 150,
+		func() -> bool: return current_scene.scripts.is_running() and current_scene.scripts.current == 14 and current_scene.field.npc_by_id(2) != null,
+		"sortie nord : sur la Route 1 pendant la scène, la professeure est déjà là")
+	_go(DEV_MENU)
+	_expect(DEV_MENU)
 	# Nouvelle partie : la chambre du héros, où l'intro démarre toute seule ; retour au menu.
 	_press_times("bas", 2)
 	_press("valider", 30)
@@ -86,7 +121,7 @@ func _initialize() -> void:
 	_go(DEV_MENU)
 	_expect(DEV_MENU)
 	# Visionneuse de modèles : modèle suivant, collection suivante, retour.
-	_press_times("bas", 6)
+	_press_times("bas", 7)
 	_press("valider", 30)
 	_expect("res://scenes/demo/model_viewer.tscn")
 	for action in ["droite", "droite", "bas", "droite", "bas", "gauche", "haut"]:
@@ -94,7 +129,7 @@ func _initialize() -> void:
 	_press("annuler")
 	_expect(DEV_MENU)
 	# Options -> Touches -> retour -> retour.
-	_press_times("bas", 8)
+	_press_times("bas", 9)
 	_press("valider")
 	_expect("res://scenes/options/options_menu.tscn")
 	_press_times("bas", 5)
@@ -110,16 +145,16 @@ func _initialize() -> void:
 	_expect("res://scenes/title/title_screen.tscn")
 	_press("valider", 45)
 	_expect(DEV_MENU)
-	# Dans la démo des dialogues (5e entrée) : avancer le texte, changer de ligne et de fichier.
-	_press_times("bas", 4)
+	# Dans la démo des dialogues (6e entrée) : avancer le texte, changer de ligne et de fichier.
+	_press_times("bas", 5)
 	_press("valider")
 	_expect("res://scenes/demo/dialogue_demo.tscn")
 	for action in ["valider", "valider", "bas", "droite", "gauche", "haut"]:
 		_press(action)
 	_press("menu")
 	_expect(DEV_MENU)
-	# À la souris : clic sur la 6e entrée du menu (« Pokémon animés »).
-	_click_menu_item(5)
+	# À la souris : clic sur la 7e entrée du menu (« Pokémon animés »).
+	_click_menu_item(6)
 	_expect("res://scenes/demo/pokemon_viewer.tscn")
 	_press("annuler")
 	_expect(DEV_MENU)
@@ -195,6 +230,37 @@ func _quit_field() -> void:
 	_press("haut")
 	_press("valider", 10)
 	_expect(DEV_MENU)
+
+
+## Appuie sur Valider toutes les 8 images (messages d'une scène) jusqu'à ce que reached soit vrai,
+## au plus max_presses fois, puis vérifie check à ce moment-là.
+func _advance_until(reached: Callable, max_presses: int, check: Callable, label: String) -> void:
+	var poll := {"presses": 0}
+	poll.step = func() -> void:
+		if reached.call():
+			_check(check.call(), label)
+			return
+		poll.presses += 1
+		if poll.presses > max_presses:
+			_check(false, label + " (jamais atteint)")
+			return
+		for pressed in [true, false]:
+			var event := InputEventAction.new()
+			event.action = "valider"
+			event.pressed = pressed
+			root.push_input(event)
+		_steps.push_front([poll.step, 8])
+	_steps.append([poll.step, 0])
+
+
+## Appuie sur une touche du clavier (les touches de mise au point du terrain, F3 à F6).
+func _press_key(keycode: Key, wait := SETTLE_FRAMES) -> void:
+	_steps.append([func() -> void:
+		for pressed in [true, false]:
+			var event := InputEventKey.new()
+			event.keycode = keycode
+			event.pressed = pressed
+			root.push_input(event), wait])
 
 
 ## Un nœud de ce nom existe dans la scène.

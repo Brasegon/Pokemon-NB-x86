@@ -9,6 +9,9 @@ const SAVE_PATH := "user://sauvegarde.json"
 var state := GameState.new()
 ## Fichier de la sauvegarde (les tests en prennent un autre, pour ne pas toucher à celle du joueur).
 var save_path := SAVE_PATH
+## Scène de l'histoire choisie dans le menu de développement (StoryScenes), ou -1 : le terrain la
+## prépare et la lance à son ouverture.
+var story_scene := -1
 
 
 ## Nouvelle partie : dans la chambre du héros, à la position par défaut de la zone ; le script de
@@ -21,6 +24,12 @@ func new_game() -> void:
 ## Promenade : devant la maison du héros, avec les drapeaux du début de partie.
 func new_walk() -> void:
 	state = GameState.new()
+
+
+## Mise au point : une nouvelle partie posée au début d'une scène de l'histoire.
+func new_scene(index: int) -> void:
+	state = StoryScenes.new_state(index)
+	story_scene = index
 
 
 func has_save() -> bool:

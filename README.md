@@ -9,6 +9,26 @@ la logique du jeu. C'est le même principe qu'OpenMW pour Morrowind.
 > Version de référence : **Pokémon Version Blanche, française (code `IRAF`)**. Les autres langues de
 > Noir/Blanc sont acceptées mais pas testées.
 
+## Avancement
+
+**Portage complet : environ 24 %** `█████░░░░░░░░░░░░░░░`
+
+Estimation d'octobre 2026, à refaire à la fin de chaque phase de la [feuille de route](docs/ROADMAP.md) :
+chaque domaine compte pour sa part estimée du travail total, multipliée par ce qui en est fait. Le
+périmètre est toute l'aventure en solo ; les fonctions sans fil du C-Gear n'en font pas partie.
+
+| Domaine | Part du travail | Fait | Où on en est |
+| --- | ---: | ---: | --- |
+| Lecture de la ROM : 2D, 3D, sons, textes | 10 % | 85 % | Lus et affichés ou joués : 649 morceaux de carte, 5 278 modèles 3D, 179 musiques, 649 Pokémon animés. Restent le brouillard, les contours et les panneaux de la 3D, le cadre de dialogue d'origine |
+| Le monde : cartes, déplacements, PNJ, caméra | 15 % | 40 % | Jouables à Renouet et sur la Route 1 : marche, portes, rebords, PNJ, caméra, éclairage, saisons ; 162 mouvements de personnages sur 378. Restent la météo, les rails, Surf, Force et les autres capacités de terrain, les énigmes des arènes |
+| Moteur de scripts | 15 % | 30 % | 105 commandes écrites sur les 551 qu'emploie le jeu, mais les plus courantes : elles font 94 % des commandes des scripts ; 182 fichiers de scripts sur 472 n'emploient qu'elles |
+| Combats | 25 % | 3 % | Sprites, cris, décors et musiques prêts, groupe de rencontres de chaque case retrouvé. Restent les données, le moteur, l'IA et l'interface (phase 4) |
+| Menus et systèmes : équipe, sac, Pokédex, PC, boutiques | 15 % | 10 % | Menu pause, sauvegarde et reprise, options ; l'équipe et le sac ne sont que des fiches. Le reste en phase 5 |
+| L'aventure : histoire, à-côtés, cinématiques | 15 % | 2 % | De la chambre du héros au bout de la Route 1, avec les scripts du jeu ; les combats y sont simulés |
+| Adaptation au PC | 5 % | 50 % | Écran unique 16:9 à échelle entière, clavier, manette, souris, touches réassignables. Restent l'exécutable Windows, les filtres, les 60 images par seconde |
+
+Les chiffres des scripts se recalculent avec `python scripts.py --coverage`, dans [tools/re/](tools/re/).
+
 ## Lancer le projet
 
 1. Installer [Godot 4.7](https://godotengine.org/download) (version standard, pas .NET).
@@ -23,6 +43,9 @@ musique. Valider mène au **menu de développement** :
 - **Premiers pas dans Renouet (3D)** : la ville de départ et la Route 1 lues dans la ROM (cartes,
   bâtiments, animations), le héros qui marche et court, l'éclairage qui suit l'heure de l'ordinateur
   et les textures des quatre saisons ;
+- **Scènes de l'histoire (mise au point)** : chaque scène jouée jusqu'ici (l'intro, le starter, la
+  mère, le laboratoire, Renouet, la Route 1) lancée directement, la partie posée telle qu'à son
+  début ;
 - **Démo des dialogues** : tous les textes de l'histoire dans la boîte de dialogue du portage ;
 - **Pokémon animés** : les 649 Pokémon animés de face et de dos, version chromatique, cris ;
 - **Modèles 3D** : visionneuse des modèles de la ROM (cartes, bâtiments, objets, effets,
@@ -50,7 +73,8 @@ l'écran du bas sera intégré à l'écran unique (voir la [feuille de route](do
 Toutes ces touches (sauf F11) se réassignent dans **Options → Touches**.
 
 Sur le terrain, quelques touches de mise au point : **F3** affiche les cases bloquées, **F4** avance
-l'heure d'une heure, **F5** passe à la saison suivante.
+l'heure d'une heure, **F5** passe à la saison suivante, **F6** active le passe-muraille (le héros
+traverse les obstacles ; les portes se prennent toujours).
 
 ## Tests
 

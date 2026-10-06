@@ -11,6 +11,9 @@ const JUMP_HEIGHT := 0.5
 const JUMP_SOUND := "SEQ_SE_DANSA"
 const LAND_SOUND := "SEQ_SE_FLD_10"
 
+## Un pas (marche ou saut) se termine : le personnage est arrivé sur sa case.
+signal stepped(tile: Vector2i)
+
 ## Le personnage : un FieldNpc ou le FieldPlayer (propriétés tile, facing, sprite, position).
 var target: Node3D
 var field: FieldMap
@@ -98,6 +101,8 @@ func _apply(progress: float) -> void:
 			_lift(_jump_height(progress))
 			if progress >= 1.0:
 				_play(LAND_SOUND)
+		if progress >= 1.0:
+			stepped.emit(target.tile)
 	if kind == MovementActions.Kind.WALK or kind == MovementActions.Kind.STEP or kind == MovementActions.Kind.JUMP:
 		# Première moitié du pas : un pied en avant, puis immobile (comme le héros).
 		_show(CharacterSprite.Step.STAND if progress >= 0.5 else (CharacterSprite.Step.LEFT_FOOT if _left_foot else CharacterSprite.Step.RIGHT_FOOT))

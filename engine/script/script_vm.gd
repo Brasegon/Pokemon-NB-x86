@@ -31,6 +31,9 @@ var pc := 0
 var running := false
 ## Commandes sautées faute d'être écrites : numéro -> nombre de fois.
 var skipped := {}
+## Faux pour la machine des scripts d'arrivée : jouée pendant une scène, elle ne doit pas effacer
+## les variables temporaires de celle-ci en finissant.
+var clears_temp_vars := true
 
 var _calls: Array[int] = []
 var _stack: Array[int] = []
@@ -58,7 +61,8 @@ func start(bytes: PackedByteArray, start_at: int, messages: MsgFile) -> void:
 func stop() -> void:
 	running = false
 	_callers.clear()
-	work.clear_temp_vars()
+	if clears_temp_vars:
+		work.clear_temp_vars()
 
 
 ## Fin du script : on revient au script appelant s'il y en a un (0x1C), sinon la machine s'arrête.
@@ -306,7 +310,7 @@ func _step() -> bool:
 			var x := _value()
 			var y := _value()
 			var z := _value()
-			host.set_npc_position(id, x, y, z, _value())
+			host.set_character_position(id, x, y, z, _value())
 		0x74:
 			host.face_player()
 		0x98:
@@ -352,7 +356,7 @@ func _step() -> bool:
 			_wait = host.fade_done
 			return false
 		0x25F:
-			pass
+			host.end_event_music()
 		0xB5, 0xB6, 0xB7, 0xB8:
 			# Sac (objet, quantité, résultat) : ajouter (0x02007E50), retirer (0x02007F1C), y a-t-il
 			# la place (0x02007E3C), en a-t-on assez (0x02007F68) ; 1 ou 0 dans la variable.
@@ -445,7 +449,7 @@ func _step() -> bool:
 			_wait = func(delta: float) -> bool: return host.building_animation_done(handle, delta)
 			return false
 		0x13F:
-			# Caméra des scènes (0x0218F098...) : on garde son état ; 0x140 le reprend.
+			# Caméra des scènes (0x0218F098...) : on garde son état ; 0x140 le libère.
 			host.camera_command(op)
 		0x140, 0x141, 0x142:
 			# 0x141 détache la caméra du héros (0x0218EBF4), 0x142 la rattache (0x0218EC00).
@@ -508,6 +512,9 @@ func _step() -> bool:
 			return false
 		0x1D0:
 			host.receive_pokedex()
+		0x241:
+			# Le personnage restera au changement de zone (0x0216DB10 : bit 0x20 de son état).
+			host.keep_on_zone_change(_value())
 		_:
 			return _skip(op)
 	return true

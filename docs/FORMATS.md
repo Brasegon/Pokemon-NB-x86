@@ -579,25 +579,56 @@ un déclencheur (x, z en cases) ; 0x02162624 fabrique la destination d'une porte
   pieds, puis une porte sur la case de devant (les portes des maisons et les escaliers sont sur des
   cases bloquées, les tapis sur des cases libres) ;
 - en arrivant sur une case (0x0218AC70) : une porte de genre 0, 5 ou 6 s'y prend toute seule ;
-- arrivée : sur la porte de destination (0x02162C14 ; dans une porte large, le décalage vient d'une
-  valeur de la porte de départ, nulle pour une porte simple). Le moteur fait ressortir le joueur
-  d'un pas, dans le sens inverse de l'entrée, quand la porte est sur une case bloquée.
+- arrivée : sur la porte de destination (0x02162C14) ; dans une porte large, à la case donnée par un
+  **repère de la porte de départ** (`ZoneEvents.entry_code`, `arrival_tile`). En prenant une porte,
+  0x0218AD20 le calcule avec 0x02162AF8 et la case où le héros entre (la sienne pour un tapis ou
+  une porte qui se prend en arrivant, celle de devant sinon) : sens de sortie de la porte
+  (0x02162BE4 : champ 04 moins 1, soit l'inverse de la direction d'entrée ; 1 pour les autres
+  valeurs) x 0x100 + taille x 0x10 + case du héros dans la porte (en x si elle est large, sinon en
+  z ; taille 1 et case 0 pour une porte simple). Le repère suit la destination (0x02014188, +0x0A)
+  jusqu'à 0x0216258C, et 0x02162A34 en tire la case d'arrivée : la même si les deux portes ont la
+  même taille, sinon centres alignés (écart impair : les deux cases du centre d'une porte paire
+  mènent à la case du milieu, la case du milieu à la première des deux) ; comptée depuis l'autre
+  bout pour les sens (départ, arrivée) (0, 3), (1, 2), (3, 0) et (2, 1) ; bornée à la porte. Simulé
+  sur les 1 365 cases de départ des portes de la ROM : de la porte d'une maison (1 case) à un tapis
+  de 3 cases (137 fois), on arrive au milieu du tapis. Le moteur fait ressortir le joueur d'un pas,
+  dans le sens inverse de l'entrée, quand la porte est sur une case bloquée.
 - Genres vus à Renouet : 1 tapis, 2 escalier, 3 porte de maison. Porte de destination `0x100` :
   cas spécial (0x02162578), pas encore géré.
 
 **Scripts d'arrivée** : entrées (type u16, valeur u32) jusqu'au type 0 (0x02158ADC).
 
-- Types 3 et 4 : numéro d'un script lancé au chargement de la zone (0x02188648 : le 4 en arrivant
-  par un changement de carte, sinon le 3). Celui de Renouet (13) place les PNJ selon les variables
-  de l'histoire.
+- Types 3 et 4 : numéro d'un script lancé au démarrage du terrain, PNJ posés (0x02188648 : le 4
+  en arrivant par un changement de carte, via 0x02158A68, sinon le 3, via 0x02158A74). Celui de
+  Renouet (13) place les PNJ selon les variables de l'histoire. Le moteur joue le 4 en commençant
+  une partie et en passant une porte, le 3 en reprenant une partie (`FieldScripts.field_started`).
 - Type 1 : décalage, depuis la fin de l'entrée, vers une table de triplets (variable, valeur,
   script) terminée par une variable 0 ; le premier dont la variable vaut la valeur est lancé
   (0x02158B0C, appelé par 0x0218A6D8). C'est ainsi que les scènes démarrent toutes seules : dans la
   chambre du héros, « 0x4081 = 0 -> script 5 », l'intro.
-- Type 2 : un numéro de script (17 à Renouet), rôle pas encore trouvé.
+- Type 2 : script joué à chaque changement de zone, en marchant (0x02189360) comme en changeant de
+  carte (overlay 20, 0x0218583A), après le chargement des événements et avant la création des PNJ :
+  0x02158A80 remet à zéro les drapeaux 0 à 99 (0x02014384) et les variables 0x4000 à 0x401E
+  (0x020143F4 efface (0x401F - 0x4000) mots), puis 0x02158A30 joue le type 2 dans son propre
+  contexte (0x021589D4). Il règle les drapeaux des PNJ : celui du laboratoire (13) cache ou montre
+  la professeure (drapeau 505) ; celui de Renouet (17) enlève le drapeau 368. Le moteur fait de même
+  (`FieldScripts.zone_changed`), dans une seconde machine qui n'efface pas les variables
+  temporaires de la scène en cours.
+
+**Changement de zone en marchant** : la mise à jour du terrain (0x021886F8) appelle 0x0218926C à
+chaque image, avant de regarder si une scène est en cours. 0x02189310 compare la zone de la case du
+héros à la zone actuelle ; si elle diffère, 0x02189360 retire les personnages sans le bit 0x20
+(0x0216DEAC), charge les événements de la nouvelle zone, crée ses PNJ (0x02189480 → 0x0216CE3C) et
+joue son script de type 2. Un mouvement de script fait donc changer de zone en pleine scène : à la
+sortie nord de Renouet, le groupe entre sur la Route 1 en marchant et la professeure y apparaît au
+loin. Le moteur suit les pas du héros faits par les scripts (`MovementRunner.stepped`) et change de
+zone aussitôt, script de type 2 compris ; les scènes de la nouvelle zone (type 1) attendent la fin
+de celle en cours. Avant la musique de zone (0x02029C88), 0x021894B8 vérifie un état de la partie
+(+0x40 de la structure en +0x114, 2 = pas de changement).
 
 Exemple : la porte de la maison du héros est en (782, 748), case bloquée, direction d'entrée 2 ;
-elle mène au tapis (5, 10) de la zone 390 (3 cases de large, genre 1, direction 1), et ses
+elle mène au tapis (5, 10) de la zone 390 (3 cases de large, genre 1, direction 1 ; repère 0x110 :
+on arrive au milieu, en (6, 10)), et ses
 escaliers (2, 2) à ceux de la chambre (9, 2) dans la zone 391, d'où l'on ressort en (8, 2), la case
 du déclencheur de l'intro.
 
@@ -650,8 +681,13 @@ phase, x min, x max, z min, z max en unités DS), copiées en +0x88 (0x0218F0B4)
 sur 283) : 0x0218F19C borne le point visé dans le rectangle. Dans la chambre du héros (fichier
 0x28), le point visé reste entre x 72 et 120, z 45 et 105 : la caméra ne montre pas le dehors.
 
-**Commandes des scripts** : 0x13F garde l'état de la caméra et 0x140 le reprend ; 0x141 et 0x142
-la détachent du héros et la rattachent (mot +0x1C de la caméra) ; 0x143 (u16 inclinaison, u16 cap,
+**Commandes des scripts** : 0x13F garde l'état de la caméra : angles, distance, point visé et mode
+de calcul (+0x14), copiés en +0xF0 par 0x0218F7B8, qui ne fait rien tant qu'un état est gardé
+(indicateur en +0xF0 + 0x98) ; le premier reste. 0x140 le libère : 0x0218F818 remet le mode et
+efface l'indicateur, sans toucher à la position ni au lien avec le héros. Seules 0x141 et 0x142
+détachent la caméra du héros et la rattachent (mot +0x1C). À la fin de la démonstration de la
+Route 1, le script garde l'état une deuxième fois caméra détachée, puis rattache (0x142) avant de
+libérer (0x140) : la caméra suit à nouveau le héros. 0x143 (u16 inclinaison, u16 cap,
 fx32 distance, 3 x fx32 point visé, u16 images) prépare un plan et 0x0218F8A0 l'y amène ; 0x144
 et 0x147 (u16 images) la ramènent à l'état gardé (0x0218F964) ou à la caméra de la zone
 (0x0218F9E0) ; 0x145 attend la fin du déplacement ; 0x146 prend un plan dans l'archive 0xA3. Le
@@ -774,13 +810,13 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 64, 65 | valeur personnage, s32 / | lancer une liste de mouvements (« fin des paramètres + décalage ») ; attendre qu'elles soient finies |
 | 68 | variable, variable | case du héros (x, z) |
 | 6B, 6C | valeur | faire apparaître un PNJ des événements de la zone (0x0216CE74), le retirer |
-| 6D | valeurs : PNJ, x, y, z, direction | placer un PNJ présent (0x0216E014), sans changer son entrée des événements |
+| 6D | valeurs : personnage, x, y, z, direction | placer un personnage au centre d'une case (0x0216E014 ; y en cases), sans changer son entrée des événements. 0x0216DE24 le cherche par son numéro, héros compris : 0x0216DE70 l'appelle avec 0xFF pour trouver le héros. Dans la chambre, avant le combat contre Bianca, il pose le héros en (4, 6) |
 | 74 | | le PNJ se tourne vers le héros |
 | 85 | valeurs : dresseur, dresseur 2, ? | combat de dresseurs (0x0216E7A8) ; sans dresseur 2, le même si c'est un dresseur de combat double (0x0215A454). En attendant la phase 4 : un passage au noir et une victoire |
 | 8C | | après une défaite : fin du script et retour au dernier Centre (0x0215F678) |
 | 8D | variable | 1 si le joueur a gagné le dernier combat (table 0x02172568, 0x0216EF38) |
 | 8E | | transition de retour du combat (0x021BE8B8) |
-| 98 | u16 | musique d'événement (0x0202991C ; 1161 = `SEQ_BGM_E_FRIEND`), avec la marque 0xD (0x021590E4) |
+| 98 | u16 | musique d'événement (0x0202991C ; 1161 = `SEQ_BGM_E_FRIEND`), avec la marque 0xD (0x021590E4) et l'état 2 du gestionnaire de son (0x02028B38). Le moteur ne change pas la musique de zone tant que la marque est posée : supposé d'après ces marques, pas encore vérifié dans 0x02028990 |
 | 9E | | retour à la musique de la zone, en fondu (0x02029838) |
 | A6 | valeur | effet sonore n° N du SDAT (1351 = `SEQ_SE_MESSAGE`) |
 | A8 | | attendre la fin de l'effet sonore (0x021AF1DC) |
@@ -810,7 +846,8 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 1AD, 1AE, 1AF | | autour d'une application : fondu depuis le noir (écrans 3, de 16 à 0), vers le noir (de 0 à 16), depuis le blanc (écrans 0xC) ; vitesse -1 (tâche 0x021B2EB8) |
 | 1B1 | | attendre la fin de ce fondu (0x021899C4) |
 | 1D0 | | Pokédex reçu (bit 0 du mot +4 de ses données, 0x0200CA28) |
-| 25F | | fin de la marque de la musique d'événement (0x02159108(0xD)) : elle continue |
+| 241 | valeur | le personnage restera au changement de zone : 0x0216DB10 met le bit 0x20 de son état. En passant d'une zone à l'autre (0x02189360), 0x0216DEAC retire tous les personnages sauf ceux qui le portent. Ainsi Tcheren (250) et Bianca (240), créés par les scripts 12 et 13 de Renouet, suivent le héros sur la Route 1, où la professeure les retire (0x6C) |
+| 25F | | fin de la marque de la musique d'événement (0x02159108(0xD), 0x02028B74) : elle continue |
 
 **Mots variables** : les messages contiennent des commandes de texte `01xx` dont l'argument est un
 numéro de mot (`{0100:0}` : le nom du héros rangé dans le mot 0). Les commandes 4C à 57 remplissent

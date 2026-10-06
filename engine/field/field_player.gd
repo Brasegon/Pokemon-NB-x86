@@ -42,6 +42,9 @@ var tile := Vector2i.ZERO
 var facing := CharacterSprite.Direction.DOWN
 ## Faux pendant les menus et les dialogues.
 var controllable := true
+## Passe-muraille (mise au point, touche F6) : le héros traverse les cases bloquées et les PNJ ; les
+## rebords se sautent et les portes se prennent toujours.
+var pass_through := false
 
 var _moving := false
 var _from := Vector3.ZERO
@@ -146,24 +149,31 @@ func _try_step() -> void:
 			_show(CharacterSprite.Step.STAND)
 			warp_requested.emit(warp)
 			return
-		# On marche sur place contre l'obstacle.
-		if _bump_cooldown > WALK_TIME:
-			_show(CharacterSprite.Step.LEFT_FOOT if _left_foot else CharacterSprite.Step.RIGHT_FOOT)
-		else:
-			_show(CharacterSprite.Step.STAND)
-		if _bump_cooldown <= 0.0:
-			Autoloads.sound().play_effect(BUMP_SOUND)
-			_bump_cooldown = WALK_TIME * 2.0
-			_left_foot = not _left_foot
-			bumped.emit(target)
-		return
-	_running = Input.is_action_pressed("courir")
+		# On marche sur place contre l'obstacle, sauf en passe-muraille.
+		if not pass_through:
+			_bump(target)
+			return
+	# Pendant une scène (héros non contrôlable), il marche.
+	_running = controllable and Input.is_action_pressed("courir")
 	_step_time = RUN_TIME if _running else WALK_TIME
 	_from = position
 	_to = Vector3(target.x + 0.5, position.y, target.y + 0.5)
 	tile = target
 	_progress = 0.0
 	_moving = true
+
+
+## Marche sur place contre un obstacle, avec le bruit du choc toutes les deux foulées.
+func _bump(target: Vector2i) -> void:
+	if _bump_cooldown > WALK_TIME:
+		_show(CharacterSprite.Step.LEFT_FOOT if _left_foot else CharacterSprite.Step.RIGHT_FOOT)
+	else:
+		_show(CharacterSprite.Step.STAND)
+	if _bump_cooldown <= 0.0:
+		Autoloads.sound().play_effect(BUMP_SOUND)
+		_bump_cooldown = WALK_TIME * 2.0
+		_left_foot = not _left_foot
+		bumped.emit(target)
 
 
 ## Première moitié du pas : un pied en avant (gauche et droit à tour de rôle), puis immobile.

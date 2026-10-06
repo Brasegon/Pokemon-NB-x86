@@ -89,9 +89,7 @@ func _ready() -> void:
 	camera.target = player
 	add_child(camera)
 	camera.make_current()
-	camera.pitch_changed.connect(_on_camera_pitch_changed)
 	_use_zone_camera(field.zone_at(start_tile))
-	_on_camera_pitch_changed(camera.pitch())
 	camera.follow(player.position)
 	if player.sprite:
 		player.sprite.modulate = field.sprite_tint
@@ -103,11 +101,23 @@ func _ready() -> void:
 	scripts.script_finished.connect(_on_script_finished)
 	add_child(scripts)
 	# Drapeaux de départ avant l'arrivée dans la zone : ils décident des PNJ présents.
+	var story_scene := Game.story_scene
+	Game.story_scene = -1
+	# Une partie qui commence arrive par un changement de carte ; une partie reprise (ou le retour d'un
+	# écran) non : le jeu joue alors le script d'arrivée de type 3 (0x02188648).
+	var map_change := not state.started
 	if not state.started:
 		scripts.new_game()
 		state.started = true
-	_enter_zone(field.zone_at(start_tile))
-	scripts.enter_zone()
+		# Scène choisie dans le menu de développement : la partie telle qu'au début de la scène.
+		if story_scene >= 0:
+			StoryScenes.apply(story_scene, state)
+	_enter_zone(field.zone_at(start_tile), map_change)
+	if story_scene >= 0:
+		StoryScenes.prepare(story_scene, scripts)
+	scripts.field_started(map_change)
+	if story_scene >= 0:
+		StoryScenes.start(story_scene, scripts)
 
 
 ## Range le lieu du héros dans la partie (avant une sauvegarde ou un changement de scène).
@@ -158,6 +168,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			season_shift = (season_shift + 1) % 4
 			_refresh_light()
 			_show_banner(SEASON_NAMES[field.season])
+			get_viewport().set_input_as_handled()
+			return
+		if key.keycode == KEY_F6:
+			player.pass_through = not player.pass_through
+			_show_banner("Passe-muraille : %s" % ("oui" if player.pass_through else "non"))
 			get_viewport().set_input_as_handled()
 			return
 	# Valider devant un PNJ ou un panneau : son script.
@@ -229,6 +244,10 @@ func _save_game() -> void:
 		_dialogue.close()
 
 
+## Le héros arrive sur une case : en marchant, ou par un mouvement de script (le jeu regarde sa zone
+## à chaque image, même pendant une scène : 0x0218926C, appelée par 0x021886F8 avant le test de la
+## scène en cours). À la sortie nord de Renouet, le groupe entre ainsi sur la Route 1 en marchant, et
+## la professeure apparaît au loin.
 func _on_player_moved(tile: Vector2i) -> void:
 	# En marchant, les morceaux voisins se chargent un par image : pas d'arrêt au passage.
 	field.update_around(tile, false)
@@ -236,7 +255,9 @@ func _on_player_moved(tile: Vector2i) -> void:
 	if current != zone:
 		_enter_zone(current)
 		field.set_light_zone(current)
-		scripts.enter_zone()
+		# Pendant une scène, les scènes de la nouvelle zone attendent sa fin (_on_script_finished).
+		if not scripts.is_running():
+			scripts.check_conditions()
 	scripts.check_triggers(tile)
 
 
@@ -251,9 +272,7 @@ func _on_script_finished(_id: int) -> void:
 	if current != zone:
 		_enter_zone(current)
 		field.set_light_zone(current)
-		scripts.enter_zone()
-	else:
-		scripts.check_conditions()
+	scripts.check_conditions()
 
 
 ## Passage par une porte : fondu au noir, chargement de la zone de destination, héros posé sur la
@@ -265,6 +284,10 @@ func _on_warp_requested(index: int) -> void:
 	_warping = true
 	player.controllable = false
 	var warp: Dictionary = field.events.warps[index]
+	# Repère du héros dans la porte, pour arriver au même endroit d'une porte large (0x0218AD20) :
+	# la case où il se tient (tapis, porte qui se prend en arrivant) ou celle de devant.
+	var entry := player.tile if field.events.warp_at(player.tile) == index else player.facing_tile()
+	var code := field.events.entry_code(index, entry)
 	# La porte d'un bâtiment sur la case de devant : elle s'ouvre, puis le héros y entre d'un pas.
 	var tile := field.events.warp_tile(index)
 	var door := field.find_building(BuildingRules.DOOR, tile)
@@ -273,7 +296,7 @@ func _on_warp_requested(index: int) -> void:
 		player.play_action(FieldPlayer.WALK_STEP + player.facing)
 		await player.action_finished
 	await _fade_to(1.0)
-	var step_out := _arrive(warp.zone, warp.warp)
+	var step_out := _arrive(warp.zone, warp.warp, code)
 	# En sortant par la porte d'un bâtiment : fondu, la porte s'ouvre, le héros sort, elle se ferme.
 	var exit_door := field.find_building(BuildingRules.DOOR, player.tile) if step_out >= 0 else {}
 	if exit_door.is_empty():
@@ -297,9 +320,10 @@ func _wait(seconds: float) -> void:
 		await get_tree().create_timer(seconds).timeout
 
 
-## Pose le héros sur la porte n° warp_index de la zone (après avoir chargé sa matrice s'il le faut).
-## Renvoie la direction du pas de sortie, ou -1.
-func _arrive(new_zone: int, warp_index: int) -> int:
+## Pose le héros sur la porte n° warp_index de la zone (après avoir chargé sa matrice s'il le faut),
+## à la case donnée par le repère code de la porte de départ (ZoneEvents.entry_code). Renvoie la
+## direction du pas de sortie, ou -1.
+func _arrive(new_zone: int, warp_index: int, code: int) -> int:
 	var header := field.zones.get_zone(new_zone)
 	if header.is_empty():
 		return -1
@@ -311,7 +335,7 @@ func _arrive(new_zone: int, warp_index: int) -> int:
 	var events := field.events
 	if events == null or warp_index >= events.warps.size():
 		return -1
-	var tile := events.warp_tile(warp_index)
+	var tile := events.arrival_tile(warp_index, code)
 	field.update_around(tile)
 	# On ressort dans le sens inverse de celui qui permet d'entrer (haut <-> bas, gauche <-> droite).
 	var enter: int = ZoneEvents.ENTER_DIRECTIONS.get(events.warps[warp_index].enter, -1)
@@ -319,7 +343,7 @@ func _arrive(new_zone: int, warp_index: int) -> int:
 	player.place(tile, out as CharacterSprite.Direction)
 	camera.follow(player.position)
 	var step_out := out if enter >= 0 and field.is_blocked(tile, player.position.y) else -1
-	scripts.enter_zone()
+	scripts.field_started(true)
 	return step_out
 
 
@@ -338,18 +362,17 @@ func _use_zone_camera(new_zone: int) -> void:
 	camera.areas = FieldCamera.read_areas(header.camera_area)
 
 
-func _on_camera_pitch_changed(pitch: float) -> void:
-	field.set_camera_pitch(pitch)
-	if player and player.sprite:
-		player.sprite.set_camera_pitch(pitch)
-
-
-## Événements, musique de la saison (comme sur DS, une saison par mois : janvier printemps, février
-## été...), caméra et nom du lieu.
-func _enter_zone(new_zone: int) -> void:
+## Le héros entre dans une zone : ses événements, puis le script d'arrivée de type 2 (comme
+## 0x02189360 et le changement de carte, sauf à la reprise d'une partie : zone_change faux), puis
+## ses PNJ ; sa caméra, sa musique (celle de la saison : comme sur DS, une saison par mois) et son
+## nom.
+func _enter_zone(new_zone: int, zone_change := true) -> void:
 	var previous := zone
 	zone = new_zone
-	field.set_events_zone(zone)
+	if field.load_events(zone):
+		if zone_change:
+			scripts.zone_changed()
+		field.spawn_npcs()
 	var header := field.zones.get_zone(zone)
 	if header.is_empty():
 		return
@@ -357,7 +380,9 @@ func _enter_zone(new_zone: int) -> void:
 		_use_zone_camera(zone)
 	var archive := Sound.sdat()
 	var music := field.zone_music(zone)
-	if archive and music >= 0 and music < archive.sequence_names.size():
+	# Une musique d'événement (commande 0x98) continue malgré le changement de zone.
+	var event_music := scripts != null and scripts.event_music
+	if archive and music >= 0 and music < archive.sequence_names.size() and not event_music:
 		Sound.play_music(archive.sequence_names[music])
 	var place := Rom.text(BWFiles.TEXT_LOCATION_NAMES, header.name)
 	if previous < 0 or field.zones.get_zone(previous).get("name", -1) != header.name:
@@ -393,7 +418,7 @@ func _build_hud() -> void:
 
 	var help := GameLabel.new()
 	help.font_id = GameTheme.FontId.MEDIUM
-	help.text = "Flèches : marcher   Maj : courir   Entrée : parler   F3 : collisions   F4 : heure   F5 : saison   Échap : menu"
+	help.text = "Maj : courir   Entrée : parler   Échap : menu   F3 : collisions   F4 : heure   F5 : saison   F6 : passe-muraille"
 	help.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 6)
 	help.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(help)

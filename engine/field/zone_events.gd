@@ -24,6 +24,9 @@ const ENTER_DIRECTIONS := {1: 1, 2: 0, 3: 3, 4: 2}
 const ANY_DIRECTION_KINDS := [0, 5, 6]
 ## Genre « tapis » : on se tient dessus et on pousse dans la direction d'entrée (0x0218AE74).
 const MAT_KIND := 1
+## Sens de sortie (porte de départ, porte d'arrivée) pour lesquels la case d'arrivée dans une porte
+## large se compte depuis l'autre bout (0x02162A34).
+const MIRRORED_SIDES: Array[Vector2i] = [Vector2i(0, 3), Vector2i(1, 2), Vector2i(3, 0), Vector2i(2, 1)]
 
 ## { script, type, x, z, y } : objets que l'on regarde (panneaux...).
 var signs: Array[Dictionary] = []
@@ -36,8 +39,9 @@ var triggers: Array[Dictionary] = []
 ## Section qui suit la taille annoncée : les scripts d'arrivée.
 var tail := PackedByteArray()
 ## Scripts d'arrivée : type -> valeur (entrées type u16, valeur u32, jusqu'au type 0 : 0x02158ADC).
-## Types 3 et 4 : numéro du script lancé au chargement de la zone (0x02188648 : le 4 en arrivant
-## par un changement de carte, sinon le 3).
+## Type 2 : script joué à chaque changement de zone, avant la création des PNJ (0x02158A80) ;
+## types 3 et 4 : au démarrage du terrain, PNJ posés (0x02188648 : le 4 en arrivant par un
+## changement de carte, sinon le 3). Voir FieldScripts.zone_changed() et field_started().
 var init_scripts := {}
 ## Type 1 : [variable, valeur, script], le premier dont la variable vaut la valeur est lancé
 ## (0x02158B0C, table placée à « fin de l'entrée + valeur », terminée par une variable 0).
@@ -127,3 +131,68 @@ func is_warp_enabled(index: int) -> bool:
 func warp_accepts(index: int, direction: int) -> bool:
 	var warp: Dictionary = warps[index]
 	return warp.kind in ANY_DIRECTION_KINDS or ENTER_DIRECTIONS.get(warp.enter, -1) == direction
+
+
+## Repère du héros dans la porte qu'il prend, gardé jusqu'à l'arrivée (0x02162AF8, appelée par
+## 0x0218AD20 avec la case de la porte où il entre) : sens de sortie x 0x100 + taille de la porte
+## x 0x10 + case du héros dans la porte, comptée en x si elle est large, sinon en z (taille 1 et
+## case 0 pour une porte simple).
+func entry_code(index: int, tile: Vector2i) -> int:
+	var warp: Dictionary = warps[index]
+	var corner := warp_tile(index)
+	var size := 1
+	var offset := 0
+	if warp.width > 1:
+		size = warp.width
+		offset = tile.x - corner.x
+	elif warp.depth > 1:
+		size = warp.depth
+		offset = tile.y - corner.y
+	return (exit_side(index) << 8 | size << 4 | offset) & 0xFFFF
+
+
+## Case où l'on arrive par la porte n° index (0x02162C14) : son coin, décalé dans une porte large
+## d'après le repère de la porte de départ (entry_code).
+func arrival_tile(index: int, code: int) -> Vector2i:
+	var warp: Dictionary = warps[index]
+	var corner := warp_tile(index)
+	if warp.width > 1:
+		return corner + Vector2i(arrival_offset(code, exit_side(index), warp.width), 0)
+	if warp.depth > 1:
+		return corner + Vector2i(0, arrival_offset(code, exit_side(index), warp.depth))
+	return corner
+
+
+## Sens de sortie de la porte n° index (0x02162BE4) : l'inverse de sa direction d'entrée (champ 04 :
+## 1 -> 0 haut, 2 -> 1 bas, 3 -> 2 gauche, 4 -> 3 droite), 1 pour les autres valeurs.
+func exit_side(index: int) -> int:
+	var enter: int = warps[index].enter
+	return enter - 1 if enter >= 1 and enter <= 4 else 1
+
+
+## Case dans une porte de taille size, d'après le repère code de la porte de départ (0x02162A34) :
+## la même case si les deux portes ont la même taille, sinon centres alignés (d'une porte simple à
+## un tapis de 3 cases : celle du milieu) ; comptée depuis l'autre bout entre deux portes de sens
+## croisés (MIRRORED_SIDES) ; 0 sans repère.
+static func arrival_offset(code: int, side: int, size: int) -> int:
+	if code == 0:
+		return 0
+	var offset := code & 0xF
+	var from_size := (code >> 4) & 0xF
+	var from_side := (code >> 8) & 0xF
+	if Vector2i(from_side, side) in MIRRORED_SIDES:
+		offset = from_size - 1 - offset
+	var difference := size - from_size
+	if difference != 0:
+		var half_from := from_size >> 1
+		var half := size >> 1
+		# Écart impair : une porte a une case au milieu, l'autre deux. Les deux cases du centre d'une
+		# porte paire mènent à la case du milieu ; la case du milieu mène à la première des deux.
+		if difference % 2 != 0:
+			if size % 2 != 0:
+				if offset < half_from:
+					half_from -= 1
+			elif offset <= half_from:
+				half -= 1
+		offset = half + offset - half_from
+	return clampi(offset, 0, size - 1)
