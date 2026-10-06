@@ -25,6 +25,12 @@ func _initialize() -> void:
 	_test_pokemon()
 	_test_trainers()
 	_test_encounters()
+	_test_formulas()
+	_test_wild_battle()
+	_test_trainer_battle()
+	_test_capture()
+	_test_escape()
+	_test_learn_move()
 	print("%d vérifications, %d échec(s), %d ms" % [_checks, _failures, Time.get_ticks_msec() - started])
 	quit(1 if _failures > 0 else 0)
 
@@ -183,6 +189,149 @@ func _test_encounters() -> void:
 			levels_ok = false
 	_check(levels_ok, "200 rencontres de la Route 1 entre les niveaux 2 et 4")
 	_check(EncounterTable.for_zone(zones.get_zone(ZoneTable.NUVEMA), 0) == null, "pas de rencontres à Renouet")
+
+
+## Formules recopiées du code (overlay 93, ARM9).
+func _test_formulas() -> void:
+	# 0x021D79E4 : 50 x 12 x (2 x 5 / 5 + 2) / 11 / 50 + 2 = 2400 / 11 = 218 / 50 = 4 + 2.
+	_check(BattleCalc.base_damage(50, 12, 5, 11) == 6, "dégâts de base (0x021D79E4)")
+	_check(BattleCalc.fx_mul(10, 0x1800) == 15 and BattleCalc.fx_mul(3, 0x1800) == 4 and BattleCalc.fx_mul(1, 0x1800) == 1,
+		"multiplication fx arrondie (0x021D7AB0 : 0,5 tout juste arrondi vers le bas)")
+	_check(BattleCalc.fx_div(255 << 12, 255 << 12) == 0x1000 and BattleCalc.fx_sqrt(4 << 12) == 2 << 12, "FX_Div et FX_Sqrt")
+	# Même niveau : (2L+10)^2,5 / (2L+10)^2,5 = 1, + 1.
+	_check(BattleCalc.scaled_exp(100, 10, 10) == 101, "expérience à niveaux égaux : part + 1 (0x021CB4FC)")
+	_check(BattleCalc.scaled_exp(100, 5, 10) > 101 and BattleCalc.scaled_exp(100, 20, 10) < 101, "expérience ajustée aux niveaux")
+	var random := GameRandom.new(3)
+	var caught := 0
+	for i in 200:
+		if BattleCalc.capture(20, 1, 255, 0x2000, 0x1000, 0x1000, 0, random).caught:
+			caught += 1
+	_check(caught == 200, "capture assurée : taux 255, 1 PV sur 20, Super Ball")
+	caught = 0
+	for i in 400:
+		if BattleCalc.capture(100, 100, 3, 0x1000, 0x1000, 0x1000, 0, random).caught:
+			caught += 1
+	_check(caught < 20, "capture rare : taux 3, PV pleins (%d / 400)" % caught)
+	_check(BattleCalc.can_escape(50, 20, 0, random), "fuite assurée quand on est plus rapide")
+	var trainer := TrainerData.load(1)
+	_check(BattleCalc.prize_money(trainer, 7) == 7 * 4 * 4, "somme gagnée : niveau x base x 4 (0x021D7F5C)")
+
+
+## Réponses automatiques du joueur : toujours la première capacité, le premier Pokémon valide.
+static func _auto(battle: Battle, request: Dictionary) -> Variant:
+	match request.kind:
+		"action":
+			return {"action": Battle.Action.FIGHT, "move": 0}
+		"switch":
+			return battle.player().reserves()[0] if not battle.player().reserves().is_empty() else 0
+		"forget_move":
+			return 0
+		"yes_no":
+			return 0
+	return null
+
+
+## Texte des messages d'un combat (pour les vérifier et pour lire le déroulement).
+func _transcript(battle: Battle) -> PackedStringArray:
+	var lines := PackedStringArray()
+	for event in battle.events:
+		if event.type != "message":
+			continue
+		var file: MsgFile = _rom.text_file(BWFiles.TEXT_SYSTEM if event.file != BWFiles.TEXT_TRAINER_SPEECH else BWFiles.TEXT_SYSTEM, event.file)
+		var words := {}
+		for key: int in event.words:
+			words[key] = event.words[key]
+		lines.append(TextFlow.plain(file.get_chars(event.line), words).replace("
+", " "))
+	return lines
+
+
+func _player(species: int, level: int, seed: int) -> GameState:
+	var state := GameState.new()
+	state.trainer_id = 0x12345678
+	var pokemon := Pokemon.create(species, level, {"random": GameRandom.new(seed), "ot_id": state.trainer_id, "nature": 0})
+	state.party.append(pokemon)
+	return state
+
+
+func _test_wild_battle() -> void:
+	var state := _player(498, 6, 1)
+	var wild := Pokemon.create(506, 3, {"random": GameRandom.new(2)})
+	var battle := Battle.wild(state, wild, {"random": GameRandom.new(10)})
+	battle.auto_answer = _auto
+	battle.run()
+	var lines := _transcript(battle)
+	print("   Combat sauvage : ", " | ".join(lines))
+	_check(battle.result == Battle.Result.WIN, "Gruikui N.6 bat un Ponchiot N.3 sauvage (%s)" % Battle.Result.keys()[battle.result])
+	_check(lines.size() > 3 and lines[0].begins_with("Un Ponchiot sauvage apparaît"), "message d'apparition du jeu")
+	_check(state.party[0].experience > Growth.exp_for_level(state.party[0].growth_rate(), 6), "expérience gagnée")
+	_check(state.seen.has(506), "Ponchiot vu (Pokédex)")
+	var ended := false
+	for event in battle.events:
+		if event.type == "end":
+			ended = true
+	_check(ended, "événement de fin")
+
+
+func _test_trainer_battle() -> void:
+	var state := _player(495, 5, 4)
+	var battle := Battle.against_trainer(state, 59, {"random": GameRandom.new(5)})
+	battle.auto_answer = _auto
+	var money := state.money
+	battle.run()
+	var lines := _transcript(battle)
+	print("   Combat contre Bianca : ", " | ".join(lines))
+	_check(battle.result in [Battle.Result.WIN, Battle.Result.LOSE], "combat contre Bianca terminé")
+	_check(lines[0].contains("Bianca"), "« Un combat est lancé par... Bianca »")
+	if battle.result == Battle.Result.WIN:
+		_check(state.money == money + 5 * 25 * 4, "somme gagnée contre Bianca : 5 x 25 x 4")
+
+
+func _test_capture() -> void:
+	var state := _player(498, 10, 6)
+	state.add_item(4, 30)
+	var wild := Pokemon.create(504, 2, {"random": GameRandom.new(7)})
+	var battle := Battle.wild(state, wild, {"random": GameRandom.new(8)})
+	battle.auto_answer = func(b: Battle, request: Dictionary) -> Variant:
+		if request.kind == "action":
+			return {"action": Battle.Action.BAG, "item": 4}
+		return _auto(b, request)
+	battle.run()
+	print("   Capture : ", " | ".join(_transcript(battle)))
+	_check(battle.result == Battle.Result.CAUGHT and state.party.size() == 2 and state.party[1].species == 504
+		and state.party[1].ot_id == state.trainer_id and state.caught.has(504), "Ratentif capturé et ajouté à l'équipe")
+
+
+func _test_escape() -> void:
+	var state := _player(495, 5, 9)
+	var wild := Pokemon.create(504, 2, {"random": GameRandom.new(11)})
+	var battle := Battle.wild(state, wild, {"random": GameRandom.new(12)})
+	battle.auto_answer = func(b: Battle, request: Dictionary) -> Variant:
+		if request.kind == "action":
+			return {"action": Battle.Action.RUN}
+		return _auto(b, request)
+	battle.run()
+	_check(battle.result == Battle.Result.RUN, "fuite d'un combat sauvage")
+	var trainer_battle := Battle.against_trainer(_player(495, 5, 13), 1, {"random": GameRandom.new(14)})
+	var asked := [0]
+	trainer_battle.auto_answer = func(b: Battle, request: Dictionary) -> Variant:
+		if request.kind == "action":
+			asked[0] += 1
+			return {"action": Battle.Action.RUN} if asked[0] == 1 else {"action": Battle.Action.FIGHT, "move": 0}
+		return _auto(b, request)
+	trainer_battle.run()
+	_check(_transcript(trainer_battle).has("On ne s'enfuit pas d'un combat de Dresseurs!"), "pas de fuite contre un dresseur")
+
+
+func _test_learn_move() -> void:
+	var state := _player(495, 9, 15)
+	var snivy := state.party[0]
+	snivy.set_moves([33, 43, 22, 35])
+	var battle := Battle.wild(state, Pokemon.create(506, 2, {"random": GameRandom.new(16)}), {"random": GameRandom.new(17)})
+	battle.auto_answer = _auto
+	battle.run()
+	battle.learn_move(snivy, 74)
+	_check(snivy.knows(74) and not snivy.knows(33), "nouvelle capacité à la place de la première")
 
 
 func _check(condition: bool, label: String) -> bool:
