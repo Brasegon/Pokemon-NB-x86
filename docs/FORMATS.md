@@ -1266,7 +1266,13 @@ face) ou 168/169 (joueur) choisi par 0x022073D0 ; barre de PV 177/178 placée pa
 Pixels (0x02207FD4) = PV x 48 / PV max, au moins 1 ; couleur (0x0202CFCC) : vert au-dessus de la
 moitié, jaune au-dessus du cinquième, sinon rouge ; descente (0x02207F0C) d'un PV par image, ou d'un
 pixel par image sous 48 PV max. Joueur : PV en chiffres (186/187, « 123/456 », 0x022083C0) et barre
-d'expérience (183/184, 10 tuiles). Nom (0x02208094) : petite police, couleurs 1 et 4 de la palette.
+d'expérience (183/184, 10 tuiles). Nom (0x02208094) et niveau (0x022084F0) : petite police,
+couleurs 1 et 4 de la palette. Statut : icônes de `a/0/8/3` (archive 0x53 de 0x0202757C : palette
+11, image 12, cellules 13 : PkRS, PAR, GEL, SOM, PSN, BRU, K.O., poison grave), choisies par
+0x0202765C (paralysie 1, sommeil 3, gel 2, brûlure 5, poison 4, K.O. 6) et posées à (-30, 8) du
+centre de la jauge du joueur, (-38, 8) de celle d'en face (table 0x0220AA60) : au bout gauche de la
+barre. En combat sauvage, une petite Ball (tuile 27) devant le nom si l'espèce est déjà capturée
+(0x022085F0).
 
 **Bruitages** (noms du SDAT) : `SEQ_SE_KOUKA_H`, `_M`, `_L` (coup super efficace, normal, peu
 efficace), `SEQ_SE_NAGERU` (lancer de Ball), `SEQ_SE_BOWA1` (sortie), `SEQ_SE_KON` et

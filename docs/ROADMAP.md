@@ -139,7 +139,7 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
       professeure (0x17D)
 - [ ] Combats doubles, triples et rotatifs ; animations des capacités (les coups sont pour l'instant
       un élan et un clignotement) ; évolution après le combat ; « Utiliser un autre Pokémon ? » ;
-      surnom à la capture ; icônes de statut sur les jauges ; paroles des dresseurs en plein combat
+      surnom à la capture ; paroles des dresseurs en plein combat ; héros vu de dos qui lance la Ball
 
 ## Phase 5 — Les systèmes du jeu
 
