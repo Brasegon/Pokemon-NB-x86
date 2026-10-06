@@ -397,6 +397,19 @@ sinon Rot5 : les 13 bits de poids fort des 5 valeurs sont les éléments (0,0) (
 leurs 3 bits de poids faible forment l'élément (1,2), la 3e ligne est le produit vectoriel des deux
 premières. Une échelle nulle sert à cacher un nœud.
 
+**NSBMA** (bloc `MAT0`, « M\0AM », `nsbma.gd`) : 04 nombre d'images, 08 dictionnaire des
+matériaux ; 5 pistes de 4 octets par matériau (diffus, ambiant, spéculaire, émission, opacité) :
+bits 0-15 la valeur (BGR555, opacité 0 à 31) ou la position des valeurs depuis le début de
+l'animation, bits 16-28 dernière image, bit 29 constante, bits 30-31 pas. Valeurs : un u16 par image
+pour une couleur, un octet pour l'opacité. Dans toute la ROM (69 fichiers), le pas vaut 1 et seuls le
+diffus et l'opacité changent. Un matériau d'opacité 0 n'est pas dessiné.
+
+**NSBVA** (bloc `VIS0`, « V\0AV », `nsbva.gd`) : 04 nombre d'images, 06 nombre de nœuds, 08 taille ;
+en 0C, un bit par image et par nœud (bit n° image x nœuds + nœud, du bit faible au fort) qui
+remplace la visibilité des commandes de rendu 02 : les formes dessinées après « 02 nœud » sont
+montrées ou cachées. Le portage construit alors les formes des nœuds cachés et regroupe les triangles
+par nœud de visibilité (un maillage chacun, `G3DModelInstance.create(..., all_parts)`).
+
 ### Éclairage de la DS (`g3d_materials.gd`)
 
 Par sommet, pour chaque lumière allumée (jusqu'à 4, directionnelles) :
@@ -867,7 +880,8 @@ appartiennent au contexte du script (0x02158F14) et disparaissent avec lui.
 valeur dans les registres de luminosité de la DS (0x0400006C et 0x0400106C, de -16 noir à +16
 blanc) en changeant son signe pour les écrans des bits 1 et 2 : avec ces écrans, 16 est le noir ;
 avec ceux des bits 4 et 8, le blanc. Vitesse positive : un cran toutes les n images ; négative :
-1 - n crans par image.
+1 - n crans par image. Le pas est multiplié par [+0x1C], que le jeu règle à 2 en démarrant
+(0x020055CC -> 0x0204E68C) ; 0x0204E5D0 avance le fondu (appelé par 0x0200567C).
 
 **Choix du starter** (commande 0x153) : l'application de l'overlay 223 lit les trois espèces dans
 sa table 0x021BC6B0 (495 Vipélierre, 498 Gruikui, 501 Moustillon) par l'indice choisi
@@ -1428,6 +1442,14 @@ dépend de la Ball (0x021FE32C) : celle du Pokémon de la place réglée par 0x4
 0x0209E89C de l'ARM9, 25 Balls) ; éclat d'ouverture : fichier 3 + Ball - 1 ; Ball elle-même :
 fichiers 46 à 49 + 4 x (Ball - 1).
 
+Gestionnaire (0x02050BC8) : avec r2 = 1, il se crée une caméra (0x020515E0) ; sans fiche de caméra,
+c'est une perspective : œil (0, 0, 4) visant l'origine (vecteurs 0x020A1518, 0x020A1500, haut
+0x020A150C de l'ARM9), sinus et cosinus 0xB50 (45°, 0x020516B4), rapport 4/3, plans 1 et 900 ; la
+coupure « VS » du terrain dessine ainsi ses étincelles. 0x02050B80 dessine (0x020513AC, avec cette
+caméra) puis met à jour (0x02052708) tous les gestionnaires. Un émetteur se met à jour à chaque appel,
+sauf si les bits 16-18 de son mot +0x80 (remis à 0 à sa création, 0x02053B50) valent n : alors
+seulement quand le compteur du gestionnaire (+0x48, 0 et 1 en alternance, 0x0205281C) vaut n - 1.
+
 ### Début du combat (`battle_screen.gd`, client de l'overlay 93)
 
 Le client du combat déroule lui-même le début, étape par étape (0x021EB3xx choisit la séquence
@@ -1478,16 +1500,55 @@ large les montre en entier.
 ### Transitions vers un combat (terrain, overlay 21)
 
 Le combat d'un dresseur (commande 0x85, événement 0x0216EB28) commence par la musique, puis un
-**effet de rencontre** (0x021CF428) : n° choisi par 0x021CF6D8 (classes « à part » : table
-0x021DB786 de l'overlay 21, une entrée par ligne de la table 0x0209FE6C ; autres dresseurs : 5, 6, 7
-ou 8 selon le lieu), table 0x021DB48C (37 effets, 0x14 octets : fonction de création, fonction de
-fin, overlay à charger, mémoire demandée ; repli sur l'effet 7 si elle manque). Les effets 10 à 30
-(rivaux, champions...) sont les coupures « VS » : overlay 73 (0x021F5318 : deux flashs blancs, puis
-0x021C1D58) ; l'overlay 74 donne pour chaque genre (table 0x021F5470, 0x14 octets) l'effet de
-terrain (13 pour les rivaux et champions), l'image du portrait et sa palette dans `a/1/8/0` (22
-images compressées et leurs palettes ; Bianca : genre 1, image 3, palette 25). La coupure est un
-modèle 3D dont le jeu remplace les textures « trwb_face01 » (portrait) et « name_wu »,
-« name_dwn » (noms écrits) ; reste à la refaire.
+**effet de rencontre** (0x021CF428) : n° choisi par 0x021CF6D8 (classes « à part » dont le genre de
+musique est l'un des 11 premiers : table 0x021DB786 de l'overlay 21, un octet par ligne de la table
+0x0209FE6C, 10 Tcheren, 11 Bianca, 12 à 22 les champions... ; autres dresseurs : 5, 6, 7 ou 8 selon
+le lieu), table 0x021DB48C (37 effets, 0x14 octets : fonction de création, fonction de fin, overlay
+à charger, paramètre, mémoire demandée ; repli sur l'effet 7 si elle manque).
+
+**Coupures « VS »** (`vs_cut_in.gd`) : les effets dont la création est dans l'overlay 73 (10 à 30,
+32 à 34, 3 et 4). Chaque fonction de création commence par « movs r2, #genre » et appelle 0x021F5318 :
+une tâche qui fait deux flashs blancs (0x0204E6B8(4, 0, 16, 0), puis retour, deux fois) avant de
+lancer la coupure (0x021C1D58) ; l'enregistrement du combat contre Bianca n'en montre pourtant aucun
+(l'écran passe directement au blanc de la coupure) : le portage suit l'enregistrement. La fiche du
+genre (overlay 74, 0x021F5460 : table 0x021F5470, 26 fiches de 0x14 octets) : effet de terrain (13
+pour les rivaux et les champions), image du portrait et sa palette dans `a/1/8/0` (Bianca : genre 1,
+image 3, palette 25), ligne du nom dans le fichier de textes 176 (0 : le nom du héros, 1 Tcheren,
+2 Bianca...), mode (1 : portrait et nom du héros aussi, 2 : l'adversaire seul).
+
+Fiche de l'effet de terrain (`a/1/1/7`, 36 octets, lue par 0x021C247C) : fichier de particules
+(+0, 0xFFFF : aucun), délais avant les émetteurs 0 et 1 (+4, +6), deux modèles (+8, +A), délais
+avant leurs animations (+C, +E), trois animations par modèle (+10, +18 ; NSBCA, NSBMA, NSBVA, NSBTA
+ou NSBTP), tout dans `a/1/1/5`. Effet 13 : particules 70 après 8 images, modèles 71 (rival_ci_a :
+portraits, noms, « VS ») et 72 (rival_ci_b : bandes bleue et rouge, plan blanc des flashs),
+animations de 111 images. Le portrait noir de l'adversaire est un second carré, aux sommets noirs,
+avec la même texture : l'animation de visibilité l'échange contre le vrai à l'image 38.
+
+Tâche 0x021C1E08 (12 états) : fondu au blanc (0x021C2AA8 : 0x0204E6B8(4, 0, 16, -1)) ; capture de
+l'écran 3D du terrain (0x021C2714 : DISPCAPCNT = 0x81330010, 3D seule à 100 %, banque D), affichée
+en BG2 (bitmap en couleurs directes, 0x021C1F14) sous la 3D de la coupure (0x02189938 : fond
+transparent) ; chargement (0x021C22AC) ; retour du blanc (0x021C2AE8) ; puis à chaque image du
+terrain (30 par seconde) : compteur +1 (+0x134), émetteurs après leur délai (0x021C2140, position
+de la ressource + (0, 0, 0x40), 0x021C2448), animations des modèles (0x021C21C8, 0x021C2238),
+bruitages de l'effet de terrain à leur image (0x021C30E4 : table 0x021DA6B0 de l'overlay 21, paires
+(son, image) jusqu'à 0xFFFFFFFF ; effet 13 : SEQ_SE_ROTATION_B à 10, SEQ_SE_SHDEMO_04 à 38,
+SEQ_SE_TDEMO_003 à 91). Quand les animations et les particules sont finies, fondu au noir
+(0x021C2C80, 0x0204E6B8(3, 0, 16, -1)), puis le combat. Sur l'enregistrement : environ 0,4 s de
+blanc pendant le chargement, et le terrain assombri de moitié derrière la coupure, ce que le code
+ne fait pas (capture à 100 %, fond transparent) : le portage ne l'assombrit pas.
+
+Caméra (0x021C1A80) : perspective, œil (0, 0, 128) visant l'origine, demi-angle vertical de la
+table 0x020A1E40 de l'ARM9 (sinus et cosinus en +0x0C et +0x0E : 0x0576, 0x0F0A, 19,96°), rapport
+4/3, plans 1 et 1024 ; les modèles sont dessinés à l'origine. Les particules ont la caméra de leur
+gestionnaire (voir « Particules »).
+
+Textures remplacées (tâche 0x021C2CF4) : « trwb_face001 » / « trwb_face001_pl » par le portrait de
+l'adversaire (0x021C2B70 : image compressée de 16 x 16 tuiles en 4 bits recopiée telle quelle,
+palette de 16 couleurs, couleur 0 transparente), « trwb_hero_ine » par celui du héros (image 0 et
+palette 22, ou 1 et 23 pour l'héroïne, 0x021C2DC4), « name_up » et « name_down » par les noms
+(0x021C2F10) : police des dialogues (`a/0/2/3` fichier 0), palette 5 du même dossier dont la couleur
+1 devient blanche et la 2 noire (couleurs de texte 0x440 : trait 1, ombre 2, fond 0), en haut à
+gauche ; le nom du héros est aligné à droite sur 60 pixels pour l'effet de terrain 13 en mode 1.
 
 ### Démonstration de capture (commande 0x17D, 0x0216E8EC)
 

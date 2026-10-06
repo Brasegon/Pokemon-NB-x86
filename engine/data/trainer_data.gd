@@ -29,6 +29,10 @@ const MUSIC_OVERLAY := 21
 const MUSIC_TABLE := 0x021DB770
 const MUSIC_KINDS := 11
 const TRAINER_MUSIC := 0x46A
+## Effet de rencontre des classes à part (0x021CF6D8 : table 0x021DB786 de l'overlay 21, un octet par
+## ligne de la table des classes) : 10 Tcheren, 11 Bianca, 12 à 22 les champions... Les autres
+## dresseurs ont un effet qui dépend du lieu (5 à 8).
+const ENCOUNTER_EFFECT_TABLE := 0x021DB786
 ## Musique de victoire (0x02013284) selon le même genre ; SEQ_BGM_WIN2 par défaut.
 const VICTORY_MUSIC := {2: 0x47E, 3: 0x47E, 4: 0x480, 6: 0x491, 7: 0x47F, 8: 0x47F, 9: 0x491, 11: 0x480}
 const DEFAULT_VICTORY_MUSIC := 0x47D
@@ -151,16 +155,36 @@ func victory_music() -> int:
 	return VICTORY_MUSIC.get(music_kind(), DEFAULT_VICTORY_MUSIC)
 
 
+## Effet de rencontre de la classe (0x021CF6D8, quand son genre de musique est l'un des 11 à part),
+## -1 pour les autres dresseurs (effet selon le lieu).
+func special_encounter_effect() -> int:
+	var row := _class_row()
+	if row < 0 or music_kind() >= MUSIC_KINDS:
+		return -1
+	var rom: Node = Autoloads.rom()
+	var code: PackedByteArray = rom.overlay(MUSIC_OVERLAY)
+	var at: int = ENCOUNTER_EFFECT_TABLE - rom.overlay_address(MUSIC_OVERLAY) + row
+	return code[at] if at >= 0 and at < code.size() else -1
+
+
 func _class_entry() -> int:
+	var row := _class_row()
+	if row < 0:
+		return -1
+	var rom: Node = Autoloads.rom()
+	return rom.arm9_code().decode_u16(CLASS_MUSIC_TABLE - rom.arm9_address() + row * 2)
+
+
+## Ligne de la classe dans la table des classes à part (0x0202A370), -1 si elle n'y est pas.
+func _class_row() -> int:
 	var rom: Node = Autoloads.rom()
 	var code: PackedByteArray = rom.arm9_code()
 	var at: int = CLASS_MUSIC_TABLE - rom.arm9_address()
 	for i in CLASS_MUSIC_ENTRIES:
 		if at + i * 2 + 2 > code.size():
 			break
-		var entry := code.decode_u16(at + i * 2)
-		if entry & 0x7F == trainer_class:
-			return entry
+		if code.decode_u16(at + i * 2) & 0x7F == trainer_class:
+			return i
 	return -1
 
 

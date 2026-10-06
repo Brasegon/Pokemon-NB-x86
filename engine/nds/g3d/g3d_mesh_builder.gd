@@ -6,6 +6,10 @@ extends RefCounted
 ##
 ## Les sommets sont calculés dans la pose de liaison (pose de repos) en unités DS. Chaque sommet
 ## retient le ou les nœuds dont il dépend, pour animer le modèle avec un squelette Godot.
+##
+## Avec `keep_hidden`, les formes des nœuds cachés sont aussi construites, et les triangles sont
+## regroupés par matériau et par nœud de visibilité (celui de la dernière commande 02) : une
+## animation de visibilité (NSBVA) peut alors montrer ou cacher chaque groupe.
 
 ## Nombre de paramètres (mots de 32 bits) de chaque commande du GPU.
 const PARAM_COUNTS := {
@@ -17,9 +21,11 @@ const PARAM_COUNTS := {
 const MATRIX_STACK_SIZE := 32
 
 
-## Triangles d'un matériau.
+## Triangles d'un matériau (et d'un nœud de visibilité, avec `keep_hidden`).
 class Surface:
 	var material := -1
+	## Nœud dont la visibilité montre ou cache ces triangles (-1 sans `keep_hidden`).
+	var visibility_node := -1
 	var positions := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
@@ -47,6 +53,7 @@ var node_world: Array[Transform3D] = []
 ## Parent de chaque nœud (-1 pour une racine).
 var node_parent := PackedInt32Array()
 var node_visible: Array[bool] = []
+var keep_hidden := false
 
 var _surface_by_material := {}
 var _stack: Array[Transform3D] = []
@@ -56,6 +63,8 @@ var _binding: Array = [[0, 1.0]]
 var _material := -1
 ## Faux après une commande 02 qui cache le nœud : ses formes ne sont pas dessinées.
 var _node_shown := true
+## Nœud de la dernière commande 02.
+var _visibility_node := -1
 # État du GPU pendant une liste de commandes.
 var _color := Color.WHITE
 var _normal := Vector3.UP
@@ -67,9 +76,10 @@ var _pending: Array[Vertex] = []
 var _strip_count := 0
 
 
-static func build(source: G3DModel) -> G3DMeshBuilder:
+static func build(source: G3DModel, with_hidden := false) -> G3DMeshBuilder:
 	var builder := G3DMeshBuilder.new()
 	builder.model = source
+	builder.keep_hidden = with_hidden
 	builder._run()
 	return builder
 
@@ -107,6 +117,7 @@ func _run_sbc() -> void:
 				return
 			0x02:
 				_node_shown = sbc[p + 1] == 1
+				_visibility_node = sbc[p]
 				if sbc[p] < node_visible.size():
 					node_visible[sbc[p]] = _node_shown
 				p += 2
@@ -118,7 +129,7 @@ func _run_sbc() -> void:
 				_bind_material()
 				p += 1
 			0x05:
-				if _node_shown:
+				if _node_shown or keep_hidden:
 					_draw_shape(sbc[p])
 				p += 1
 			0x06:
@@ -197,12 +208,14 @@ func _bind_material() -> void:
 
 
 func _surface() -> Surface:
-	if not _surface_by_material.has(_material):
+	var key := Vector2i(_material, _visibility_node if keep_hidden else -1)
+	if not _surface_by_material.has(key):
 		var s := Surface.new()
 		s.material = _material
-		_surface_by_material[_material] = s
+		s.visibility_node = key.y
+		_surface_by_material[key] = s
 		surfaces.append(s)
-	return _surface_by_material[_material]
+	return _surface_by_material[key]
 
 
 func _draw_shape(index: int) -> void:

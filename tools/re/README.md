@@ -30,6 +30,7 @@ git ignore. Ne jamais le versionner ni le partager.
 | `effscripts.py` | Désassembleur des scripts d'effets du combat (`a/0/6/6` capacités, `a/0/6/7` système) ; `--stats` : commandes employées. |
 | `spa.py` | Fichiers de particules SPA (`a/0/0/6`) : ressources, blocs, textures ; `--stats` : relevé de toute l'archive. |
 | `switch.py` | Cas d'un `switch` Thumb (table de sauts après le code) et leurs cibles, à partir du `cmp` qui le borne. |
+| `cutin.py` | Coupures « VS » du terrain : effets de rencontre de l'overlay 73 et leurs genres, fiche d'un effet de terrain (`a/1/1/7`) et ses bruitages, animations BVA0 / BMA0 de `a/1/1/5`. |
 
 ```bash
 python disasm.py

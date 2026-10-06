@@ -9,6 +9,10 @@ extends Node2D
 ## (perspective), ou avec une caméra « écran » orthographique (0x020515E0 : [-4, 4] x [-3, 3],
 ## 32 pixels DS par unité) quand un effet y lance des émetteurs qui suivent une trajectoire.
 ##
+## Sans décor de combat (`stage` nul : la coupure « VS » du terrain), les gestionnaires dessinent avec
+## la caméra « écran » ou avec `camera` : une caméra perspective propre aux particules (celle que
+## crée 0x020515E0 sans fiche : œil (0, 0, 4) visant l'origine, demi-angle de 45°).
+##
 ## Mise à jour d'un émetteur (0x020531B0) : émission (0x0205693C) tous les `interval` images tant
 ## qu'il est en vie, puis chaque particule : animations (échelle 0x02057E00, couleur 0x02057C34,
 ## opacité 0x02057B58, texture 0x02057AF4), comportements, rotation, vitesse freinée par l'air
@@ -86,6 +90,8 @@ class Manager:
 
 
 var stage: BattleStage
+## Caméra des gestionnaires sans caméra « écran » quand il n'y a pas de décor de combat.
+var camera: Camera3D
 var managers: Array[Manager] = []
 ## Rapport entre la vue 3D (taille de la fenêtre) et l'écran du combat qui la montre (réglé par
 ## l'écran à chaque image).
@@ -115,7 +121,11 @@ func load_file(file: int) -> int:
 	var archive: NARC = Autoloads.rom().narc(BWFiles.PARTICLES)
 	if archive == null or file < 0 or file >= archive.count():
 		return -1
-	var spa := SPA.parse(archive.get_file(file))
+	return load_spa(SPA.parse(archive.get_file(file)), file)
+
+
+## Charge un fichier de particules déjà lu (d'une autre archive) ; renvoie sa place, ou -1.
+func load_spa(spa: SPA, file := -1, screen_camera := false) -> int:
 	if spa == null:
 		return -1
 	for i in MAX_FILES:
@@ -123,6 +133,7 @@ func load_file(file: int) -> int:
 			var manager := Manager.new()
 			manager.file = file
 			manager.spa = spa
+			manager.screen_camera = screen_camera
 			managers[i] = manager
 			return i
 	return -1
@@ -592,10 +603,8 @@ func _collide(p: Particle, data: PackedByteArray, e: Emitter) -> void:
 # --- Dessin -----------------------------------------------------------------------------------------
 
 func _draw() -> void:
-	if stage == null:
-		return
 	for manager in managers:
-		if manager == null:
+		if manager == null or (not manager.screen_camera and _camera() == null):
 			continue
 		for e in manager.emitters:
 			var r := e.res
@@ -638,13 +647,14 @@ func _draw_list(manager: Manager, e: Emitter, list: Array[Particle], children: b
 		var unit: float
 		if manager.screen_camera:
 			center = screen_point(world)
-			unit = stage.ds_pixel() * SCREEN_UNIT * _view_factor()
+			unit = _ds_pixel() * SCREEN_UNIT * _view_factor()
 		else:
 			var point := Vector3(world) / 4096.0
-			if not stage.is_in_front(point):
+			var view_camera := _camera()
+			if view_camera.is_position_behind(point):
 				continue
-			center = stage.screen_position(point) * _view_factor()
-			unit = stage.perspective_pixel(point) * 16.0 * _view_factor()
+			center = view_camera.unproject_position(point) * _view_factor()
+			unit = _perspective_pixel(view_camera, point) * 16.0 * _view_factor()
 		var angle := -p.rotation * TAU / 0x10000
 		var x_axis := Vector2(cos(angle), sin(angle)) * (width / 4096.0) * unit
 		var y_axis := Vector2(sin(angle), -cos(angle)) * (height / 4096.0) * unit
@@ -683,9 +693,9 @@ func _directional_axes(manager: Manager, e: Emitter, p: Particle, width: int, he
 		facing = absf(direction.z)
 	else:
 		var world := Vector3(p.position + p.emitter_position) / 4096.0
-		var tip := stage.screen_position(world + direction) * _view_factor()
+		var tip := _camera().unproject_position(world + direction) * _view_factor()
 		ahead = tip - center
-		var view := -stage.camera.global_transform.basis.z
+		var view := -_camera().global_transform.basis.z
 		facing = absf(direction.dot(view))
 	if ahead.is_zero_approx():
 		return []
@@ -698,8 +708,8 @@ func _directional_axes(manager: Manager, e: Emitter, p: Particle, width: int, he
 
 ## Point de la caméra « écran » (unités de 32 pixels DS, y vers le haut) vers l'écran.
 func screen_point(world: Vector3i) -> Vector2:
-	var view_size := stage.get_viewport().get_visible_rect().size
-	var unit := stage.ds_pixel() * SCREEN_UNIT
+	var view_size := _view_size()
+	var unit := _ds_pixel() * SCREEN_UNIT
 	var center := view_size / 2.0 + Vector2(world.x, -world.y) / 4096.0 * unit
 	return center * _view_factor()
 
@@ -708,16 +718,38 @@ func screen_point(world: Vector3i) -> Vector2:
 ## centre de la vue, y vers le haut, z = -profondeur.
 func to_screen_space(world: Vector3i) -> Vector3i:
 	var point := Vector3(world) / 4096.0
-	var at := stage.screen_position(point)
-	var view_size := stage.get_viewport().get_visible_rect().size
-	var unit := stage.ds_pixel() * SCREEN_UNIT
+	var at := _camera().unproject_position(point)
+	var view_size := _view_size()
+	var unit := _ds_pixel() * SCREEN_UNIT
 	var local := (at - view_size / 2.0) / unit
-	var depth := (stage.camera.global_transform.inverse() * point).z
+	var depth := (_camera().global_transform.inverse() * point).z
 	return Vector3i(int(local.x * 4096.0), int(-local.y * 4096.0), int(depth * 4096.0))
 
 
 func _view_factor() -> float:
 	return view_scale
+
+
+func _camera() -> Camera3D:
+	return stage.camera if stage else camera
+
+
+## Taille de la vue 3D (celle de la caméra, sinon l'écran) et d'un pixel DS dans cette vue.
+func _view_size() -> Vector2:
+	var view_camera := _camera()
+	if view_camera and view_camera.get_viewport():
+		return view_camera.get_viewport().get_visible_rect().size
+	return get_viewport_rect().size
+
+
+func _ds_pixel() -> float:
+	return _view_size().y / BattleStage.DS_HEIGHT
+
+
+## Taille à l'écran de 1/16 d'unité posé en `world` (comme BattleStage.perspective_pixel()).
+static func _perspective_pixel(view_camera: Camera3D, world: Vector3) -> float:
+	var up := view_camera.global_transform.basis.y.normalized()
+	return view_camera.unproject_position(world).distance_to(view_camera.unproject_position(world + up / 16.0))
 
 
 ## Teinte de la particule par celle de l'émetteur (composantes multipliées, >> 5).

@@ -23,6 +23,10 @@ const BATTLE_SCENES := "a/1/5/2" ## vérifié
 const TRAINER_SPRITES := "a/0/7/2" ## vérifié (n° de l'image = classe du dresseur : 38 = Bianca)
 const TRAINER_BACK_SPRITES := "a/0/7/3" ## vérifié (archive 0x49 de 0x02017230 : dresseurs de dos, 0 le héros, 1 l'héroïne)
 const PARTICLES := "a/0/0/6" ## vérifié (archive 6 de 0x020511B4, particules « SPA » des effets du combat)
+## Coupures « VS » avant les combats des rivaux et des champions (fld3d_ci, 0x021C1D58).
+const CUT_IN_RESOURCES := "a/1/1/5" ## vérifié (archive 0x73 de 0x021C25DC : NSBMD, NSBCA, NSBMA, NSBVA, NSBTA, SPA)
+const CUT_IN_EFFECTS := "a/1/1/7" ## vérifié (archive 0x75 de 0x021C248A : une fiche de 36 octets par effet)
+const CUT_IN_PORTRAITS := "a/1/8/0" ## vérifié (archive 0xB4 de 0x021C2BCC : portraits NCGR compressés, palettes NCLR)
 const MOVE_EFFECTS := "a/0/6/6" ## vérifié (archive 0x42 de 0x021F9498, scripts des capacités)
 const SYSTEM_EFFECTS := "a/0/6/7" ## vérifié (archive 0x43, scripts des effets 561 et suivants)
 const PERSONAL := "a/0/1/6" ## vérifié (archive 16 de 0x0201ADA4, 60 octets par fiche)
@@ -82,6 +86,8 @@ const TEXT_BATTLE_PARTY := 18
 const TEXT_TRAINER_SPEECH := 189
 const TEXT_TRAINER_NAMES := 190
 const TEXT_TRAINER_CLASSES := 191
+## Noms écrits dans les coupures « VS » (0x021C2F30) : ligne 0 = le nom du héros, puis Tcheren...
+const TEXT_CUT_IN_NAMES := 176
 
 ## Descriptions affichées par l'explorateur de ROM.
 const DESCRIPTIONS := {
@@ -97,6 +103,9 @@ const DESCRIPTIONS := {
 	BATTLE_BACKGROUNDS: "Décors des combats (sols et fonds)",
 	BATTLE_SCENES: "Choix du décor des combats (fond et socles selon le lieu)",
 	TRAINER_SPRITES: "Sprites des dresseurs en combat",
+	CUT_IN_RESOURCES: "Coupures « VS » : modèles, animations, particules",
+	CUT_IN_EFFECTS: "Coupures « VS » : fiches des effets",
+	CUT_IN_PORTRAITS: "Coupures « VS » : portraits des adversaires et du héros",
 	PERSONAL: "Données des Pokémon (statistiques, types, talents)",
 	GROWTH: "Courbes d'expérience",
 	LEARNSETS: "Capacités apprises par niveau",

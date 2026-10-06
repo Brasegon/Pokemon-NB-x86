@@ -503,20 +503,16 @@ func _play_script_battle(battle: Battle) -> void:
 	scripts.end_battle(result)
 
 
-## Joue un combat par-dessus le terrain : passage au noir, écran du combat, puis retour au terrain et
-## à sa musique. Renvoie le résultat.
+## Joue un combat par-dessus le terrain : transition, écran du combat, puis retour au terrain et à sa
+## musique. Renvoie le résultat.
 func _play_battle(battle: Battle) -> Battle.Result:
 	player.controllable = false
 	var options := _battle_options(battle)
-	# Transition : la musique du combat part tout de suite, l'écran flashe deux fois en blanc puis
-	# passe au noir.
+	# Comme l'événement 0x0216EB28 : la musique du combat d'abord, puis l'effet de rencontre.
 	var archive := Sound.sdat()
 	if archive and battle.music >= 0 and battle.music < archive.sequence_names.size():
 		Sound.play_music(archive.sequence_names[battle.music])
-	for flash in BATTLE_FLASHES:
-		await _fade.fade_to(BATTLE_FLASH_ALPHA, BATTLE_FLASH_TIME, true)
-		await _fade.fade_to(0.0, BATTLE_FLASH_TIME, true)
-	await _fade_to(1.0)
+	await _battle_transition(battle)
 	_battle = BattleScreen.create(battle, options)
 	_battle_layer.add_child(_battle)
 	field.visible = false
@@ -530,6 +526,25 @@ func _play_battle(battle: Battle) -> Battle.Result:
 	await _fade_to(0.0)
 	player.controllable = not scripts.is_running()
 	return result
+
+
+## Effet de rencontre (0x021CF428) jusqu'à l'écran noir : la coupure « VS » des rivaux, des champions...
+## (VsCutIn), sinon, en attendant les effets selon le lieu, deux flashs blancs puis le noir.
+func _battle_transition(battle: Battle) -> void:
+	var trainer := battle.enemy().trainer
+	var state: GameState = Game.state
+	var cut_in: VsCutIn = VsCutIn.create(trainer.special_encounter_effect(), state.player_name, state.gender == GameState.Gender.GIRL) if trainer else null
+	if cut_in:
+		_battle_layer.add_child(cut_in)
+		cut_in.play()
+		await cut_in.finished
+		_fade.color = Color.BLACK
+		cut_in.queue_free()
+		return
+	for flash in BATTLE_FLASHES:
+		await _fade.fade_to(BATTLE_FLASH_ALPHA, BATTLE_FLASH_TIME, true)
+		await _fade.fade_to(0.0, BATTLE_FLASH_TIME, true)
+	await _fade_to(1.0)
 
 
 ## Décor du combat (BattleBackgrounds) : celui de la zone, le genre de la case du héros (ou celui

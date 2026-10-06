@@ -141,8 +141,13 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
       sprites, dresseurs (héros vu de dos qui lance la Ball), particules (fichiers SPA et
       bibliothèque de l'ARM9) ; intro sauvage, intro de dresseur, envois, K.O., retour dans la Ball
 - [x] Début des combats déroulé comme le client du jeu (messages, jauges, rangées de Balls)
-- [ ] Animations des capacités (scripts `a/0/6/6`, les coups sont pour l'instant un élan et un
-      clignotement), capture avec les effets du jeu, transition « VS » sur le terrain
+- [x] Animations des capacités jouées depuis leurs scripts (`a/0/6/6`), sons et cris des effets
+- [x] Transition « VS » des rivaux et des champions sur le terrain : la coupure 3D de la ROM
+      (modèles, animations de squelette, de visibilité et de couleurs, portraits et noms écrits,
+      étincelles, bruitages)
+- [ ] Capture avec les effets du jeu (commandes de la Ball 0x2E-0x32 et 0x45), commandes de fonds
+      0x24-0x29 et 0x2B-0x2D ; transitions des autres dresseurs et des rencontres sauvages (effets
+      de rencontre selon le lieu)
 - [ ] Combats doubles, triples et rotatifs ; évolution après le combat ; « Utiliser un autre
       Pokémon ? » ; surnom à la capture ; paroles des dresseurs en plein combat
 

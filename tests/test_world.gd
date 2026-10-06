@@ -24,6 +24,7 @@ func _initialize() -> void:
 	_test_scripts()
 	_test_story_scenes()
 	_test_save()
+	_test_cut_in()
 	print("%d vérifications, %d échec(s), %d ms" % [_checks, _failures, Time.get_ticks_msec() - started])
 	quit(1 if _failures > 0 else 0)
 
@@ -557,6 +558,40 @@ func _play(scripts: FieldScripts, box: DialogueBox) -> int:
 		scripts._process(1.0 / 30.0)
 		frames += 1
 	return frames
+
+
+## Coupure « VS » de Bianca (classe 38) : effet de rencontre, fiches lues dans les overlays, déroulé
+## image par image jusqu'à la fin des animations et des particules.
+func _test_cut_in() -> void:
+	var bianca := TrainerData.load(59)
+	_check(bianca != null and bianca.special_encounter_effect() == 11, "Bianca : effet de rencontre 11")
+	_check(TrainerData.load(53).special_encounter_effect() == 10, "Tcheren : effet de rencontre 10")
+	_check(VsCutIn.kind_of(10) == 0 and VsCutIn.kind_of(11) == 1 and VsCutIn.kind_of(30) == 20 and VsCutIn.kind_of(3) == 24 and VsCutIn.kind_of(5) == -1,
+		"genres des coupures lus dans les fonctions de l'overlay 73")
+	var cut := VsCutIn.create(11, "Willy", false)
+	if not _check(cut != null and cut.field_effect == 13 and cut.portrait == Vector2i(3, 25) and cut.name_line == 2 and cut.mode == 1,
+		"fiche de Bianca : effet de terrain 13, portrait 3 et palette 25, nom n° 2, mode 1"):
+		return
+	_check(cut.descriptor.slice(0, 8) == PackedInt32Array([70, 0, 8, 0, 71, 72, 0, 0]), "fiche de l'effet 13 : particules 70 après 8 images, modèles 71 et 72")
+	var sounds: Array[Vector2i] = [Vector2i(1402, 10), Vector2i(2015, 38), Vector2i(1927, 91)]
+	_check(cut._sounds == sounds, "bruitages aux images 10, 38 et 91")
+	cut.build()
+	_check(cut.models.size() == 2, "deux modèles chargés")
+	var spawned_at := -1
+	while not cut.is_done() and cut.frame < 400:
+		cut.step()
+		if spawned_at < 0 and cut.particles.is_busy():
+			spawned_at = cut.frame
+	_check(spawned_at == 9, "émetteur de particules lancé à l'image 9 (%d)" % spawned_at)
+	_check(cut.frame == 111, "fin de la coupure après les 111 images de ses animations (%d)" % cut.frame)
+	var name_image := cut._name_texture("name_down", "Willy", true).get_image()
+	var rightmost := -1
+	for x in name_image.get_width():
+		for y in name_image.get_height():
+			if name_image.get_pixel(x, y).a > 0.0:
+				rightmost = x
+	_check(rightmost >= 55 and rightmost <= 60, "nom du héros aligné à droite sur 60 pixels (%d)" % rightmost)
+	cut.free()
 
 
 func _check(condition: bool, label: String) -> bool:

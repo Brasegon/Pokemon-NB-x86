@@ -134,23 +134,17 @@ static func shader(cull: String, transparency: int) -> Shader:
 
 ## Matériau Godot pour un matériau DS. `texture` peut être null ; `format` est le format de la
 ## texture (NSBTX.Format) pour savoir si elle a de la transparence. Renvoie null pour un matériau
-## qui n'affiche rien (aucune face visible, polygones d'ombre).
-static func create(mat: Dictionary, lit: bool, texture: Texture2D = null, format := 0, transparent_zero := false) -> ShaderMaterial:
+## qui n'affiche rien (aucune face visible, polygones d'ombre, opacité 0 : le jeu ne le dessine
+## pas), sauf si `force_translucent` le demande (opacité animée par une NSBMA).
+static func create(mat: Dictionary, lit: bool, texture: Texture2D = null, format := 0, transparent_zero := false, force_translucent := false) -> ShaderMaterial:
 	if not mat.show_front and not mat.show_back:
 		return null
-	if mat.polygon_mode == 3 or mat.alpha == 0:
+	if mat.polygon_mode == 3 or (mat.alpha == 0 and not force_translucent):
 		return null
-	var cull := "cull_disabled"
-	if mat.show_front and not mat.show_back:
-		cull = "cull_back"
-	elif mat.show_back and not mat.show_front:
-		cull = "cull_front"
-	var translucent: bool = mat.alpha < 31 or (texture != null and format in [NSBTX.Format.A3I5, NSBTX.Format.A5I3])
-	var transparency := 0
-	if translucent:
-		transparency = 2 if mat.translucent_depth else 1
+	var translucent: bool = force_translucent or mat.alpha < 31 or (texture != null and format in [NSBTX.Format.A3I5, NSBTX.Format.A5I3])
 	var m := ShaderMaterial.new()
-	m.shader = shader(cull, transparency)
+	m.shader = _shader_for(mat, translucent)
+	m.set_meta("translucent", translucent)
 	m.set_shader_parameter("opacity", mat.alpha / 31.0)
 	m.set_shader_parameter("polygon_mode", mat.polygon_mode)
 	m.set_shader_parameter("wrap_mode", Vector2i(_wrap(mat.repeat_s, mat.flip_s), _wrap(mat.repeat_t, mat.flip_t)))
@@ -165,6 +159,45 @@ static func create(mat: Dictionary, lit: bool, texture: Texture2D = null, format
 	set_texture_matrix(m, mat.tex_scale, mat.tex_rotation, mat.tex_translation)
 	set_texture(m, texture, format == NSBTX.Format.COMPRESSED_4X4 or transparent_zero)
 	return m
+
+
+## Shader d'un matériau DS : faces visibles et transparence.
+static func _shader_for(mat: Dictionary, translucent: bool) -> Shader:
+	var cull := "cull_disabled"
+	if mat.show_front and not mat.show_back:
+		cull = "cull_back"
+	elif mat.show_back and not mat.show_front:
+		cull = "cull_front"
+	var transparency := 0
+	if translucent:
+		transparency = 2 if mat.translucent_depth else 1
+	return shader(cull, transparency)
+
+
+static func is_translucent(m: ShaderMaterial) -> bool:
+	return m.get_meta("translucent", false)
+
+
+## Copie translucide d'un matériau (pour animer son opacité), avec les mêmes réglages.
+static func translucent_copy(m: ShaderMaterial, mat: Dictionary) -> ShaderMaterial:
+	var copy := ShaderMaterial.new()
+	copy.shader = _shader_for(mat, true)
+	copy.set_meta("translucent", true)
+	for uniform: Dictionary in m.shader.get_shader_uniform_list():
+		var uniform_name: String = uniform.name
+		copy.set_shader_parameter(uniform_name, m.get_shader_parameter(uniform_name))
+	return copy
+
+
+## Couleurs et opacité d'une animation NSBMA : opacité de 0 à 31 (-1 : inchangée) ; les couleurs ne
+## changent que l'éclairage (matériaux éclairés).
+static func set_colors(m: ShaderMaterial, alpha: int, diffuse: Color, ambient: Color, specular: Color, emission: Color) -> void:
+	if alpha >= 0:
+		m.set_shader_parameter("opacity", alpha / 31.0)
+	m.set_shader_parameter("diffuse", _rgb(diffuse))
+	m.set_shader_parameter("ambient", _rgb(ambient))
+	m.set_shader_parameter("specular", _rgb(specular))
+	m.set_shader_parameter("emission", _rgb(emission))
 
 
 ## Applique un éclairage (voir FieldLight.sample()) : lumières allumées, couleurs et directions,
