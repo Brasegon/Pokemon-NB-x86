@@ -1,46 +1,29 @@
 class_name BattleStage
 extends Node3D
-## La scène 3D d'un combat, réglée comme l'overlay 94 : le fond, les deux socles, la caméra et la
-## place des Pokémon. Une unité Godot = une unité de la DS (1.0 en virgule fixe 4096).
+## La scène 3D d'un combat, réglée comme l'overlay 94 : le fond, les deux socles et la caméra.
+## Une unité Godot = une unité de la DS (1.0 en virgule fixe 4096).
 ##
 ## - Socles (0x021F67D6) : celui du joueur en (0, 0, 5,449), celui d'en face en (0, 0, -12,718)
 ##   (en combat rotatif : 10 et -15).
-## - Pokémon (0x021FF39C, table 0x02209FF0 des combats simples) : joueur en (0,5 ; 0,4 ; 7), en face
-##   en (0,3 ; 0,4 ; -10). Les sprites sont des images plates tournées vers la caméra (système
-##   « MCSS » de l'ARM9, dessin en 0x02014E60) : un pixel du sprite mesure échelle / 16 unité, avec
-##   l'échelle de la place (0x022018D4, table 0x02209F68 : 0x1030 pour le joueur, 0x11BF en face).
-##   Vu de la caméra par défaut, le Pokémon d'en face est ainsi à peu près à sa taille et celui du
-##   joueur, plus proche, deux fois plus grand.
 ## - Caméra (0x021F6DDC) : perspective, demi-angle de vue vertical de 13° (sinus 0x399, cosinus
-##   0xF97), plans à 1 et 512 unités ; position par défaut (0x021F71A8) : œil en (6,7 ; 6,7 ; 17,3),
-##   point visé (0 ; 2,6 ; 0). Préréglages (0x021F9C74) : PLAYER et ENEMY cadrent un Pokémon (table
-##   0x0220AC88 des yeux, 0x0220ACA0 des points visés), INTRO est la vue de départ (0x0220AC40).
+##   0xF97), plans à 1 et 512 unités. Sa position et ses mouvements sont ceux de BattleCamera,
+##   avancée d'une image à chaque tick().
+## - Les sprites (BattleSprite) ne sont pas dans la 3D : l'écran les dessine par-dessus, au point
+##   où la caméra projette leur position (screen_position()).
 ##
 ## L'écran étant en 16:9, la caméra garde l'angle de vue vertical de la DS et montre plus de décor
-## sur les côtés.
+## sur les côtés : un pixel DS mesure (hauteur de la vue / 192) pixels.
 
 enum Side { PLAYER, ENEMY }
-enum Shot { DEFAULT, PLAYER, ENEMY, INTRO, WIDE }
 
 const PLAYER_STAGE := Vector3(0, 0, 0x572F / 4096.0)
 const ENEMY_STAGE := Vector3(0, 0, -0xCB7D / 4096.0)
 const ROTATION_PLAYER_STAGE := Vector3(0, 0, 10.0)
 const ROTATION_ENEMY_STAGE := Vector3(0, 0, -15.0)
-const POKEMON_POSITIONS: Array[Vector3] = [Vector3(0x800, 0x666, 0x7000) / 4096.0, Vector3(0x4CD, 0x666, -0xA000) / 4096.0]
-const SPRITE_SCALES: Array[float] = [0x1030 / 4096.0, 0x11BF / 4096.0]
-## Un pixel de sprite = échelle / 16 unité.
-const SPRITE_PIXEL := 1.0 / 16.0
+const DS_HEIGHT := 192
 const FOV := 26.0
 const NEAR := 1.0
 const FAR := 512.0
-## Œil et point visé de chaque prise de vue (unités DS).
-const SHOTS := {
-	Shot.DEFAULT: [Vector3(0x6B33, 0x6B33, 0x114CD) / 4096.0, Vector3(0, 0x299A, 0) / 4096.0],
-	Shot.PLAYER: [Vector3(0x5CA6, 0x5F33, 0x13CC3) / 4096.0, Vector3(-0xE8D, 0x1D9A, 0x27F6) / 4096.0],
-	Shot.ENEMY: [Vector3(0x6994, 0x6F33, 0x6E79) / 4096.0, Vector3(-0x19F, 0x2D9A, -0xA654) / 4096.0],
-	Shot.INTRO: [Vector3(0x8B33, 0x7B33, 0x17CCD) / 4096.0, Vector3(0x2000, 0x399A, 0x6800) / 4096.0],
-	Shot.WIDE: [Vector3(0x6B33, 0x7B33, 0x1ECCD) / 4096.0, Vector3(0, 0x399A, 0xD800) / 4096.0],
-}
 ## Lumière des décors (direction de 0x021F76B6 : droit vers le bas).
 const LIGHT_DIRECTION := Vector3(0, -1, 0)
 const SKY_COLOR := Color.BLACK
@@ -50,10 +33,8 @@ var background: G3DModelInstance
 var stages: Array[G3DModelInstance] = []
 ## Décor choisi (BattleBackgrounds.choose()).
 var choice := {}
-
-var _eye := Vector3.ZERO
-var _target := Vector3.ZERO
-var _tween: Tween
+## La caméra du jeu (position, mouvements des effets).
+var ds_camera := BattleCamera.new()
 
 
 func _init() -> void:
@@ -70,7 +51,7 @@ func _init() -> void:
 	world.environment.background_mode = Environment.BG_COLOR
 	world.environment.background_color = SKY_COLOR
 	add_child(world)
-	set_shot(Shot.DEFAULT)
+	apply_camera()
 
 
 ## Charge le décor : `scene` vient de BattleBackgrounds.choose() ; `light_color`, la couleur de la
@@ -147,51 +128,50 @@ static func _parse_animations(bytes: PackedByteArray) -> Array:
 
 # --- Caméra ---------------------------------------------------------------------------------------
 
-func set_shot(shot: Shot) -> void:
-	if _tween:
-		_tween.kill()
-		_tween = null
-	_look(SHOTS[shot][0], SHOTS[shot][1])
+## Place la caméra du jeu sur un plan tout de suite (BattleCamera.SHOTS).
+func set_shot(index: int) -> void:
+	var view: Array = BattleCamera.shot(index)
+	ds_camera.set_now(view[0], view[1])
+	apply_camera()
 
 
-## Déplace la caméra vers une prise de vue en `duration` secondes (signal finished du Tween).
-func move_to_shot(shot: Shot, duration: float) -> Signal:
-	if _tween:
-		_tween.kill()
-	var from_eye := _eye
-	var from_target := _target
-	var to_eye: Vector3 = SHOTS[shot][0]
-	var to_target: Vector3 = SHOTS[shot][1]
-	_tween = create_tween()
-	_tween.tween_method(func(t: float) -> void: _look(from_eye.lerp(to_eye, t), from_target.lerp(to_target, t)), 0.0, 1.0, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	return _tween.finished
+## Une image du jeu : la caméra avance puis la vue 3D la suit.
+func tick() -> void:
+	ds_camera.update()
+	apply_camera()
 
 
-func is_camera_moving() -> bool:
-	return _tween != null and _tween.is_running()
-
-
-func _look(eye: Vector3, target: Vector3) -> void:
-	_eye = eye
-	_target = target
+func apply_camera() -> void:
+	var eye := ds_camera.view_eye()
+	var target := ds_camera.view_target()
+	if eye.is_equal_approx(target):
+		return
 	camera.transform = Transform3D(Basis.IDENTITY, eye).looking_at(target, Vector3.UP)
 
 
-# --- Place des Pokémon ----------------------------------------------------------------------------
+# --- Projection des sprites -----------------------------------------------------------------------
 
-## Point d'appui du Pokémon d'un côté (ses pieds, au milieu).
-static func pokemon_position(side: int) -> Vector3:
-	return POKEMON_POSITIONS[side]
+## Taille d'un pixel DS dans la vue (l'angle de vue vertical est celui de la DS).
+func ds_pixel() -> float:
+	var viewport := get_viewport()
+	var height := viewport.get_visible_rect().size.y if viewport else float(DS_HEIGHT)
+	return height / DS_HEIGHT
 
 
-## Taille à l'écran d'un pixel de sprite posé en `world`, en pixels de la vue (perspective comprise).
-func pixel_size(world: Vector3, side: int) -> float:
+## Taille à l'écran de 1/16 d'unité posé en `world`, en pixels de la vue (mode « monde » des
+## sprites : un pixel du sprite = échelle / 16 unité).
+func perspective_pixel(world: Vector3) -> float:
 	var up := camera.global_transform.basis.y.normalized()
 	var a := camera.unproject_position(world)
-	var b := camera.unproject_position(world + up * SPRITE_PIXEL * SPRITE_SCALES[side])
+	var b := camera.unproject_position(world + up / 16.0)
 	return a.distance_to(b)
 
 
 ## Position à l'écran d'un point du décor, en pixels de la vue.
 func screen_position(world: Vector3) -> Vector2:
 	return camera.unproject_position(world)
+
+
+## Le point est devant la caméra (sinon il ne faut pas dessiner ce qui y est accroché).
+func is_in_front(world: Vector3) -> bool:
+	return not camera.is_position_behind(world)

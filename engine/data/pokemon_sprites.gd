@@ -20,6 +20,9 @@ const ANIMATION_CELLS := 4
 const ANIMATION_CELL_ANIMS := 5
 const ANIMATION_MULTI_CELLS := 6
 const ANIMATION_MULTI_ANIMS := 7
+## Données du sprite pour le combat (MCSS, chargées en 0x020164CE) : de face et de dos.
+const METADATA_FRONT := 8
+const METADATA_BACK := 17
 const PALETTE := 18
 const PALETTE_SHINY := 19
 const SIZE := 96
@@ -65,6 +68,23 @@ static func create_animated(sprites: NARC, species: int, back := false, shiny :=
 	var sprite := CellSprite.new()
 	sprite.setup(gfx, cells, colors, cell_anims, multi, multi_anims)
 	return sprite
+
+
+## Données du sprite pour le combat (fichiers 8 et 17) : u32 nombre N, u16 largeur et hauteur,
+## s16 x et y, N blocs de 0x30 octets, puis (aligné sur 4) des octets lus par le combat
+## (0x02015F10 / 0x02015F40) : l'octet 1 vaut 1 pour les Pokémon qui flottent (Fantominus,
+## Magnéti, Smogo...), variable 44 des effets.
+static func metadata(sprites: NARC, species: int, back := false) -> Dictionary:
+	var bytes := sprites.get_file(species * FILES_PER_SPECIES + (METADATA_BACK if back else METADATA_FRONT))
+	if bytes.size() < 12:
+		return {}
+	var count := bytes.decode_u32(0)
+	var extra := (count * 0x30 + 0xC + 3) & ~3
+	return {
+		"size": Vector2i(bytes.decode_u16(4), bytes.decode_u16(6)),
+		"offset": Vector2i(bytes.decode_s16(8), bytes.decode_s16(10)),
+		"floats": bytes.size() > extra + 1 and bytes[extra + 1] == 1,
+	}
 
 
 ## Assemble les quatre OBJ d'un sprite fixe 96x96.

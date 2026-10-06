@@ -21,6 +21,10 @@ const BATTLE_BACKGROUNDS := "a/0/1/1" ## vérifié (NSBMD, NSBCA, NSBTA)
 const BATTLE_SCENES := "a/1/5/2" ## vérifié
 ## Sprites des dresseurs en combat : 8 fichiers par image, comme ceux des Pokémon.
 const TRAINER_SPRITES := "a/0/7/2" ## vérifié (n° de l'image = classe du dresseur : 38 = Bianca)
+const TRAINER_BACK_SPRITES := "a/0/7/3" ## vérifié (archive 0x49 de 0x02017230 : dresseurs de dos, 0 le héros, 1 l'héroïne)
+const PARTICLES := "a/0/0/6" ## vérifié (archive 6 de 0x020511B4, particules « SPA » des effets du combat)
+const MOVE_EFFECTS := "a/0/6/6" ## vérifié (archive 0x42 de 0x021F9498, scripts des capacités)
+const SYSTEM_EFFECTS := "a/0/6/7" ## vérifié (archive 0x43, scripts des effets 561 et suivants)
 const PERSONAL := "a/0/1/6" ## vérifié (archive 16 de 0x0201ADA4, 60 octets par fiche)
 const GROWTH := "a/0/1/7" ## vérifié (archive 17 de 0x02019BB0, 101 u32 par courbe)
 const LEARNSETS := "a/0/1/8" ## vérifié (archive 18 de 0x0201ADEC)

@@ -97,6 +97,10 @@ func play_cry(species: int) -> bool:
 	return _play(_cries, "SEQ_PV001", archive.find_bank("BANK_PV%03d" % species))
 
 
+func is_cry_playing() -> bool:
+	return _cries != null and _cries.sequence.is_busy()
+
+
 ## Séquenceur de la musique (pour afficher son état, par exemple dans le juke-box).
 func music_sequence() -> SequencePlayer:
 	return _music.sequence

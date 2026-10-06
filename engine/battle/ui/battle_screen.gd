@@ -37,8 +37,11 @@ const MESSAGE_HEIGHT := 46
 ## Attente après un message entièrement affiché (les messages des combats défilent seuls).
 const MESSAGE_PAUSE := 0.9
 const FADE_TIME := 0.35
-const INTRO_CAMERA_TIME := 1.4
 const GAUGE_SLIDE_TIME := 0.25
+## Une image du jeu : les effets, la caméra et les sprites avancent à 60 images par seconde.
+const FRAME := 1.0 / 60.0
+## Images rattrapées au plus par affichage (au-delà, le retard est abandonné).
+const MAX_FRAMES_PER_DRAW := 4
 const ENEMY_GAUGE := Vector2(0, 16)
 ## Jauge du joueur : au bord droit, au-dessus des messages et du panneau de commandes.
 const PLAYER_GAUGE_BOTTOM := 124
@@ -56,6 +59,13 @@ var messages: DialogueBox
 var gauges: Array[BattleGauge] = [null, null]
 var sprites: Array[BattleSprite] = [null, null]
 var trainer_sprites: Array[BattleSprite] = [null, null]
+## Sprites par place du jeu (BattleSprite.PLAYER, ENEMY, PLAYER_TRAINER, ENEMY_TRAINER...).
+var slots := {}
+## Les effets du combat (scripts de la ROM) et leurs particules.
+var effects: BattleEffects
+var particles: BattleParticles
+## Mode « écran » des sprites (bit 0 du système MCSS) : taille fixe ; sinon la perspective compte.
+var screen_space := true
 ## Décor : { zone_background, attribute, season, light_color } (voir BattleBackgrounds).
 var options := {}
 
@@ -67,6 +77,8 @@ var _fade: ScreenFade
 var _ball: Sprite2D
 var _menu: Control
 var _status := [Pokemon.Status.NONE, Pokemon.Status.NONE]
+var _frame_time := 0.0
+var _intro_done := false
 
 
 static func create(fight: Battle, scene_options := {}) -> BattleScreen:
@@ -105,6 +117,8 @@ func _build() -> void:
 	var season: int = options.get("season", FieldLight.season_of_month(Time.get_date_dict_from_system().month))
 	var scene := BattleBackgrounds.choose(options.get("zone_background", 0), options.get("attribute", 5), season)
 	stage.build(scene, options.get("light_color", Color.WHITE))
+	effects = BattleEffects.new()
+	effects.host = self
 
 	_view = TextureRect.new()
 	_view.name = "Decor"
@@ -119,6 +133,9 @@ func _build() -> void:
 	_sprite_layer = Node2D.new()
 	_sprite_layer.name = "Sprites"
 	add_child(_sprite_layer)
+	particles = BattleParticles.new()
+	particles.stage = stage
+	add_child(particles)
 
 	for side in [BattleSide.PLAYER, BattleSide.ENEMY]:
 		var gauge := BattleGauge.create(BattleStage.Side.PLAYER if side == BattleSide.PLAYER else BattleStage.Side.ENEMY)
@@ -183,7 +200,7 @@ func _place_messages() -> void:
 	messages.size = Vector2(size.x - MARGIN * 2, MESSAGE_HEIGHT)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if _viewport == null:
 		return
 	var render := _render_size()
@@ -191,20 +208,47 @@ func _process(_delta: float) -> void:
 		_viewport.size = render
 	if not stage.is_inside_tree():
 		return
-	var factor := size / Vector2(render)
-	for list: Array[BattleSprite] in [sprites, trainer_sprites]:
-		for sprite in list:
-			if sprite:
-				var at := stage.screen_position(sprite.anchor) * factor
-				sprite.place(at, stage.pixel_size(sprite.anchor, sprite.side) * factor.y)
+	_frame_time += delta
+	var frames := 0
+	while _frame_time >= FRAME:
+		_frame_time -= FRAME
+		frames += 1
+		if frames > MAX_FRAMES_PER_DRAW:
+			_frame_time = 0.0
+			break
+		tick_frame()
+	_place_sprites()
+
+
+## Une image du jeu : les effets (0x02011298), puis les mouvements des sprites, puis la caméra.
+func tick_frame() -> void:
+	effects.tick()
+	for sprite: BattleSprite in slots.values():
+		sprite.tick()
+	particles.tick()
+	stage.tick()
+
+
+## Pose chaque sprite au point où la caméra projette sa position, à sa taille.
+func _place_sprites() -> void:
+	var factor := size / Vector2(_render_size())
+	var ds_pixel := stage.ds_pixel() * factor.y
+	particles.view_scale = factor.y
+	for sprite: BattleSprite in slots.values():
+		var world := sprite.anchor()
+		if not stage.is_in_front(world):
+			sprite.visible = false
+			continue
+		sprite.world_space = not (screen_space and sprite.screen_capable)
+		var at := stage.screen_position(world) * factor
+		sprite.place(at, sprite.pixel_scale(ds_pixel, stage.perspective_pixel(world) * factor.y))
 
 
 # --- Déroulement ----------------------------------------------------------------------------------
 
 func _run() -> void:
 	await get_tree().process_frame
-	stage.set_shot(BattleStage.Shot.ENEMY if battle.is_wild() else BattleStage.Shot.DEFAULT)
-	_fade.fade_to(0.0, FADE_TIME)
+	stage.set_shot(BattleCamera.SHOT_DEFAULT)
 	# Le moteur avance jusqu'à sa première demande ; on joue ensuite sa file d'événements.
 	battle.run()
 	while true:
@@ -221,12 +265,20 @@ func _run() -> void:
 	finished.emit(battle.result)
 
 
+## Joue un effet de la ROM jusqu'au bout (les images avancent dans _process).
+func play_effect(effect: int, attacker := BattleEffects.NO_SLOT, target := BattleEffects.NO_SLOT) -> void:
+	if effects.play(effect, attacker, target):
+		await effects.finished
+
+
 func _play(event: Dictionary) -> void:
 	match event.type:
 		"music":
 			_play_music(event.id)
 		"message":
 			await _show_message(event.file, event.line, event.get("words", {}))
+		"player_entry":
+			await play_effect(BattleEffects.PLAYER_ENTRY)
 		"send_out":
 			await _send_out(event)
 		"withdraw":
@@ -266,7 +318,7 @@ func _play(event: Dictionary) -> void:
 			await _move_animation(event.side, event.target)
 		"substitute":
 			if sprites[event.side]:
-				sprites[event.side].modulate.a = 0.55 if event.on else 1.0
+				sprites[event.side].alpha = 17 if event.on else BattleSprite.ALPHA_MAX
 		"ability":
 			await _show_ability(event.side, event.ability)
 		"ball":
@@ -352,21 +404,49 @@ func _stage_side(side: int) -> BattleStage.Side:
 	return BattleStage.Side.PLAYER if side == BattleSide.PLAYER else BattleStage.Side.ENEMY
 
 
+## Place du jeu d'un côté du moteur : 0 pour le joueur, 1 en face (combats simples).
+static func _slot_of(side: int) -> int:
+	return BattleSprite.PLAYER if side == BattleSide.PLAYER else BattleSprite.ENEMY
+
+
+## Met un sprite à une place (le précédent est enlevé).
+func _put_sprite(slot: int, sprite: BattleSprite) -> void:
+	var old: BattleSprite = slots.get(slot)
+	if old:
+		old.queue_free()
+	slots.erase(slot)
+	if sprite == null:
+		_sync_side_arrays()
+		return
+	sprite.set_slot(slot)
+	slots[slot] = sprite
+	_sprite_layer.add_child(sprite)
+	_sort_sprites()
+	_sync_side_arrays()
+
+
+## Ordre de dessin : du plus loin au plus près (les places impaires sont au fond).
+func _sort_sprites() -> void:
+	var order: Array = slots.keys()
+	order.sort_custom(func(a: int, b: int) -> bool: return BattleSprite.home(a).z < BattleSprite.home(b).z)
+	for i in order.size():
+		_sprite_layer.move_child(slots[order[i]], i)
+
+
+func _sync_side_arrays() -> void:
+	sprites = [slots.get(BattleSprite.PLAYER), slots.get(BattleSprite.ENEMY)]
+	trainer_sprites = [slots.get(BattleSprite.PLAYER_TRAINER), slots.get(BattleSprite.ENEMY_TRAINER)]
+
+
+## Un Pokémon arrive : au début du combat, l'intro du Pokémon sauvage (effet 561) ou le lancer de la
+## Ball par le dresseur (569 en face, 564 pour le joueur, après l'arrivée du héros, 562) ; en cours
+## de combat, l'effet 621. Sa jauge glisse ensuite à l'écran.
 func _send_out(event: Dictionary) -> void:
 	var side: int = event.side
 	var mon: BattleMon = event.mon
-	if sprites[side]:
-		sprites[side].queue_free()
+	var slot := _slot_of(side)
 	var sprite := BattleSprite.for_pokemon(mon.pokemon, side == BattleSide.PLAYER)
-	sprite.side = _stage_side(side)
-	sprite.anchor = BattleStage.pokemon_position(sprite.side)
-	sprites[side] = sprite
-	_sprite_layer.add_child(sprite)
-	# Le Pokémon du joueur est devant : dessiné après celui d'en face.
-	if side == BattleSide.PLAYER:
-		_sprite_layer.move_child(sprite, -1)
-	else:
-		_sprite_layer.move_child(sprite, 0)
+	_put_sprite(slot, sprite)
 	var gauge := gauges[side]
 	gauge.show_pokemon(mon.pokemon)
 	gauge.level = event.get("level", mon.level())
@@ -376,33 +456,33 @@ func _send_out(event: Dictionary) -> void:
 	_status[side] = event.get("status", Pokemon.Status.NONE)
 	gauge.status = _status[side]
 	gauge.caught_mark = battle.is_wild() and side == BattleSide.ENEMY and battle.state.caught.has(mon.pokemon.species)
-	var wild_intro: bool = battle.is_wild() and side == BattleSide.ENEMY and event.get("intro", false)
-	if wild_intro:
-		# Le Pokémon sauvage est là dès l'ouverture ; la caméra recule vers la vue du combat.
-		sprite.visible = true
-		stage.move_to_shot(BattleStage.Shot.DEFAULT, INTRO_CAMERA_TIME)
-		_play_cry(mon.pokemon.species)
-		_slide_gauge(side, true)
-		return
-	sprite.visible = false
-	_play_sound("SEQ_SE_BOWA1")
-	var appeared := sprite.appear()
-	_play_cry(mon.pokemon.species)
+	var intro: bool = event.get("intro", false)
+	if intro and side == BattleSide.ENEMY and battle.is_wild():
+		_fade.fade_to(0.0, FADE_TIME)
+		await play_effect(BattleEffects.WILD_INTRO, slot)
+	elif intro and side == BattleSide.ENEMY:
+		await play_effect(BattleEffects.ENEMY_SEND_OUT, slot)
+	elif intro:
+		await play_effect(BattleEffects.PLAYER_SEND_OUT, slot)
+	else:
+		await play_effect(BattleEffects.SWITCH_IN, slot)
 	_slide_gauge(side, true)
-	await appeared
 
 
 func _withdraw(side: int) -> void:
 	_slide_gauge(side, false)
-	if sprites[side]:
-		await sprites[side].withdraw()
+	var slot := _slot_of(side)
+	if slots.has(slot):
+		await play_effect(BattleEffects.WITHDRAW, slot)
+		_put_sprite(slot, null)
 
 
 func _faint(side: int) -> void:
-	_play_sound("SEQ_SE_HINSHI")
 	_slide_gauge(side, false)
-	if sprites[side]:
-		await sprites[side].faint()
+	var slot := _slot_of(side)
+	if slots.has(slot):
+		await play_effect(BattleEffects.FAINT, slot)
+		_put_sprite(slot, null)
 
 
 ## Jauge qui glisse depuis le bord de l'écran (ou qui y repart).
@@ -422,30 +502,174 @@ func _slide_gauge(side: int, show: bool) -> void:
 		tween.tween_callback(func() -> void: gauge.visible = false)
 
 
-## Le dresseur d'en face : il est là au début du combat, s'écarte quand il envoie son Pokémon, et
-## revient quand il a perdu. Son image est celle de sa classe (`a/0/7/2`).
+## Le dresseur d'en face. Au début du combat, il est là en silhouette et la caméra tourne autour
+## avant de le dévoiler (effet 567) ; il s'efface quand il lance sa Ball (dans l'effet 569). Quand il
+## revient après sa défaite, il glisse à sa place.
 func _show_trainer(side: int, show: bool) -> void:
 	var trainer := battle.sides[side].trainer
-	if trainer == null:
+	if trainer == null or not show:
 		return
-	var sprite := trainer_sprites[side]
+	var slot := BattleSprite.ENEMY_TRAINER if side == BattleSide.ENEMY else BattleSprite.PLAYER_TRAINER
+	var sprite := BattleSprite.for_trainer(trainer.trainer_class)
 	if sprite == null:
-		sprite = BattleSprite.for_trainer(trainer.trainer_class)
-		if sprite == null:
-			return
-		sprite.side = _stage_side(side)
-		sprite.anchor = BattleStage.pokemon_position(sprite.side)
-		sprite.shadow_visible = false
-		sprite.visible = false
-		trainer_sprites[side] = sprite
-		_sprite_layer.add_child(sprite)
-		_sprite_layer.move_child(sprite, 0)
-	if show:
-		if sprites[side] and sprites[side].visible:
-			sprites[side].visible = false
-		await sprite.slide_in(Vector2.RIGHT, 0.4)
+		return
+	_put_sprite(slot, sprite)
+	if not slots.has(_slot_of(side)) and not _intro_done:
+		_intro_done = true
+		_fade.fade_to(0.0, FADE_TIME)
+		await play_effect(BattleEffects.TRAINER_INTRO)
 	else:
-		await sprite.slide_out(Vector2.RIGHT, 0.35)
+		if slots.has(_slot_of(side)):
+			slots[_slot_of(side)].invisible = true
+		await play_effect(BattleEffects.TRAINER_RETURN)
+
+
+# --- Effets : ce que la machine des effets demande à l'écran --------------------------------------
+
+func effect_sprite(slot: int) -> BattleSprite:
+	return slots.get(slot)
+
+
+## La place est occupée (0x021F7EBC).
+func effect_slot_exists(slot: int) -> bool:
+	return slots.has(slot)
+
+
+## Mode « écran » (0x021FF10C) ou « monde » (0x021FF150) : l'échelle de chaque sprite est reprise.
+func effect_screen_space(on: bool) -> void:
+	screen_space = on
+	for sprite: BattleSprite in slots.values():
+		sprite.reset_base_scale()
+
+
+## Commande 0x04 sur le lanceur : le sprite suit (ou non) le mode « écran » (bit 29).
+func effect_sprite_screen_capable(slot: int, on: bool) -> void:
+	var sprite: BattleSprite = slots.get(slot)
+	if sprite:
+		sprite.screen_capable = on
+		sprite.reset_base_scale()
+
+
+## Commande 0x1C 5 (0x022005F4) : visibilité retenue par les Pokémon.
+func effect_restore_visibility() -> void:
+	for slot in 8:
+		var sprite: BattleSprite = slots.get(slot)
+		if sprite and sprite.invisible_saved:
+			sprite.invisible_saved = false
+			sprite.invisible = false
+
+
+## Commande 0x20 (0x021F7EF8) : un dresseur à une place. Places paires : de dos (`kind` 0 le héros,
+## 1 l'héroïne, 0x3D -> image 2, 0x25 -> image 3) ; impaires : de face (classe de dresseur).
+func effect_create_trainer(kind: int, slot: int, world: Vector3i) -> void:
+	var sprite: BattleSprite
+	if slot % 2 == 0:
+		var index := 1 if kind == 1 else 0
+		if kind == 0x3D:
+			index = 2
+		elif kind == 0x25:
+			index = 3
+		sprite = BattleSprite.for_trainer(index, true)
+	else:
+		sprite = BattleSprite.for_trainer(kind)
+	if sprite == null:
+		return
+	_put_sprite(slot, sprite)
+	sprite.shadow_visible = false
+	if world != Vector3i.ZERO:
+		sprite.world = world
+
+
+func effect_delete_trainer(slot: int) -> void:
+	if slot >= 8:
+		_put_sprite(slot, null)
+
+
+## Type de dresseur de chaque client (variables 40 à 43, 0x021F86E0) : le joueur (0 garçon,
+## 1 fille), puis la classe du dresseur d'en face.
+func effect_trainer_class(client: int) -> int:
+	if client == 0:
+		return 1 if battle.state and battle.state.gender == GameState.Gender.GIRL else 0
+	var trainer := battle.sides[BattleSide.ENEMY].trainer if client == 1 else null
+	return trainer.trainer_class if trainer else 0
+
+
+## Commande 0x33 : montrer (1) ou cacher (0) les jauges ; `which` 2 toutes, 3 lanceur, 4 cibles.
+func effect_gauges(show: int, which: int, attacker: int) -> void:
+	if show > 1:
+		return
+	for side in [BattleSide.PLAYER, BattleSide.ENEMY]:
+		var slot := _slot_of(side)
+		if which == 3 and slot != attacker:
+			continue
+		if which == 4 and slot == attacker:
+			continue
+		var gauge := gauges[side]
+		if gauge and slots.has(slot):
+			gauge.visible = show == 1
+
+
+## Commande 0x34 : effet sonore n° `id` du SDAT.
+func effect_sound(id: int) -> void:
+	var sound := Autoloads.sound()
+	if sound:
+		sound.play_effect_id(id)
+
+
+func effect_stop_sound() -> void:
+	pass
+
+
+## Commande 0x43 : cri du Pokémon de la place.
+func effect_cry(slot: int) -> void:
+	var sprite: BattleSprite = slots.get(slot)
+	if sprite and sprite.pokemon:
+		_play_cry(sprite.pokemon.species)
+
+
+func effect_cry_busy() -> bool:
+	var sound := Autoloads.sound()
+	return sound != null and sound.is_cry_playing()
+
+
+func effect_particles_busy() -> bool:
+	return particles.is_busy()
+
+
+## Variables des effets sur le Pokémon d'une place : poids (en hectogrammes), chromatique, sous
+## terre (Taupiqueur), flotte.
+func effect_weight(slot: int) -> int:
+	var sprite: BattleSprite = slots.get(slot)
+	if sprite == null or sprite.pokemon == null:
+		return 0
+	var data := PersonalData.of(sprite.pokemon.species, sprite.pokemon.form)
+	return data.weight if data else 0
+
+
+func effect_shiny(slot: int) -> bool:
+	var sprite: BattleSprite = slots.get(slot)
+	return sprite != null and sprite.pokemon != null and sprite.pokemon.is_shiny()
+
+
+func effect_underground(slot: int) -> bool:
+	var sprite: BattleSprite = slots.get(slot)
+	if sprite == null or sprite.pokemon == null:
+		return false
+	var data := PersonalData.of(sprite.pokemon.species, sprite.pokemon.form)
+	return data != null and data.underground
+
+
+## Ball du Pokémon de la place (paramètre 0x98, [emplacement+0x44]), numérotée de 1 à 25.
+func effect_ball(slot: int) -> int:
+	var sprite: BattleSprite = slots.get(slot)
+	if sprite == null or sprite.pokemon == null:
+		return 0
+	return BattleEffects.ball_index(sprite.pokemon.ball)
+
+
+func effect_floats(slot: int) -> bool:
+	var sprite: BattleSprite = slots.get(slot)
+	return sprite != null and sprite.metadata.get("floats", false)
 
 
 func _move_animation(side: int, target: int) -> void:
@@ -535,8 +759,8 @@ func _throw_ball(event: Dictionary) -> void:
 	if target == null:
 		return
 	var factor := size / Vector2(_render_size())
-	var ground := stage.screen_position(target.anchor) * factor
-	var pixel := stage.pixel_size(target.anchor, target.side) * factor.y
+	var ground := stage.screen_position(target.anchor()) * factor
+	var pixel := stage.ds_pixel() * factor.y
 	var aim := ground - Vector2(0, 40 * pixel)
 	var start := Vector2(size.x * 0.12, size.y * 0.8)
 	_ball.position = start
@@ -557,7 +781,7 @@ func _throw_ball(event: Dictionary) -> void:
 		_ball.visible = false
 		return
 	_play_sound("SEQ_SE_BOWA1")
-	await target.enter_ball()
+	await _enter_ball(target)
 	var fall := create_tween()
 	fall.tween_property(_ball, "position", ground - Vector2(0, 6), 0.3).set_ease(Tween.EASE_IN)
 	await fall.finished
@@ -579,7 +803,25 @@ func _throw_ball(event: Dictionary) -> void:
 		return
 	_play_sound("SEQ_SE_BOWA2")
 	_ball.visible = false
-	await target.leave_ball()
+	await _leave_ball(target)
+
+
+## Entre dans la Ball : flash blanc, puis il rétrécit (en attendant l'effet de capture du jeu).
+func _enter_ball(sprite: BattleSprite) -> void:
+	var tween := create_tween()
+	tween.tween_method(func(t: float) -> void: sprite.set_flash(Color.WHITE, t), 0.0, 1.0, 0.12)
+	tween.tween_method(func(t: float) -> void: sprite.effect_scale = Vector3i(int(t * 4096), int(t * 4096), 4096), 1.0, 0.0, 0.3)
+	tween.tween_callback(func() -> void: sprite.invisible = true)
+	await tween.finished
+
+
+## Ressort de la Ball (il s'est libéré).
+func _leave_ball(sprite: BattleSprite) -> void:
+	sprite.invisible = false
+	var tween := create_tween()
+	tween.tween_method(func(t: float) -> void: sprite.effect_scale = Vector3i(int(t * 4096), int(t * 4096), 4096), 0.0, 1.0, 0.3)
+	tween.tween_method(func(t: float) -> void: sprite.set_flash(Color.WHITE, t), 1.0, 0.0, 0.15)
+	await tween.finished
 
 
 # --- Demandes du moteur ---------------------------------------------------------------------------

@@ -43,10 +43,12 @@ func _initialize() -> void:
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
-	# Les sons des combats joués à l'écran : coupés, et le serveur audio les lâche avant de quitter.
+	# Les sons des combats joués à l'écran : coupés, et le serveur audio les lâche avant de quitter
+	# (à son passage suivant : il faut du temps réel, les images sans affichage sont trop rapides).
 	root.get_node("Sound").stop_all()
 	for i in 5:
 		await process_frame
+	await create_timer(0.2).timeout
 	print("%d vérifications, %d échec(s), %d ms" % [_checks, _failures, Time.get_ticks_msec() - started])
 	quit(1 if _failures > 0 else 0)
 

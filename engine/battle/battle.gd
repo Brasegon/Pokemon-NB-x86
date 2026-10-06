@@ -265,20 +265,27 @@ func run() -> void:
 func _start() -> void:
 	push({"type": "music", "id": music})
 	var foe_side := enemy()
+	# Comme le jeu : le Pokémon sauvage apparaît puis le message ; un dresseur annonce son Pokémon
+	# avant de lancer sa Ball, et le joueur aussi (« Go ! »).
 	if is_wild():
-		var wild_mon := _send_out(foe_side, 0, true)
+		var wild_mon := _send_out(foe_side, 0)
 		state.register_seen(wild_mon.pokemon.species)
+		_push_send_out(wild_mon, true)
 		say(BattleText.WILD_APPEARED, {0: wild_mon.name()})
 	else:
 		push({"type": "trainer", "side": BattleSide.ENEMY, "show": true})
 		say(BattleText.TRAINER_CHALLENGE, {0: foe_side.trainer.class_name_text(), 1: foe_side.trainer.name()})
 		var first := _first_able(foe_side)
 		push({"type": "trainer", "side": BattleSide.ENEMY, "show": false})
-		var sent := _send_out(foe_side, first, true)
+		var sent := _send_out(foe_side, first)
 		state.register_seen(sent.pokemon.species)
 		say(BattleText.TRAINER_SENT, {0: foe_side.trainer.class_name_text(), 1: foe_side.trainer.name(), 2: sent.name()})
-	var lead := _send_out(player(), _first_able(player()), true)
+		_push_send_out(sent, true)
+	var lead := _send_out(player(), _first_able(player()))
+	# Le héros entre en scène (la caméra recule) avant d'annoncer son Pokémon.
+	push({"type": "player_entry"})
 	say(BattleText.GO, {0: lead.name()})
+	_push_send_out(lead, true)
 	_mark_opponents()
 	# Talents d'entrée : du plus rapide au plus lent.
 	for mon in _by_speed(all_active()):
@@ -292,17 +299,22 @@ func _first_able(side: BattleSide) -> int:
 	return 0
 
 
-## Met le Pokémon n° index de l'équipe au combat (place 0).
-func _send_out(side: BattleSide, index: int, intro := false) -> BattleMon:
+## Met le Pokémon n° index de l'équipe au combat (place 0) ; l'écran l'apprend par
+## _push_send_out(), après l'annonce.
+func _send_out(side: BattleSide, index: int) -> BattleMon:
 	var mon := BattleMon.create(side.party[index], side.id, index)
 	if side.active.is_empty():
 		side.active.append(mon)
 	else:
 		side.active[0] = mon
-	# Le moteur joue tout le tour d'avance : l'interface affiche les PV et le niveau de ce moment.
-	push({"type": "send_out", "side": side.id, "slot": 0, "mon": mon, "intro": intro, "hp": mon.hp(), "max": mon.max_hp(),
-		"level": mon.level(), "status": mon.status()})
 	return mon
+
+
+## Le Pokémon arrive à l'écran (`intro` : au début du combat). Le moteur joue tout le tour
+## d'avance : l'interface reçoit les PV et le niveau de ce moment.
+func _push_send_out(mon: BattleMon, intro := false) -> void:
+	push({"type": "send_out", "side": mon.side, "slot": 0, "mon": mon, "intro": intro, "hp": mon.hp(), "max": mon.max_hp(),
+		"level": mon.level(), "status": mon.status()})
 
 
 ## Chaque Pokémon du joueur au combat a affronté chaque adversaire au combat (partage de
@@ -511,6 +523,7 @@ func switch_mon(mon: BattleMon, index: int, keep := {}) -> void:
 	if keep.has("stages"):
 		incoming.stages = keep.stages
 	_announce_send(side, incoming)
+	_push_send_out(incoming)
 	_mark_opponents()
 	await on_entry(incoming)
 
@@ -738,6 +751,7 @@ func switch_in_replacement(side: BattleSide, index: int) -> void:
 		return
 	var incoming := _send_out(side, index)
 	_announce_send(side, incoming)
+	_push_send_out(incoming)
 	_mark_opponents()
 	await on_entry(incoming)
 

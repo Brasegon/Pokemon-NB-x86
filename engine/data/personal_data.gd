@@ -44,6 +44,9 @@ var color := 0
 var height := 0
 ## Poids en hectogrammes (paramètre 38, +0x26) : Nœud Herbe et Balayage s'en servent.
 var weight := 0
+## Bit 12 du mot +0x0A (paramètre 16 de 0x0201AE38) : seuls Taupiqueur et Triopikeur l'ont ; les
+## effets d'entrée en combat ne les font pas tomber du ciel (variable 29 des effets).
+var underground := false
 var tm_bits := PackedInt32Array()
 
 static var _cache := {}
@@ -88,6 +91,7 @@ static func parse(bytes: PackedByteArray) -> PersonalData:
 	var evs := bytes.decode_u16(0x0A)
 	for i in 6:
 		data.ev_yield.append((evs >> (i * 2)) & 3)
+	data.underground = (evs & 0x1000) != 0
 	data.items = [bytes.decode_u16(0x0C), bytes.decode_u16(0x0E), bytes.decode_u16(0x10)]
 	data.gender_ratio = bytes[0x12]
 	data.egg_cycles = bytes[0x13]
