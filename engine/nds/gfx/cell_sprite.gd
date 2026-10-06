@@ -53,6 +53,13 @@ func set_palette(palette: NCLR) -> void:
 		_palette.load_colors(palette)
 
 
+## Tire toute l'image vers une couleur (force de 0 à 1) : flash blanc, Pokémon qui rentre dans sa Ball.
+func set_flash(color: Color, amount: float) -> void:
+	var shader_material := material as ShaderMaterial
+	if shader_material:
+		shader_material.set_shader_parameter("flash", Color(color.r, color.g, color.b, clampf(amount, 0.0, 1.0)))
+
+
 func restart() -> void:
 	if _multi_cursor:
 		_multi_cursor = NANR.Cursor.new(_multi_cursor.sequence)

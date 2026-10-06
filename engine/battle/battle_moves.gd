@@ -407,7 +407,7 @@ func _damaging_move(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 			break
 		var critical := _critical(mon, target, data)
 		var amount := calc_damage(mon, target, data, critical, move_type, effectiveness)
-		var dealt := _deal_damage(mon, target, data, amount, critical)
+		var dealt := _deal_damage(mon, target, data, amount, critical, effectiveness)
 		total += dealt
 		hits_done += 1
 		critical_any = critical_any or critical
@@ -422,7 +422,7 @@ func _damaging_move(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 
 
 ## Inflige des dégâts à la cible (clone, Ténacité, Ceinture Force) et renvoie les PV enlevés.
-func _deal_damage(mon: BattleMon, target: BattleMon, data: MoveData, amount: int, critical: bool) -> int:
+func _deal_damage(mon: BattleMon, target: BattleMon, data: MoveData, amount: int, critical: bool, effectiveness := Stats.Effectiveness.NORMAL) -> int:
 	if target.has("substitute") and not data.has_flag(MoveData.Flag.SOUND) and data.id != 228:
 		var substitute: int = target.get_effect("substitute")
 		var taken := mini(amount, substitute)
@@ -444,7 +444,8 @@ func _deal_damage(mon: BattleMon, target: BattleMon, data: MoveData, amount: int
 			battle.say_mon(514, target)
 		elif battle.abilities.survives(target, amount) or battle.items.survives(target, amount):
 			amount = target.hp() - 1
-	battle.push({"type": "hit", "side": target.side})
+	# Le bruit du coup dépend de l'efficacité (SEQ_SE_KOUKA_H, _M, _L).
+	battle.push({"type": "hit", "side": target.side, "effectiveness": effectiveness})
 	var lost := battle.damage(target, amount, "move")
 	if critical:
 		battle.say(BattleText.CRITICAL_HIT)
@@ -1189,7 +1190,8 @@ func _force_switch(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 	battle.push({"type": "withdraw", "side": side.id, "slot": 0})
 	var incoming := BattleMon.create(side.party[index], side.id, index)
 	side.active[0] = incoming
-	battle.push({"type": "send_out", "side": side.id, "slot": 0, "mon": incoming, "intro": false})
+	battle.push({"type": "send_out", "side": side.id, "slot": 0, "mon": incoming, "intro": false, "hp": incoming.hp(),
+		"max": incoming.max_hp(), "level": incoming.level(), "status": incoming.status()})
 	battle.say_mon(845, incoming)
 	apply_entry_hazards(incoming)
 	battle.abilities.on_switch_in(incoming)

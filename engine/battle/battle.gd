@@ -248,7 +248,9 @@ func _send_out(side: BattleSide, index: int, intro := false) -> BattleMon:
 		side.active.append(mon)
 	else:
 		side.active[0] = mon
-	push({"type": "send_out", "side": side.id, "slot": 0, "mon": mon, "intro": intro})
+	# Le moteur joue tout le tour d'avance : l'interface affiche les PV et le niveau de ce moment.
+	push({"type": "send_out", "side": side.id, "slot": 0, "mon": mon, "intro": intro, "hp": mon.hp(), "max": mon.max_hp(),
+		"level": mon.level(), "status": mon.status()})
 	return mon
 
 
@@ -363,7 +365,7 @@ func _try_escape(mon: BattleMon) -> bool:
 	var speed := mon.raw_stat(Stats.Stat.SPEED)
 	var foe_speed := foe.raw_stat(Stats.Stat.SPEED) if foe else 0
 	if free or BattleCalc.can_escape(speed, foe_speed, escape_attempts, random):
-		push({"type": "sound", "name": "SEQ_SE_ESCAPE"})
+		push({"type": "sound", "name": "SEQ_SE_NIGERU"})
 		say(BattleText.GOT_AWAY)
 		result = Result.RUN
 		return true
@@ -600,10 +602,13 @@ func _award_exp(index: int, amount: int, boosted: bool) -> void:
 		push({"type": "exp", "party": index, "from": before, "to": pokemon.experience, "level": old_level,
 			"on_field": active != null and active.party_index == index})
 		if gained_levels > 0:
+			var on_field := active != null and active.party_index == index
 			push({"type": "level_up", "party": index, "level": pokemon.level, "old_stats": old_stats, "stats": pokemon.stats.duplicate(),
-				"on_field": active != null and active.party_index == index})
+				"hp": pokemon.hp, "max": pokemon.max_hp(), "on_field": on_field})
 			push({"type": "sound", "name": "SEQ_ME_LVUP", "fanfare": true})
 			say(BattleText.GREW_TO_LEVEL, {0: pokemon.name(), 1: str(pokemon.level)})
+			# Tableau des statistiques (gains, puis nouvelles valeurs), après le message.
+			push({"type": "level_stats", "party": index, "old_stats": old_stats, "stats": pokemon.stats.duplicate()})
 			if pokemon not in leveled_up:
 				leveled_up.append(pokemon)
 			for move in Learnset.moves_at(pokemon.species, pokemon.form, pokemon.level):

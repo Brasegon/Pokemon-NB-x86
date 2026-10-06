@@ -1,0 +1,748 @@
+class_name BattleScreen
+extends Control
+## L'écran d'un combat, sur l'écran unique 16:9 : la scène 3D du jeu (BattleStage, rendue dans
+## une vue à part à la résolution de la fenêtre), les sprites des Pokémon et des dresseurs posés
+## dessus, les jauges, la boîte de messages, et les panneaux qui remplacent l'écran tactile du bas
+## (commandes, capacités, équipe, sac).
+##
+## Le moteur (Battle) joue tout le combat de son côté et produit une file d'événements : l'écran les
+## joue un par un, à son rythme (messages, barres de PV, animations), et répond à ses demandes
+## (action, Pokémon à envoyer, capacité à oublier, oui / non). À la fin, finished(résultat).
+##
+## Textes du jeu : « Que doit faire X ? » (fichier 15, 69) ; invites de l'équipe (fichier 18 : 6
+## « Choisissez un Pokémon. », 7 « Utiliser sur quel Pokémon? », 9 « Combattre avec quel
+## Pokémon? ») ; OUI / NON (fichier 16, 8 et 9) ; poches du sac en combat (fichier 17 : « SOINS
+## PV/PP » 22-23, « SOINS STATUT » 24-25, « BALLS » 26, « OBJETS COMBAT » 27) ; « OUBLIER » et
+## « RETOUR » (fichier 18, 68 et 69).
+
+signal finished(result: Battle.Result)
+## Réponse d'un panneau ou d'un menu (usage interne).
+signal _answered(value: Variant)
+
+const PROMPT_CHOOSE := 6
+const PROMPT_ITEM_TARGET := 7
+const PROMPT_FIGHT := 9
+const YES_LINE := 8
+const NO_LINE := 9
+const BACK_LINE := 69
+## Poches du sac en combat : bit de la poche (ItemData.battle_pocket) et lignes de son nom.
+const POCKETS := [[4, [22, 23]], [8, [24, 25]], [1, [26]], [2, [27]]]
+const POCKET_COLORS: Array[Color] = [Color("#e05878"), Color("#d89028"), Color("#e04838"), Color("#5878d8")]
+## Statistiques du tableau de niveau (fichier 18) : PV 38, ATTAQUE 42, DÉFENSE 44, ATQ SPÉ 46,
+## DÉF SPÉ 48, VITESSE 50 (ordre de Stats.Stat).
+const STAT_LINES: Array[int] = [38, 42, 44, 46, 48, 50]
+
+const MARGIN := 4
+const MESSAGE_HEIGHT := 46
+## Attente après un message entièrement affiché (les messages des combats défilent seuls).
+const MESSAGE_PAUSE := 0.9
+const FADE_TIME := 0.35
+const INTRO_CAMERA_TIME := 1.4
+const GAUGE_SLIDE_TIME := 0.25
+const ENEMY_GAUGE := Vector2(0, 16)
+## Jauge du joueur : au bord droit, au-dessus des messages et du panneau de commandes.
+const PLAYER_GAUGE_BOTTOM := 124
+## Ball lancée : tuile 27 de la planche des jauges, agrandie.
+const BALL_TILE := 27
+const BALL_SCALE := 2.0
+const MESSAGE_FILL := Color(0.09, 0.1, 0.13, 0.92)
+const MESSAGE_BORDER := Color("#e8e8f0")
+const MESSAGE_TRIM := Color("#686878")
+
+var battle: Battle
+var stage: BattleStage
+var messages: DialogueBox
+## Jauges, sprites des Pokémon et sprites des dresseurs, par côté (BattleSide.PLAYER, ENEMY).
+var gauges: Array[BattleGauge] = [null, null]
+var sprites: Array[BattleSprite] = [null, null]
+var trainer_sprites: Array[BattleSprite] = [null, null]
+## Décor : { zone_background, attribute, season, light_color } (voir BattleBackgrounds).
+var options := {}
+
+var _viewport: SubViewport
+var _view: TextureRect
+var _sprite_layer: Node2D
+var _menu_layer: Control
+var _fade: ScreenFade
+var _ball: Sprite2D
+var _menu: Control
+var _status := [Pokemon.Status.NONE, Pokemon.Status.NONE]
+
+
+static func create(fight: Battle, scene_options := {}) -> BattleScreen:
+	var screen := BattleScreen.new()
+	screen.name = "Combat"
+	screen.battle = fight
+	screen.options = scene_options
+	return screen
+
+
+func _ready() -> void:
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	_build()
+	resized.connect(_layout)
+	_layout()
+	_run()
+
+
+func _build() -> void:
+	_viewport = SubViewport.new()
+	_viewport.name = "Vue 3D"
+	_viewport.own_world_3d = true
+	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_viewport.size = _render_size()
+	add_child(_viewport)
+	stage = BattleStage.new()
+	_viewport.add_child(stage)
+	stage.camera.current = true
+	var season: int = options.get("season", FieldLight.season_of_month(Time.get_date_dict_from_system().month))
+	var scene := BattleBackgrounds.choose(options.get("zone_background", 0), options.get("attribute", 5), season)
+	stage.build(scene, options.get("light_color", Color.WHITE))
+
+	_view = TextureRect.new()
+	_view.name = "Decor"
+	_view.texture = _viewport.get_texture()
+	_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_view.stretch_mode = TextureRect.STRETCH_SCALE
+	_view.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_view)
+
+	_sprite_layer = Node2D.new()
+	_sprite_layer.name = "Sprites"
+	add_child(_sprite_layer)
+
+	for side in [BattleSide.PLAYER, BattleSide.ENEMY]:
+		var gauge := BattleGauge.create(BattleStage.Side.PLAYER if side == BattleSide.PLAYER else BattleStage.Side.ENEMY)
+		gauge.visible = false
+		add_child(gauge)
+		gauges[side] = gauge
+
+	messages = DialogueBox.new()
+	messages.name = "Messages"
+	messages.set_frame(GameTheme.frame(MESSAGE_FILL, MESSAGE_BORDER, MESSAGE_TRIM, Vector4i(8, 6, 8, 6)))
+	messages.ink = GameTheme.LIGHT_INK
+	messages.shadow = GameTheme.LIGHT_SHADOW
+	messages.auto_advance = MESSAGE_PAUSE
+	messages.player_name = battle.state.player_name if battle and battle.state else "Joueur"
+	add_child(messages)
+	messages.close()
+
+	_menu_layer = Control.new()
+	_menu_layer.name = "Menus"
+	_menu_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_menu_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_menu_layer)
+
+	_ball = Sprite2D.new()
+	_ball.name = "Ball"
+	_ball.visible = false
+	_ball.scale = Vector2.ONE * BALL_SCALE
+	_ball.texture = BattleGauge.atlas_tile(BALL_TILE)
+	add_child(_ball)
+
+	_fade = ScreenFade.new()
+	_fade.color = Color(0, 0, 0, 1)
+	add_child(_fade)
+
+
+## Taille réelle de la vue 3D : celle de la fenêtre (la 3D n'est pas agrandie comme l'interface).
+func _render_size() -> Vector2i:
+	var window := get_window() if is_inside_tree() else null
+	var real := window.size if window else Vector2i(480, 270)
+	return Vector2i(maxi(real.x, 1), maxi(real.y, 1))
+
+
+func _layout() -> void:
+	_place_messages()
+	if gauges[BattleSide.ENEMY]:
+		gauges[BattleSide.ENEMY].position = ENEMY_GAUGE
+	if gauges[BattleSide.PLAYER]:
+		gauges[BattleSide.PLAYER].position = _player_gauge_position()
+	if _menu:
+		_place_menu(_menu)
+
+
+func _player_gauge_position() -> Vector2:
+	return Vector2(size.x - BattleGauge.SIZE.x, size.y - PLAYER_GAUGE_BOTTOM)
+
+
+## Boîte de messages en bas, sur toute la largeur.
+func _place_messages() -> void:
+	if messages == null:
+		return
+	messages.position = Vector2(MARGIN, size.y - MESSAGE_HEIGHT - MARGIN)
+	messages.size = Vector2(size.x - MARGIN * 2, MESSAGE_HEIGHT)
+
+
+func _process(_delta: float) -> void:
+	if _viewport == null:
+		return
+	var render := _render_size()
+	if _viewport.size != render:
+		_viewport.size = render
+	if not stage.is_inside_tree():
+		return
+	var factor := size / Vector2(render)
+	for list: Array[BattleSprite] in [sprites, trainer_sprites]:
+		for sprite in list:
+			if sprite:
+				var at := stage.screen_position(sprite.anchor) * factor
+				sprite.place(at, stage.pixel_size(sprite.anchor, sprite.side) * factor.y)
+
+
+# --- Déroulement ----------------------------------------------------------------------------------
+
+func _run() -> void:
+	await get_tree().process_frame
+	stage.set_shot(BattleStage.Shot.ENEMY if battle.is_wild() else BattleStage.Shot.DEFAULT)
+	_fade.fade_to(0.0, FADE_TIME)
+	# Le moteur avance jusqu'à sa première demande ; on joue ensuite sa file d'événements.
+	battle.run()
+	while true:
+		var event := battle.next_event()
+		if event.is_empty():
+			await battle.event_added
+			continue
+		await _play(event)
+		if event.type == "end":
+			break
+	if messages.is_waiting() and not messages.is_closed():
+		await messages.finished
+	await _fade.fade_to(1.0, FADE_TIME)
+	finished.emit(battle.result)
+
+
+func _play(event: Dictionary) -> void:
+	match event.type:
+		"music":
+			_play_music(event.id)
+		"message":
+			await _show_message(event.file, event.line, event.get("words", {}))
+		"send_out":
+			await _send_out(event)
+		"withdraw":
+			await _withdraw(event.side)
+		"trainer":
+			await _show_trainer(event.side, event.show)
+		"hp":
+			var gauge := gauges[event.side]
+			if gauge and gauge.visible:
+				await gauge.animate_hp(event.to, event.max)
+		"hit":
+			_play_sound(_hit_sound(event.get("effectiveness", Stats.Effectiveness.NORMAL)))
+			if sprites[event.side]:
+				await sprites[event.side].blink()
+		"faint":
+			await _faint(event.side)
+		"cry":
+			_play_cry(event.species)
+			await _wait(0.3)
+		"exp":
+			await _gain_exp(event)
+		"level_up":
+			_level_up(event)
+		"level_stats":
+			await _show_level_stats(event)
+		"sound":
+			_play_sound(event.name, event.get("fanfare", false))
+		"status":
+			_status[event.side] = event.status
+		"stat":
+			if sprites[event.side]:
+				await _stat_flash(sprites[event.side], event.up)
+		"move":
+			await _move_animation(event.side, event.target)
+		"substitute":
+			if sprites[event.side]:
+				sprites[event.side].modulate.a = 0.55 if event.on else 1.0
+		"ability":
+			await _show_ability(event.side, event.ability)
+		"ball":
+			await _throw_ball(event)
+		"request":
+			await _answer(event.request)
+
+
+# --- Messages et sons -------------------------------------------------------------------------------
+
+## Affiche un message du jeu (fichier système, ligne, mots des tampons) et attend qu'il soit passé.
+func _show_message(file: int, line: int, words: Dictionary, wait := true) -> void:
+	var text: MsgFile = Autoloads.rom().text_file(BWFiles.TEXT_SYSTEM, file)
+	if text == null:
+		return
+	messages.buffers.clear()
+	for key: Variant in words:
+		messages.buffers[int(key)] = str(words[key])
+	messages.accepts_input = wait
+	messages.auto_advance = MESSAGE_PAUSE if wait else 0.0
+	messages.show_chars(text.get_chars(line))
+	if wait:
+		await messages.finished
+		# La boîte garde le dernier texte jusqu'au message suivant, comme sur DS.
+		messages.visible = true
+
+
+func _play_music(id: int) -> void:
+	var sound := Autoloads.sound()
+	if sound == null:
+		return
+	var archive: SDAT = sound.sdat()
+	if id < 0:
+		sound.stop_music()
+	elif archive and id < archive.sequence_names.size():
+		sound.play_music(archive.sequence_names[id])
+
+
+func _play_sound(sequence_name: String, fanfare := false) -> void:
+	var sound := Autoloads.sound()
+	if sound == null:
+		return
+	if fanfare:
+		sound.play_fanfare(sequence_name)
+		_resume_music_later()
+	else:
+		sound.play_effect(sequence_name)
+
+
+func _play_cry(species: int) -> void:
+	var sound := Autoloads.sound()
+	if sound:
+		sound.play_cry(species)
+
+
+## Relance la musique du combat quand la fanfare (niveau, capture) est finie.
+func _resume_music_later() -> void:
+	var sound := Autoloads.sound()
+	await _wait(0.2)
+	while is_inside_tree() and sound and sound.is_music_playing() and String(sound.current_music()).begins_with("SEQ_ME_"):
+		await get_tree().process_frame
+	if is_inside_tree() and sound and battle.result != Battle.Result.CAUGHT:
+		sound.resume_music()
+
+
+## Bruit d'un coup selon son efficacité.
+static func _hit_sound(effectiveness: int) -> String:
+	if effectiveness >= Stats.Effectiveness.DOUBLE:
+		return "SEQ_SE_KOUKA_H"
+	if effectiveness <= Stats.Effectiveness.HALF:
+		return "SEQ_SE_KOUKA_L"
+	return "SEQ_SE_KOUKA_M"
+
+
+func _wait(seconds: float) -> void:
+	if seconds > 0.0 and is_inside_tree():
+		await get_tree().create_timer(seconds).timeout
+
+
+# --- Pokémon et dresseurs -------------------------------------------------------------------------
+
+func _stage_side(side: int) -> BattleStage.Side:
+	return BattleStage.Side.PLAYER if side == BattleSide.PLAYER else BattleStage.Side.ENEMY
+
+
+func _send_out(event: Dictionary) -> void:
+	var side: int = event.side
+	var mon: BattleMon = event.mon
+	if sprites[side]:
+		sprites[side].queue_free()
+	var sprite := BattleSprite.for_pokemon(mon.pokemon, side == BattleSide.PLAYER)
+	sprite.side = _stage_side(side)
+	sprite.anchor = BattleStage.pokemon_position(sprite.side)
+	sprites[side] = sprite
+	_sprite_layer.add_child(sprite)
+	# Le Pokémon du joueur est devant : dessiné après celui d'en face.
+	if side == BattleSide.PLAYER:
+		_sprite_layer.move_child(sprite, -1)
+	else:
+		_sprite_layer.move_child(sprite, 0)
+	var gauge := gauges[side]
+	gauge.show_pokemon(mon.pokemon)
+	gauge.level = event.get("level", mon.level())
+	gauge.max_hp = maxi(event.get("max", mon.max_hp()), 1)
+	gauge.shown_hp = event.get("hp", mon.hp())
+	gauge.animate_hp(int(gauge.shown_hp))
+	_status[side] = event.get("status", Pokemon.Status.NONE)
+	var wild_intro: bool = battle.is_wild() and side == BattleSide.ENEMY and event.get("intro", false)
+	if wild_intro:
+		# Le Pokémon sauvage est là dès l'ouverture ; la caméra recule vers la vue du combat.
+		sprite.visible = true
+		stage.move_to_shot(BattleStage.Shot.DEFAULT, INTRO_CAMERA_TIME)
+		_play_cry(mon.pokemon.species)
+		_slide_gauge(side, true)
+		return
+	sprite.visible = false
+	_play_sound("SEQ_SE_BOWA1")
+	var appeared := sprite.appear()
+	_play_cry(mon.pokemon.species)
+	_slide_gauge(side, true)
+	await appeared
+
+
+func _withdraw(side: int) -> void:
+	_slide_gauge(side, false)
+	if sprites[side]:
+		await sprites[side].withdraw()
+
+
+func _faint(side: int) -> void:
+	_play_sound("SEQ_SE_HINSHI")
+	_slide_gauge(side, false)
+	if sprites[side]:
+		await sprites[side].faint()
+
+
+## Jauge qui glisse depuis le bord de l'écran (ou qui y repart).
+func _slide_gauge(side: int, show: bool) -> void:
+	var gauge := gauges[side]
+	if gauge == null:
+		return
+	var home := ENEMY_GAUGE if side == BattleSide.ENEMY else _player_gauge_position()
+	var away := home + Vector2(-BattleGauge.SIZE.x if side == BattleSide.ENEMY else BattleGauge.SIZE.x, 0)
+	var tween := create_tween()
+	if show:
+		gauge.visible = true
+		gauge.position = away
+		tween.tween_property(gauge, "position", home, GAUGE_SLIDE_TIME).set_ease(Tween.EASE_OUT)
+	else:
+		tween.tween_property(gauge, "position", away, GAUGE_SLIDE_TIME).set_ease(Tween.EASE_IN)
+		tween.tween_callback(func() -> void: gauge.visible = false)
+
+
+## Le dresseur d'en face : il est là au début du combat, s'écarte quand il envoie son Pokémon, et
+## revient quand il a perdu. Son image est celle de sa classe (`a/0/7/2`).
+func _show_trainer(side: int, show: bool) -> void:
+	var trainer := battle.sides[side].trainer
+	if trainer == null:
+		return
+	var sprite := trainer_sprites[side]
+	if sprite == null:
+		sprite = BattleSprite.for_trainer(trainer.trainer_class)
+		if sprite == null:
+			return
+		sprite.side = _stage_side(side)
+		sprite.anchor = BattleStage.pokemon_position(sprite.side)
+		sprite.shadow_visible = false
+		sprite.visible = false
+		trainer_sprites[side] = sprite
+		_sprite_layer.add_child(sprite)
+		_sprite_layer.move_child(sprite, 0)
+	if show:
+		if sprites[side] and sprites[side].visible:
+			sprites[side].visible = false
+		await sprite.slide_in(Vector2.RIGHT, 0.4)
+	else:
+		await sprite.slide_out(Vector2.RIGHT, 0.35)
+
+
+func _move_animation(side: int, target: int) -> void:
+	var sprite := sprites[side]
+	if sprite == null or not sprite.visible or side == target:
+		await _wait(0.15)
+		return
+	var toward := Vector2(1, -0.4) if side == BattleSide.PLAYER else Vector2(-1, 0.4)
+	await sprite.lunge(toward)
+
+
+func _stat_flash(sprite: BattleSprite, up: bool) -> void:
+	var color := Color("#78b8f8") if up else Color("#f87878")
+	var tween := create_tween()
+	tween.tween_method(func(t: float) -> void: sprite.set_flash(color, t), 0.0, 0.6, 0.15)
+	tween.tween_method(func(t: float) -> void: sprite.set_flash(color, t), 0.6, 0.0, 0.25)
+	await tween.finished
+
+
+## Bandeau du talent qui agit (son nom, fichier système 182), près de la jauge du Pokémon.
+func _show_ability(side: int, ability: int) -> void:
+	var label := GameLabel.new()
+	label.font_id = GameTheme.FontId.DIALOGUE
+	label.text = Autoloads.rom().text(BWFiles.TEXT_ABILITY_NAMES, ability)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", GameTheme.frame(MESSAGE_FILL, MESSAGE_BORDER, MESSAGE_TRIM, Vector4i(6, 3, 6, 3)))
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(label)
+	add_child(panel)
+	panel.reset_size()
+	var gauge := gauges[side]
+	var at := gauge.position + Vector2(0, BattleGauge.SIZE.y + 2) if side == BattleSide.ENEMY else gauge.position + Vector2(BattleGauge.SIZE.x - panel.size.x, -panel.size.y - 2)
+	panel.position = at
+	await _wait(1.0)
+	panel.queue_free()
+
+
+# --- Expérience et niveaux ------------------------------------------------------------------------
+
+func _gain_exp(event: Dictionary) -> void:
+	var gauge := gauges[BattleSide.PLAYER]
+	if not event.get("on_field", false) or gauge == null or not gauge.visible:
+		return
+	var pokemon: Pokemon = battle.player().party[event.party]
+	var level: int = event.level
+	var start := Growth.exp_for_level(pokemon.growth_rate(), level)
+	var next := Growth.exp_for_level(pokemon.growth_rate(), level + 1)
+	var span := maxf(next - start, 1)
+	gauge.shown_exp = clampf((int(event.from) - start) / span, 0.0, 1.0)
+	var target := clampf((int(event.to) - start) / span, 0.0, 1.0)
+	_play_sound("SEQ_SE_EXP")
+	await gauge.animate_exp(target, maxf((target - gauge.shown_exp) * 1.2, 0.2))
+	if target >= 1.0:
+		_play_sound("SEQ_SE_EXPMAX")
+
+
+func _level_up(event: Dictionary) -> void:
+	var gauge := gauges[BattleSide.PLAYER]
+	if not event.get("on_field", false) or gauge == null:
+		return
+	gauge.level = event.level
+	gauge.max_hp = maxi(event.get("max", gauge.max_hp), 1)
+	gauge.shown_hp = event.get("hp", gauge.shown_hp)
+	gauge.animate_hp(int(gauge.shown_hp))
+	gauge.shown_exp = 0.0
+	gauge.animate_exp(0.0)
+
+
+## Tableau des statistiques après un niveau : les gains, puis (Valider) les nouvelles valeurs.
+func _show_level_stats(event: Dictionary) -> void:
+	var old_stats: Array = event.old_stats
+	var stats: Array = event.stats
+	var panel := BattleStatsPanel.create(old_stats, stats, STAT_LINES)
+	panel.position = Vector2(size.x - panel.size.x - MARGIN, size.y - MESSAGE_HEIGHT - MARGIN * 2 - panel.size.y)
+	_menu_layer.add_child(panel)
+	messages.accepts_input = false
+	await panel.closed
+	panel.queue_free()
+
+
+# --- Capture --------------------------------------------------------------------------------------
+
+## La Ball lancée vers le Pokémon d'en face : il y entre, elle tombe, tremble (`shakes` fois), puis
+## se ferme ou s'ouvre. Un dresseur détourne la Ball (shakes = -1).
+func _throw_ball(event: Dictionary) -> void:
+	var target := sprites[BattleSide.ENEMY]
+	if target == null:
+		return
+	var factor := size / Vector2(_render_size())
+	var ground := stage.screen_position(target.anchor) * factor
+	var pixel := stage.pixel_size(target.anchor, target.side) * factor.y
+	var aim := ground - Vector2(0, 40 * pixel)
+	var start := Vector2(size.x * 0.12, size.y * 0.8)
+	_ball.position = start
+	_ball.rotation = 0.0
+	_ball.visible = true
+	_play_sound("SEQ_SE_NAGERU")
+	var throw := create_tween()
+	throw.tween_method(func(t: float) -> void:
+		_ball.position = start.lerp(aim, t) - Vector2(0, sin(t * PI) * 60.0)
+		_ball.rotation = t * TAU * 2.0, 0.0, 1.0, 0.5)
+	await throw.finished
+	var shakes: int = event.get("shakes", 0)
+	if shakes < 0:
+		# Détournée par le dresseur.
+		var away := create_tween()
+		away.tween_property(_ball, "position", aim + Vector2(80, -60), 0.25)
+		await away.finished
+		_ball.visible = false
+		return
+	_play_sound("SEQ_SE_BOWA1")
+	await target.enter_ball()
+	var fall := create_tween()
+	fall.tween_property(_ball, "position", ground - Vector2(0, 6), 0.3).set_ease(Tween.EASE_IN)
+	await fall.finished
+	_play_sound("SEQ_SE_KON")
+	await _wait(0.4)
+	for i in mini(shakes, 3):
+		_play_sound("SEQ_SE_TB_KON")
+		var wobble := create_tween()
+		wobble.tween_property(_ball, "rotation", 0.5, 0.12)
+		wobble.tween_property(_ball, "rotation", -0.5, 0.2)
+		wobble.tween_property(_ball, "rotation", 0.0, 0.12)
+		await wobble.finished
+		await _wait(0.35)
+	if event.get("caught", false):
+		_play_sound("SEQ_SE_TB_KARA")
+		var flash := create_tween()
+		flash.tween_property(_ball, "modulate", Color(0.6, 0.6, 0.6), 0.2)
+		await flash.finished
+		return
+	_play_sound("SEQ_SE_BOWA2")
+	_ball.visible = false
+	await target.leave_ball()
+
+
+# --- Demandes du moteur ---------------------------------------------------------------------------
+
+func _answer(request: Dictionary) -> void:
+	var value: Variant = null
+	match request.kind:
+		"action":
+			value = await _choose_action(request.mon)
+		"switch":
+			value = await _choose_party(PROMPT_FIGHT if request.get("forced", false) else PROMPT_CHOOSE, not request.get("forced", false))
+		"forget_move":
+			value = await _choose_move_to_forget(request.pokemon, request.move)
+		"yes_no":
+			value = await _ask_yes_no()
+	battle.answer(value)
+
+
+## L'action du tour : commandes, puis capacité, objet ou Pokémon (Annuler revient aux commandes).
+func _choose_action(mon: BattleMon) -> Dictionary:
+	var prompt_chars: PackedInt32Array = Autoloads.rom().text_file(BWFiles.TEXT_SYSTEM, BWFiles.TEXT_BATTLE).get_chars(BattleText.WHAT_WILL)
+	var prompt := TextFlow.plain(prompt_chars, {0: mon.name()}).replace("
+", " ")
+	while true:
+		# Comme l'écran du haut de la DS pendant ce choix : la scène reste dégagée, l'invite est
+		# au-dessus des commandes.
+		messages.close()
+		var commands := BattleCommandPanel.create(prompt)
+		commands.cancellable = false
+		var index: int = await _open(commands)
+		match commands.command_of(index):
+			BattleCommandPanel.Command.FIGHT:
+				if _no_pp_left(mon):
+					return {"action": Battle.Action.FIGHT, "move": -1}
+				messages.close()
+				var moves := BattleMovePanel.create(mon, battle.moves.move_type_of)
+				var choice: int = await _open(moves)
+				if choice >= 0:
+					return {"action": Battle.Action.FIGHT, "move": moves.slot_of(choice)}
+			BattleCommandPanel.Command.BAG:
+				var use := await _choose_item(mon)
+				if not use.is_empty():
+					return {"action": Battle.Action.BAG, "item": use.item, "target": use.target}
+			BattleCommandPanel.Command.POKEMON:
+				var party_index: int = await _choose_party(PROMPT_CHOOSE, true)
+				if party_index >= 0:
+					return {"action": Battle.Action.SWITCH, "party": party_index}
+			BattleCommandPanel.Command.RUN:
+				return {"action": Battle.Action.RUN}
+	return {}
+
+
+func _no_pp_left(mon: BattleMon) -> bool:
+	for slot in mon.pokemon.moves.size():
+		if mon.pp(slot) > 0:
+			return false
+	return true
+
+
+## Un Pokémon de l'équipe (n°), ou -1 si le joueur annule (quand il le peut).
+func _choose_party(prompt: int, cancellable: bool) -> int:
+	await _show_message(BWFiles.TEXT_BATTLE_PARTY, prompt, {}, false)
+	var active := battle.player().mon(0)
+	var panel := BattlePartyPanel.create(battle.player().party, active.party_index if active and not active.is_fainted() else -1)
+	panel.cancellable = cancellable
+	var index: int = await _open(panel)
+	return panel.party_index(index) if index >= 0 else -1
+
+
+## Objet du sac : la poche, l'objet, puis le Pokémon qui le reçoit s'il le faut. {} si annulé.
+func _choose_item(mon: BattleMon) -> Dictionary:
+	while true:
+		messages.close()
+		var pockets := BattleButtonPanel.new()
+		var list: Array[Dictionary] = []
+		var width := (BattleMovePanel.PANEL_SIZE.x - 4) / 2.0
+		var height := (BattleMovePanel.PANEL_SIZE.y - 4) / 2.0
+		for i in POCKETS.size():
+			var lines: Array = []
+			for line: int in POCKETS[i][1]:
+				lines.append(Autoloads.rom().text(BWFiles.TEXT_BATTLE_BAG, line))
+			list.append({"rect": Rect2((i % 2) * (width + 4), (i / 2) * (height + 4), width, height), "lines": [" ".join(lines)],
+				"color": POCKET_COLORS[i], "data": POCKETS[i][0]})
+		pockets.size = BattleMovePanel.PANEL_SIZE
+		pockets.set_buttons(list)
+		var pocket_index: int = await _open(pockets)
+		if pocket_index < 0:
+			return {}
+		var item := await _choose_pocket_item(list[pocket_index].data)
+		if item <= 0:
+			continue
+		var data := ItemData.of(item)
+		var target := mon.party_index
+		if data and data.battle_pocket & 0xC != 0:
+			target = await _choose_party(PROMPT_ITEM_TARGET, true)
+			if target < 0:
+				continue
+		return {"item": item, "target": target}
+	return {}
+
+
+## Objets d'une poche du combat (bit de ItemData.battle_pocket), avec leur nombre. 0 si annulé.
+func _choose_pocket_item(pocket_bit: int) -> int:
+	var items: Array[int] = []
+	var names := PackedStringArray()
+	var counts := PackedStringArray()
+	var keys: Array = battle.state.bag.keys()
+	keys.sort()
+	for item: int in keys:
+		var data := ItemData.of(item)
+		if data and data.battle_pocket & pocket_bit != 0 and battle.state.item_count(item) > 0:
+			items.append(item)
+			names.append(Autoloads.rom().text(BWFiles.TEXT_ITEM_NAMES, item))
+			counts.append("x%d" % battle.state.item_count(item))
+	if items.is_empty():
+		_play_sound("SEQ_SE_BEEP")
+		return 0
+	var menu := ChoiceMenu.new()
+	menu.max_visible = 6
+	menu.min_width = 200
+	menu.set_items(names, 0, counts)
+	var index: int = await _open(menu)
+	return items[index] if index >= 0 else 0
+
+
+func _choose_move_to_forget(pokemon: Pokemon, new_move: int) -> int:
+	var names := PackedStringArray()
+	var pp := PackedStringArray()
+	var rom: Node = Autoloads.rom()
+	for move: Dictionary in pokemon.moves:
+		names.append(rom.text(BWFiles.TEXT_MOVE_NAMES, move.id))
+		pp.append("%d/%d" % [move.pp, MoveData.max_pp(move.id, move.get("pp_ups", 0))])
+	names.append(rom.text(BWFiles.TEXT_MOVE_NAMES, new_move))
+	pp.append("")
+	var menu := ChoiceMenu.new()
+	menu.set_items(names, 0, pp)
+	var index: int = await _open(menu)
+	return index if index >= 0 and index < pokemon.moves.size() else -1
+
+
+## OUI (0) ou NON (1) ; Annuler répond NON.
+func _ask_yes_no() -> int:
+	var menu := ChoiceMenu.new()
+	var rom: Node = Autoloads.rom()
+	menu.set_items(PackedStringArray([rom.text(BWFiles.TEXT_BATTLE_UI, YES_LINE), rom.text(BWFiles.TEXT_BATTLE_UI, NO_LINE)]))
+	var index: int = await _open(menu)
+	return 0 if index == 0 else 1
+
+
+## Ouvre un panneau (BattleButtonPanel) ou un menu (ChoiceMenu) et attend le choix (-1 : annulé).
+func _open(panel: Control) -> int:
+	messages.accepts_input = false
+	_menu = panel
+	_menu_layer.add_child(panel)
+	_place_menu(panel)
+	var on_chosen := func(index: int) -> void: _answered.emit(index)
+	var on_cancelled := func() -> void: _answered.emit(-1)
+	panel.connect("chosen", on_chosen)
+	panel.connect("cancelled", on_cancelled)
+	var value: Variant = await _answered
+	_menu = null
+	panel.queue_free()
+	return value
+
+
+## Place d'un panneau : commandes en bas à droite, capacités et poches en bas, équipe au-dessus des
+## messages, menus à droite au-dessus des messages.
+func _place_menu(panel: Control) -> void:
+	if panel is BattleCommandPanel or panel is BattleMovePanel:
+		panel.position = size - panel.size - Vector2(MARGIN, MARGIN)
+	elif panel is BattlePartyPanel:
+		panel.position = Vector2((size.x - panel.size.x) / 2.0, size.y - MESSAGE_HEIGHT - MARGIN * 2 - panel.size.y)
+	elif panel is BattleButtonPanel:
+		panel.position = Vector2((size.x - panel.size.x) / 2.0, size.y - panel.size.y - MARGIN)
+	else:
+		panel.reset_size()
+		panel.position = Vector2(size.x - panel.size.x - MARGIN, size.y - MESSAGE_HEIGHT - MARGIN * 2 - panel.size.y)

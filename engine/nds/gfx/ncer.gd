@@ -101,6 +101,7 @@ func cell_indices(index: int, gfx: NCGR) -> PackedByteArray:
 	var cell := cells[index]
 	var area := cell.bounds()
 	out.resize(area.size.x * area.size.y)
+	var by_position := mapping != MAPPING_2D and gfx.linear and gfx.width_tiles > 0
 	# Le premier OBJ de la liste est dessiné au-dessus : on peint donc en partant du dernier.
 	for k in range(cell.objs.size() - 1, -1, -1):
 		var obj := cell.objs[k]
@@ -111,6 +112,10 @@ func cell_indices(index: int, gfx: NCGR) -> PackedByteArray:
 			for px in obj.size.x:
 				var sx := obj.size.x - 1 - px if obj.hflip else px
 				var tile := _tile_index(obj, (sy >> 3) * tiles_wide + (sx >> 3), sx >> 3, sy >> 3)
+				if by_position:
+					# Image rangée en bitmap avec des numéros de tuiles 1D : la tuile est à la place de
+					# l'OBJ dans la cellule (sprites de dresseurs de `a/0/7/2`).
+					tile = ((obj.position.y - area.position.y + sy) >> 3) * gfx.width_tiles + ((obj.position.x - area.position.x + sx) >> 3)
 				if tile < 0 or tile >= gfx.tile_count:
 					continue
 				var c: int = gfx.tiles[tile * NCGR.TILE_PIXELS + (sy & 7) * 8 + (sx & 7)]

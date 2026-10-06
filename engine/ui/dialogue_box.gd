@@ -29,6 +29,9 @@ const DEFAULT_TEXT_SPEED := "moyenne"
 var buffers := {}
 ## Utilisé quand le texte demande le nom du joueur et qu'aucun tampon n'est rempli.
 var player_name := "Joueur"
+## Couleurs du texte (le combat écrit en blanc sur fond sombre).
+var ink := GameTheme.INK
+var shadow := GameTheme.INK_SHADOW
 
 var _frame: StyleBoxTexture
 var _text_area: Control
@@ -60,6 +63,13 @@ func _init() -> void:
 func _ready() -> void:
 	resized.connect(_layout)
 	_layout()
+
+
+## Change le cadre de la boîte (celui des combats est sombre).
+func set_frame(style: StyleBoxTexture) -> void:
+	_frame = style
+	_layout()
+	queue_redraw()
 
 
 ## Taille conseillée : deux lignes de texte et la largeur des textes de la DS (~ 250 pixels).
@@ -278,7 +288,7 @@ func _draw() -> void:
 func _draw_text() -> void:
 	var y := _scroll
 	if _scroll > 0.0:
-		GameTheme.draw_text(_text_area, Vector2(0, y - LINE_SPACING), _scrolled_out)
+		GameTheme.draw_text(_text_area, Vector2(0, y - LINE_SPACING), _scrolled_out, GameTheme.FontId.DIALOGUE, ink, shadow)
 	for line in _lines:
-		GameTheme.draw_text(_text_area, Vector2(0, y), line)
+		GameTheme.draw_text(_text_area, Vector2(0, y), line, GameTheme.FontId.DIALOGUE, ink, shadow)
 		y += LINE_SPACING

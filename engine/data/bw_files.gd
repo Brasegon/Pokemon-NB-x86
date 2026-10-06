@@ -16,6 +16,11 @@ const AREA_DATA := "a/0/1/3" ## vérifié (fichier brut, 282 zones de textures d
 const MAP_TEXTURES := "a/0/1/4" ## vérifié (NSBTX uniquement)
 ## Décors des combats : modèles des sols (batt_stage) et des fonds (batt_bg) avec leurs animations.
 const BATTLE_BACKGROUNDS := "a/0/1/1" ## vérifié (NSBMD, NSBCA, NSBTA)
+## Choix du décor des combats : lignes par décor de zone, fiches des fonds et des socles (archive
+## 0x98 de 0x021F6500 et 0x021F6AA4).
+const BATTLE_SCENES := "a/1/5/2" ## vérifié
+## Sprites des dresseurs en combat : 8 fichiers par image, comme ceux des Pokémon.
+const TRAINER_SPRITES := "a/0/7/2" ## vérifié (n° de l'image = classe du dresseur : 38 = Bianca)
 const PERSONAL := "a/0/1/6" ## vérifié (archive 16 de 0x0201ADA4, 60 octets par fiche)
 const GROWTH := "a/0/1/7" ## vérifié (archive 17 de 0x02019BB0, 101 u32 par courbe)
 const LEARNSETS := "a/0/1/8" ## vérifié (archive 18 de 0x0201ADEC)
@@ -86,6 +91,8 @@ const DESCRIPTIONS := {
 	AREA_DATA: "Zones de textures (bâtiments, textures, animations)",
 	MAP_TEXTURES: "Textures des cartes",
 	BATTLE_BACKGROUNDS: "Décors des combats (sols et fonds)",
+	BATTLE_SCENES: "Choix du décor des combats (fond et socles selon le lieu)",
+	TRAINER_SPRITES: "Sprites des dresseurs en combat",
 	PERSONAL: "Données des Pokémon (statistiques, types, talents)",
 	GROWTH: "Courbes d'expérience",
 	LEARNSETS: "Capacités apprises par niveau",
