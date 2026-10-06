@@ -1,7 +1,7 @@
 # Feuille de route
 
-Objectif final : un portage jouable d'une grande partie de l'aventure. Objectif intermédiaire pour
-l'école : **une démo où l'on part de Renouet, traverse la Route 1 et livre un combat sauvage**.
+Objectif final : un portage jouable d'une grande partie de l'aventure. Premier objectif
+intermédiaire : **une démo où l'on part de Renouet, traverse la Route 1 et livre un combat sauvage**.
 
 Chaque phase se termine par quelque chose de montrable, avec des tests sur la vraie ROM.
 

@@ -1,6 +1,6 @@
 # Pokémon Version Blanche — portage Windows
 
-Projet d'école : un moteur natif (Godot 4.7, GDScript) qui rejoue Pokémon Version Blanche sur PC.
+Un moteur natif (Godot 4.7, GDScript) qui rejoue Pokémon Version Blanche sur PC.
 
 Le moteur **ne contient aucune donnée du jeu**. Il lit directement la ROM `.nds` que le joueur a
 extraite de sa propre cartouche (graphismes, textes, cartes, données des Pokémon...) et réimplémente
@@ -11,7 +11,7 @@ la logique du jeu. C'est le même principe qu'OpenMW pour Morrowind.
 
 ## Avancement
 
-**Portage complet : environ 35 %** `███████░░░░░░░░░░░░░`
+**Portage complet : environ 38 %** `████████░░░░░░░░░░░░`
 
 Estimation d'octobre 2026, à refaire à la fin de chaque phase de la [feuille de route](docs/ROADMAP.md) :
 chaque domaine compte pour sa part estimée du travail total, multipliée par ce qui en est fait. Le
@@ -22,7 +22,7 @@ périmètre est toute l'aventure en solo ; les fonctions sans fil du C-Gear n'en
 | Lecture de la ROM : 2D, 3D, sons, textes | 10 % | 85 % | Lus et affichés ou joués : 649 morceaux de carte, 5 278 modèles 3D, 179 musiques, 649 Pokémon animés. Restent le brouillard, les contours et les panneaux de la 3D, le cadre de dialogue d'origine |
 | Le monde : cartes, déplacements, PNJ, caméra | 15 % | 40 % | Jouables à Renouet et sur la Route 1 : marche, portes, rebords, PNJ, caméra, éclairage, saisons ; 162 mouvements de personnages sur 378. Restent la météo, les rails, Surf, Force et les autres capacités de terrain, les énigmes des arènes |
 | Moteur de scripts | 15 % | 31 % | 111 commandes écrites sur les 551 qu'emploie le jeu, mais les plus courantes : elles font 95 % des commandes des scripts ; 186 fichiers de scripts sur 472 n'emploient qu'elles |
-| Combats | 25 % | 45 % | Combats simples complets : données lues dans la ROM, moteur de la 5e génération (formules, statuts, talents, objets, capture), IA, écran de combat (décor 3D, sprites, jauges, commandes, sac, équipe), rencontres et dresseurs sur le terrain. Restent les combats doubles, triples et rotatifs, les animations des capacités, les évolutions |
+| Combats | 25 % | 55 % | Combats simples complets : données lues dans la ROM, moteur de la 5e génération (formules, statuts, talents, objets, capture), IA, écran de combat (décor 3D, sprites, jauges, commandes, sac, équipe), début des combats et animations des capacités joués depuis les scripts du jeu (particules, sons, cris), coupure « VS » des rivaux et des champions, rencontres et dresseurs sur le terrain. Restent les combats doubles, triples et rotatifs, la capture avec ses effets, les transitions des autres combats, les évolutions |
 | Menus et systèmes : équipe, sac, Pokédex, PC, boutiques | 15 % | 12 % | Menu pause, sauvegarde et reprise, options ; l'équipe et le sac du combat ; hors combat, ce ne sont que des fiches. Le reste en phase 5 |
 | L'aventure : histoire, à-côtés, cinématiques | 15 % | 3 % | De la chambre du héros au bout de la Route 1, avec les scripts du jeu et de vrais combats : Bianca et Tcheren, la démonstration de capture, les Pokémon sauvages |
 | Adaptation au PC | 5 % | 50 % | Écran unique 16:9 à échelle entière, clavier, manette, souris, touches réassignables. Restent l'exécutable Windows, les filtres, les 60 images par seconde |

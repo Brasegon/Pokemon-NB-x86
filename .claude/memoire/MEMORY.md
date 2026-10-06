@@ -1,4 +1,5 @@
-- [Projet portage Pokémon Blanc](projet-portage-pokemon-blanc.md) — moteur natif Godot 4.7 lisant la ROM IRAF, écran unique PC (pas de double écran), projet école 1 an+
-- [Outils Godot locaux](godot-outils-locaux.md) — chemins des exe Godot, lancer tests/captures en CLI
+- [Projet portage Pokémon Blanc](projet-portage-pokemon-blanc.md) — moteur natif Godot 4.7 lisant la ROM IRAF, écran unique PC ; phases 0-3 fusionnées ; phase 4 (combats) fusionnée (PR #13) : moteur, écran, effets des capacités, sons, coupure « VS » ; vidéo de référence de l'utilisateur ; restent capture, effets de rencontre du lieu, combats doubles ; le dépôt ne parle plus du cadre d'origine du projet
+- [Outils Godot locaux](godot-outils-locaux.md) — Godot Steam 4.7.2 sur ce PC (E:), ROM à la racine, capstone ok ; lancer tests/captures en CLI
 - [Un seul agent](un-seul-agent.md) — pas d'agents parallèles, avancer tâche par tâche
 - [Recherche phase 3 scripts](recherche-phase3-scripts.md) — format des scripts N&B vérifié sur la ROM, sources, à reporter dans docs/ après la phase 2
+- [Méthode de rétro-ingénierie](methode-retro-ingenierie.md) — outils dans tools/re/ (BLZ, capstone Thumb, motifs regex, switch.py) ; repères overlays 10/21/93/94 et table des archives

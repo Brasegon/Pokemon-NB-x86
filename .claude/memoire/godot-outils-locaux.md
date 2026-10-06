@@ -5,11 +5,12 @@ metadata:
   node_type: memory
   type: reference
   originSessionId: 4375c519-c9d0-43b7-a94d-810c28b314c3
-  modified: 2026-10-05T12:49:28.621Z
+  modified: 2026-10-05T17:22:15.723Z
 ---
 
-- Godot console (sortie visible en terminal) : `C:\Users\brand\Downloads\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe` (le dossier s'appelle `.exe`). Aussi installé : `C:\Program Files\Godot\Godot.exe`.
-- Tests : `--headless --path . --script res://tests/<test>.gd` (test_formats, test_explorer, test_ui, test_sound). Faire `--import` d'abord si de nouvelles classes `class_name` ont été ajoutées.
+- **PC actuel (projet dans `E:\Perso\Pokemon-NB-x86`, constaté le 2026-10-05)** : Godot 4.7.2 installé par Steam, `E:\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe` (pas d'exe « console » ; `--version` affiche bien sa sortie depuis Bash). ROM à la racine (`Pokemon - Version Blanche (France) (NDSi Enhanced).nds`, 256 Mo), Python 3.13.12 + capstone 5.0.7. `gh` installé hors du PATH : l'appeler par `"/c/Program Files/GitHub CLI/gh.exe"` (connecté au compte Brasegon depuis le 2026-10-05) ; le remote git est en SSH. Tous les tests passent sur ce PC (2026-10-05). `test_ui` et `test_navigation` affichent à la sortie « 1 ObjectDB instance was leaked » : c'est l'`AudioStreamGeneratorPlayback` de la musique du titre (`engine/core/sound.gd`), encore en cours quand le test quitte ; sans effet sur le jeu. Dans Git Bash, `git show branche:chemin` exige `MSYS_NO_PATHCONV=1`.
+- PC d'origine (celui des phases 0 à 2) : Godot console `C:\Users\brand\Downloads\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe` (le dossier s'appelle `.exe`) et `C:\Program Files\Godot\Godot.exe`.
+- Tests : `--headless --path . --script res://tests/<test>.gd` (test_formats, test_explorer, test_ui, test_sound, test_navigation, test_3d ; test_models prend 2-3 min). Faire `--import` d'abord si de nouvelles classes `class_name` ont été ajoutées.
 - Pièges du mode `--script` : le script de test ne peut pas écrire `Rom`/`Sound`… (utiliser `root.get_node("Rom")`) ; les classes `class_name` ne doivent pas non plus nommer les autoloads (passer par `Autoloads.rom()` etc.) ; les autoloads n'entrent dans l'arbre qu'à la 1re image (InputMap vide pendant `_initialize`) ; dans les autoloads, pas de chemin absolu `/root/...` → `get_parent().get_node("Settings")`.
 - `change_scene_to_file()` retire **immédiatement** la scène de l'arbre : dans un gestionnaire d'entrée, appeler `set_input_as_handled()` (ou garder `get_viewport()` dans une variable) AVANT d'émettre un signal ou de changer de scène. `tests/test_navigation.gd` pilote le jeu avec de vrais événements et compte les erreurs via `OS.add_logger()` : le lancer après toute modif d'interface.
 - Le serveur d'affichage headless ne gère pas `keyboard_get_keycode_from_physical` (garde `DisplayServer.get_name() == "headless"`).

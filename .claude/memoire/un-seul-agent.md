@@ -10,5 +10,7 @@ metadata:
 
 (2026-10-05) Après explication des agents parallèles (worktrees, conflits, coût), l'utilisateur a choisi de rester sur **un seul agent**.
 
-**Why:** projet d'école dont il doit comprendre et défendre le code ; plusieurs agents = trop de code à relire et à fusionner.
+**Why:** il veut comprendre tout le code ; plusieurs agents = trop de code à relire et à fusionner.
+(2026-10-05, soir) Il n'a plus à défendre le code devant quelqu'un, mais la préférence reste tant qu'il ne dit pas autre chose (relecture, fusion).
+
 **How to apply:** avancer tâche par tâche dans la session principale ; ne pas reproposer de lancer plusieurs agents en parallèle sauf s'il le demande. Voir [[projet-portage-pokemon-blanc]].

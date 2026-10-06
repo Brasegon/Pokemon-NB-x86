@@ -1,9 +1,9 @@
 # Pokémon Blanc — portage Windows
 
-Projet d'école (l'usage de Claude est autorisé) : un moteur natif **Godot 4.7 + GDScript** (pas de .NET)
-qui lit la ROM `.nds` du joueur — Pokémon Version Blanche française, code `IRAF` — et réimplémente le
-jeu, comme OpenMW pour Morrowind. Présentation : [README.md](README.md) ; étapes :
-[docs/ROADMAP.md](docs/ROADMAP.md) ; formats retrouvés : [docs/FORMATS.md](docs/FORMATS.md).
+Un moteur natif **Godot 4.7 + GDScript** (pas de .NET) qui lit la ROM `.nds` du joueur — Pokémon
+Version Blanche française, code `IRAF` — et réimplémente le jeu, comme OpenMW pour Morrowind.
+Présentation : [README.md](README.md) ; étapes : [docs/ROADMAP.md](docs/ROADMAP.md) ; formats
+retrouvés : [docs/FORMATS.md](docs/FORMATS.md).
 
 ## Choix validés
 
@@ -16,9 +16,8 @@ Ne pas reproposer d'autre approche sans raison sérieuse.
 - **Rétro-ingénierie maison** : formats et commandes de script sont retrouvés dans la ROM et le code
   du jeu (Python + capstone, Ghidra). La documentation de la communauté sert au plus de piste : ne rien
   copier ni embarquer (CTRMapV n'a pas de licence, PokeScript est sous GPL-3.0). Chaque découverte est
-  prouvée (position dans le code, test sur la ROM) et notée dans `docs/FORMATS.md`, pour pouvoir être
-  défendue en soutenance.
-- Durée : un an ou plus. Jalon pour l'école : partir de Renouet, traverser la Route 1, livrer un combat
+  prouvée (position dans le code, test sur la ROM) et notée dans `docs/FORMATS.md`.
+- Durée : un an ou plus. Premier jalon : partir de Renouet, traverser la Route 1, livrer un combat
   sauvage.
 
 ## Règles
@@ -28,8 +27,8 @@ Ne pas reproposer d'autre approche sans raison sérieuse.
 - **Aucune donnée du jeu dans le dépôt** (ROM, sauvegardes, fichiers extraits) : le `.gitignore` les
   exclut. Le moteur lit tout depuis la ROM du joueur.
 - Les tests tournent sur la vraie ROM ; lancer `test_navigation` après toute modification d'interface.
-- Façon de travailler : **un seul agent**, tâche par tâche (l'utilisateur doit comprendre et défendre
-  le code). Quand l'utilisateur dit « go », traiter toute la liste restante de la phase.
+- Façon de travailler : **un seul agent**, tâche par tâche (l'utilisateur doit comprendre le code).
+  Quand l'utilisateur dit « go », traiter toute la liste restante de la phase.
 
 ## Tests
 
