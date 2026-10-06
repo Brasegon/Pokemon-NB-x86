@@ -1253,11 +1253,8 @@ points visés 0x0220ACA0), vue de départ (0x0220AC40). Le portage garde l'angle
 plus de décor sur les côtés.
 
 **Sprites** (`battle_sprite.gd`) : le système MCSS de l'ARM9 (création 0x020159E4, dessin
-0x02014E60) projette la position du Pokémon et dessine ses cellules à plat, face à la caméra ; un
-pixel mesure échelle / 16 unité, l'échelle venant de la place (0x022018D4, table 0x02209F68 :
-0x1030 pour le joueur, 0x11BF en face, posée par 0x02200654). Vu de la caméra par défaut, le Pokémon
-d'en face est à peu près à sa taille et celui du joueur deux fois plus grand (et coupé par le bas
-de l'écran, comme sur DS).
+0x02014E60) projette la position du Pokémon et dessine ses cellules à plat, face à la caméra. Voir
+plus bas « Sprites des effets » pour les deux modes de taille (« écran » et « monde »).
 
 **Jauges** (`battle_gauge.gd`, palette 162 de `a/0/1/1` chargée par 0x02206BB4) : fond 165/166 (en
 face) ou 168/169 (joueur) choisi par 0x022073D0 ; barre de PV 177/178 placée par 0x02207A68 (table
@@ -1275,15 +1272,172 @@ barre. En combat sauvage, une petite Ball (tuile 27) devant le nom si l'espèce 
 (0x022085F0).
 
 **Bruitages** (noms du SDAT) : `SEQ_SE_KOUKA_H`, `_M`, `_L` (coup super efficace, normal, peu
-efficace), `SEQ_SE_NAGERU` (lancer de Ball), `SEQ_SE_BOWA1` (sortie), `SEQ_SE_KON` et
-`SEQ_SE_TB_KON` (la Ball tombe, tremble), `SEQ_SE_TB_KARA` (capturé), `SEQ_SE_NIGERU` (fuite),
-`SEQ_SE_HINSHI` (K.O.), `SEQ_SE_EXP`, `SEQ_ME_LVUP`, `SEQ_ME_POKEGET`. Musiques : 1128
-`SEQ_BGM_VS_NORAPOKE` (sauvages), 1148-1152 victoires.
+efficace), `SEQ_SE_NIGERU` (fuite), `SEQ_SE_HINSHI` (K.O.), `SEQ_SE_EXP`, `SEQ_ME_LVUP`,
+`SEQ_ME_POKEGET`. Les effets choisissent eux-mêmes leurs sons (commande 0x34) : envoi
+`SEQ_SE_NAGERU` (lancer) et `SEQ_SE_BOWA2` (ouverture) ; capture (effet 570) `SEQ_SE_BOWA2`,
+`SEQ_SE_KON` trois fois (volumes 127, 96, 64), `SEQ_SE_BOWA1`, `SEQ_SE_GETTING`. Rangées de Balls :
+`SEQ_SE_TB_START`, `SEQ_SE_TB_KON`, `SEQ_SE_TB_KARA`. Musiques : 1128 `SEQ_BGM_VS_NORAPOKE`
+(sauvages), 1148-1152 victoires.
 
 **Écran unique** : ce qui était sur l'écran tactile (commandes ATTAQUE / SAC / FUITE / POKéMON,
 capacités, équipe, sac, oubli d'une capacité) devient des panneaux en bas à droite ; pendant le
 choix de l'action, la scène reste dégagée comme l'écran du haut de la DS. Textes des boutons :
 ATTAQUE (fichier 18, 42), SAC et POKéMON (fichier 34, 3 et 2), FUITE (fichier 16, 1).
+
+### Effets du combat (`battle_effects.gd`, overlay 94)
+
+Tout ce qui bouge pendant un combat (intro, envoi d'un Pokémon, capacités, K.O., capture...) est un
+**script d'effet** joué par la machine générique de l'ARM9 (0x02011298, la même que celle des
+scripts du terrain) avec les 78 commandes de l'overlay 94 (descripteur 0x02209D6C, table
+0x02209E28). `tools/re/effectcmds.py` retrouve le nombre de paramètres de chaque commande dans son
+code (lecteur u32 0x0201134C) ; `tools/re/effscripts.py` désassemble les scripts.
+
+- **Fichiers** : `a/0/6/6` pour les effets 0 à 560 (capacités, fichier = n° de l'effet),
+  `a/0/6/7` pour les effets du système (561 et suivants, fichier n - 561), chargés par 0x021F955C et
+  0x021FC334. Un fichier : u32 nombre de variantes, 14 décalages u32 par variante (une par
+  combinaison de places), puis les scripts ; le combat simple prend le premier décalage (0x021F9498).
+  Une commande : n° sur 16 bits, puis ses paramètres u32 (nombre fixe par commande).
+- **Machine** (0x02011298) : état 0 arrêt, 1 en marche, 2 attente. Une image : si une attente est
+  en cours, sa fonction est testée et l'image s'arrête là, même quand elle est finie ; sinon les
+  commandes s'enchaînent jusqu'à ce que l'une demande de céder. Chaque commande renvoie le mot
+  [effet+0x23C] (« céder »), que 0x3A règle et que les attentes mettent à 1.
+- **Places** : 0 à 7 les Pokémon (paires côté joueur, impaires en face), 8 à 13 les dresseurs (8 le
+  héros, 9 le dresseur d'en face). Cibles des commandes de sprites (0x021FC9A4) : 0 à 13 la place,
+  14 le lanceur, 15 son partenaire, 16 la cible, 17 son partenaire, 18 tous les Pokémon, 19 le côté
+  du joueur, 20 l'autre côté. Variables (0x021FDB50) : 0-7 poids du Pokémon de la place, 8 celui du
+  lanceur, 9-15 variables de l'effet (0x40), 16 le registre [+4], 17 le lanceur, 18 il est caché, 19
+  son côté, 20-27 chromatique, 28 le lanceur l'est, 29-37 sous terre (Taupiqueur), 38-39 genre de
+  combat, 40-43 genre de dresseur de chaque client (0 garçon, 1 fille, puis la classe), 44-52
+  flotte, 53 bit 13, 54 caméra sauvée, 56 bit 15, 57 la cible.
+- **Flot** : 0x38 n attendre (0x021FC6E4 : 0 tout, 1 la caméra, 2 les particules, 3 les sprites,
+  4 les dresseurs, 16 les cris...), 0x39 n images, 0x3A céder ou non, 0x3B / 0x3C sauts si une
+  variable est =, !=, <, >, <=, >= à une valeur ou à une autre variable, 0x3D saut si une place est
+  (ou non) occupée, 0x3E / 0x3F registre, 0x40 écrire une variable, 0x46 appeler un effet du système
+  (lanceur 14 et cible 16 inchangés) et 0x47 en revenir, 0x48 saut, 0x49 attendre un signal, 0x4A
+  continuer dans un autre effet, 0x4D fin. 0x4C ne change que l'ordre de dessin en combat double ou
+  triple (bit 30 des sprites, 0x022004FC).
+- **Commandes écrites** : caméra 0x00-0x05 ; particules 0x06, 0x07, 0x09-0x0D, 0x0F, 0x44 ;
+  sprites 0x12, 0x15-0x17, 0x1A-0x1D ; dresseurs 0x20-0x23 ; jauges 0x33 ; sons 0x34, 0x35, 0x43.
+  Les autres (fonds 0x24-0x32, sprites 0x13, 0x14, 0x18, 0x19, 0x1E, 0x1F...) sont comptées par le
+  portage et restent à écrire.
+
+Effets du système joués par l'écran : 561 intro d'un Pokémon sauvage, 562 arrivée du héros (la
+caméra recule), 564 le joueur envoie son Pokémon, 566 retour à la vue par défaut, 567 intro du
+dresseur (silhouette noire, la caméra tourne autour puis le dévoile), 568 attendre la fin de
+l'animation des dresseurs, 569 le dresseur d'en face envoie son Pokémon, 570 capture, 571 K.O.,
+608 étincelles d'un chromatique, 620 retour dans la Ball, 621 envoi en cours de combat, 624 retour
+du dresseur battu.
+
+### Caméra des effets (`battle_camera.gd`, `battle_motion.gd`)
+
+Objet de 0xB8 octets (0x021F6DDC), en virgule fixe (1.0 = 4096), mis à jour à chaque image
+(0x021F71DC). Commandes : 0x00 plan (0 immédiat, 1 interpolé ; plans du switch 0x021F9C74 : 0 et 1
+sur les Pokémon, tables 0x0220AC88 / 0x0220ACA0 ; 8 vue par défaut ; 13 caméra sauvée par 0x05 ;
+14, 18, 19 table 0x0220AC40 ; en combat simple, 9, 10 et 21 visent le lanceur, 11 et 12 la cible) ;
+0x01 œil et point visé donnés (ou relatifs) ; 0x02 orbite ; 0x03 tremblement ; 0x04 mode des sprites.
+
+- Déplacement (0x021F6EE8) : vitesse = écart / images sur chaque axe (au moins ±1), pas constant
+  borné au but ; `skip` images sautées entre deux pas ; `brake` : au bout de ce nombre de pas, les
+  vitesses sont divisées par 2, une fois.
+- Orbite (0x021F70A8) : après chaque image, 0x021F7344 recalcule a1 = atan2(dy, dz), a2 =
+  atan2(dz, dx) et la distance ; œil = visé + distance x (cos a2 cos a1, sin a1, sin a2 cos a1)
+  (table de sinus 0x020A1AC0, angle sur 0x10000, index angle >> 4).
+- Tremblement (0x021F6FA0) : axe, amplitude, intervalle, `skip`, nombre de fois ; le troisième
+  paramètre de 0x03 n'est pas lu (registre écrasé) : vitesse = amplitude / intervalle,
+  0 -> +a -> 0 -> -a -> 0..., décalage remis à 0 à la fin.
+- Mouvements génériques (0x021F9200, réglés par 0x022006EC) : sorte 0 tout de suite, 1 et 4 vitesse
+  constante, 2 oscillation d'un côté, 3 des deux côtés (la vitesse ne s'inverse qu'aux fins
+  d'intervalle impaires) ; les sprites s'en servent aussi.
+
+### Sprites des effets (`battle_sprite.gd`)
+
+Chaque sprite (objet MCSS) a une position dans le décor ([+0xE0]), une échelle de base ([+0xEC]),
+une échelle d'effet ([+0x128], commande 0x15), une rotation ([+0xF8], 0x16), une opacité de 0 à
+31 (bits 0-7 de [+0x140], 0x17), et des bits : 11 caché (0x1C), 9 et 10 animation arrêtée (0x1A), 23
+sans ombre (0x1D). Position de chaque place en combat simple : table 0x02209FF0 (Pokémon) et
+0x0220A0B0 (dresseurs). Deux façons de dessiner :
+
+- mode « écran » (bit 0 du système et bit 29 du sprite) : taille fixe, un pixel du sprite vaut un
+  pixel DS en face et pour les dresseurs, deux côté joueur (0x022018D4 : 16.0 ou 32.0 en seizièmes),
+  multipliée par l'échelle de l'effet ;
+- mode « monde » : la taille suit la perspective, 1 pixel = échelle / 16 unité (table 0x02209F68 :
+  0x1030 joueur, 0x11BF en face ; 0x02209FC0 pour les dresseurs).
+
+Chaque effet commence en mode « monde » pour les mouvements de caméra ([effet+0x244] = 1) ; la
+commande 0x04 0 et le retour à la vue par défaut (attente de la caméra après un plan 8)
+repassent en mode « écran ». Fondu de palette (0x1B, 0x02016A04) : chaque image, couleur + ((but -
+couleur) x evy >> 4) sur 5 bits (0x02021F00), comme le shader `indexed.gdshader`. Dresseurs : de
+face, image de la classe (table 0x020A01C4 de l'ARM9, `a/0/7/2`) ; de dos, `a/0/7/3` (0 le héros,
+1 l'héroïne) ; la commande 0x22 joue une séquence de leur multi-cellule (lancer de la Ball...).
+
+### Particules (`spa.gd`, `battle_particles.gd`)
+
+La bibliothèque de particules de l'ARM9 (code ARM de 0x02051AA4 à 0x02058400) lit les fichiers
+« SPA » de `a/0/0/6` (format détaillé en tête de `spa.gd` et dans `tools/re/spa.py`). Chaque fichier
+chargé a son gestionnaire (16 au plus) et ses émetteurs ; un émetteur est créé d'après un modèle
+(0x02052538, 0x020539F8), émet ses particules tous les `interval` images (0x0205693C) et les met à
+jour (0x020531B0) : animations d'échelle, de couleur, d'opacité et de texture, comportements
+(gravité, aléa, aimant, rotation, plan de collision, convergence), résistance de l'air, particules
+enfants (0x0205661C). Générateur : graine x 0x5EEDF715 + 0x1B0CB173 (0x02146A2C). Dessin
+(0x02055F6C, 0x02055430) : carrés face à la caméra, ou étirés le long de la vitesse ; textures SPT
+décodées comme les textures 3D, répétées en miroir si leurs bits 14-15 le demandent.
+
+Placement par le combat (rappel 0x021FD16C) : départ et arrivée (place, ou point donné), décalage
+dont la composante y est la hauteur, trajectoire (0x021FD86C : demi-cercle de -90 à +90 degrés, de
+-90 à +45 pour la sorte 3, si bien que la Ball s'ouvre en l'air), multiplicateurs (rayon, vie,
+échelle, vitesse). Modes : 0 dans le décor (caméra du combat), 1 et 2 repère « écran » fixe
+(caméra orthographique 0x020515E0, [-4, 4] x [-3, 3], 32 pixels DS par unité : la position décalée
+est projetée une fois, 0x021FE158), 3 trajectoire dans le décor projetée à chaque image. Le fichier
+dépend de la Ball (0x021FE32C) : celle du Pokémon de la place réglée par 0x44 (table objet -> Ball
+0x0209E89C de l'ARM9, 25 Balls) ; éclat d'ouverture : fichier 3 + Ball - 1 ; Ball elle-même :
+fichiers 46 à 49 + 4 x (Ball - 1).
+
+### Début du combat (`battle_screen.gd`, client de l'overlay 93)
+
+Le client du combat déroule lui-même le début, étape par étape (0x021EB3xx choisit la séquence
+selon le genre de combat) :
+
+- **combat sauvage** (0x021EB630, 9 étapes) : fermer la boîte de messages ; effet 561 et
+  ouverture depuis le noir (0x021EB524 : luminosité de 16 à 0, un cran toutes les 2 images) ;
+  « Un X sauvage apparaît ! » (variante 1, ou 3 à 6 selon le combat, 0x021EB7C0) ; à la fin du
+  message, la jauge d'en face entre (0x021ED9A4) et la boîte se ferme ; effet 562 ; effet 564 et
+  « X ! Go ! » ensemble ; à la fin du message la boîte se ferme ; à la fin de l'effet, la jauge du
+  joueur entre ;
+- **contre un dresseur** (0x021EB810, 12 étapes) : fermer la boîte ; effet 567 et ouverture ; la
+  rangée de Balls du dresseur et « Un combat est lancé par... » ; ensuite l'effet 568 (attendre la fin
+  de son animation) et la boîte se ferme ; « Un X est envoyé par... » ; effet 569, sa rangée disparaît
+  et la boîte se ferme ; la rangée du joueur ; la jauge d'en face et l'effet 562 ; quand l'effet et
+  la rangée sont finis, effet 564 et « X ! Go ! » ensemble ; à la fin du message la rangée disparaît
+  et la boîte se ferme ; à la fin de l'effet, la jauge du joueur entre.
+
+Le portage reçoit tout le début du combat dans un seul événement « intro » de `battle.gd` et le
+déroule de la même façon.
+
+### Messages du combat (`dialogue_box.gd`)
+
+Machine de 0x021ECF08 (8 états) : la boîte s'ouvre, le texte s'écrit à la vitesse des options
+(0x021B857C, comme sur le terrain), puis la boîte attend 80 images (0x50, valeur passée par presque
+tous les appels de 0x021ECE58 ; A ou B l'abrège). Une attente {BE00} / {BE01} attend aussi 80
+images, puis le texte reprend avec `SEQ_SE_MESSAGE` (0x547) ; un texte qui finit par une attente
+attend donc deux fois (« Un combat est lancé par... », environ 3 secondes). Vitesse (table 0x0209DF48
+de l'ARM9, lue par 0x02012FFC sur le terrain) : lente 3 images entre deux lettres, moyenne 1,
+rapide -2 (deux lettres par image) ; 0x0201CE10 traduit ces valeurs pour l'écriture (0x0201CD00).
+« Que doit faire X ? » est écrit d'un coup (0x021ECE00, attente 0).
+
+### Rangées de Balls (`battle_tray.gd`)
+
+Au début d'un combat contre un dresseur, une Ball par place de l'équipe (0x021EE0A4 : 0 vide ou Œuf,
+1 en forme, 2 K.O., 3 problème de statut) et une barre (overlay 94 : création 0x02208D4C, image 189,
+palette 190, cellules 191, animations 192 de `a/0/1/1`). Positions de la DS (table 0x0220AB0C) :
+joueur, Balls à partir de (166, 112) tous les +15 pixels, barre en (184, 120) ; en face, (90, 40)
+tous les -15, barre en (56, 48). Tout part 128 pixels plus loin (hors de l'écran). Chaque image
+(0x02209054) : la barre avance de 16 pixels, chaque Ball de 12 après 6 x (n° + 1) images d'attente,
+en roulant (séquences 3-5 ou 0-2) ; elle dépasse sa place de 2 x (n° + 1) pixels, s'arrête
+(séquence immobile 6-9, `SEQ_SE_TB_KON`, ou `SEQ_SE_TB_KARA` pour une place vide), puis revient à 2
+pixels par image. Création avec `SEQ_SE_TB_START` ; la rangée disparaît d'un coup (0x02209008).
+Le portage la pose par rapport au centre de la jauge du même côté (sur DS (216, 120) et (44, 40),
+table 0x0220AA78) : la DS coupe 20 pixels de la jauge d'en face et 24 de celle du joueur, l'écran
+large les montre en entier.
 
 ### Démonstration de capture (commande 0x17D, 0x0216E8EC)
 

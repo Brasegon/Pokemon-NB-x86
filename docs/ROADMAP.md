@@ -137,9 +137,14 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 - [x] Combats sur le terrain : rencontres dans les herbes à chaque pas (compteur et taux du jeu),
       combats des scripts (0x85, résultat 0x8D, défaite 0x8C), démonstration de capture de la
       professeure (0x17D)
-- [ ] Combats doubles, triples et rotatifs ; animations des capacités (les coups sont pour l'instant
-      un élan et un clignotement) ; évolution après le combat ; « Utiliser un autre Pokémon ? » ;
-      surnom à la capture ; paroles des dresseurs en plein combat ; héros vu de dos qui lance la Ball
+- [x] Effets du combat joués depuis les scripts de la ROM (machine de l'overlay 94) : caméra,
+      sprites, dresseurs (héros vu de dos qui lance la Ball), particules (fichiers SPA et
+      bibliothèque de l'ARM9) ; intro sauvage, intro de dresseur, envois, K.O., retour dans la Ball
+- [x] Début des combats déroulé comme le client du jeu (messages, jauges, rangées de Balls)
+- [ ] Animations des capacités (scripts `a/0/6/6`, les coups sont pour l'instant un élan et un
+      clignotement), capture avec les effets du jeu, transition « VS » sur le terrain
+- [ ] Combats doubles, triples et rotatifs ; évolution après le combat ; « Utiliser un autre
+      Pokémon ? » ; surnom à la capture ; paroles des dresseurs en plein combat
 
 ## Phase 5 — Les systèmes du jeu
 
