@@ -22,6 +22,8 @@ var _building_rules: BuildingRules
 var _building_rules_read := false
 ## Overlays décompressés, gardés en cache (l'overlay 21 sert à plusieurs tables).
 var _overlay_cache := {}
+## Exécutable ARM9 décompressé (tables des natures...), lu à la première demande.
+var _arm9_code := PackedByteArray()
 
 
 func is_loaded() -> bool:
@@ -45,6 +47,7 @@ func load_rom(path: String) -> String:
 	_building_rules = null
 	_building_rules_read = false
 	_overlay_cache.clear()
+	_arm9_code = PackedByteArray()
 	_save_rom_path(path)
 	rom_changed.emit()
 	return ""
@@ -79,6 +82,17 @@ func overlay(index: int) -> PackedByteArray:
 ## Adresse en mémoire de l'overlay n° index (celle que citent ses pointeurs).
 func overlay_address(index: int) -> int:
 	return rom.overlays9[index].ram_address if index >= 0 and index < rom.overlays9.size() else 0
+
+
+## Exécutable ARM9 décompressé, tel qu'en mémoire à partir de arm9_address().
+func arm9_code() -> PackedByteArray:
+	if _arm9_code.is_empty():
+		_arm9_code = rom.read_arm9_code()
+	return _arm9_code
+
+
+func arm9_address() -> int:
+	return rom.arm9["ram_address"]
 
 
 ## Tables des plans du terrain, lues une fois dans le code du jeu (overlay 21) ; null si elles sont

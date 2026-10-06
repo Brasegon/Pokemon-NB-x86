@@ -14,10 +14,13 @@ const MAP_MATRICES := "a/0/0/9" ## vérifié
 const ZONE_HEADERS := "a/0/1/2" ## vérifié (un fichier, 427 zones de 48 octets)
 const AREA_DATA := "a/0/1/3" ## vérifié (fichier brut, 282 zones de textures de 10 octets)
 const MAP_TEXTURES := "a/0/1/4" ## vérifié (NSBTX uniquement)
-const PERSONAL := "a/0/1/6"
-const LEARNSETS := "a/0/1/8"
-const EVOLUTIONS := "a/0/1/9"
-const MOVES := "a/0/2/1"
+## Décors des combats : modèles des sols (batt_stage) et des fonds (batt_bg) avec leurs animations.
+const BATTLE_BACKGROUNDS := "a/0/1/1" ## vérifié (NSBMD, NSBCA, NSBTA)
+const PERSONAL := "a/0/1/6" ## vérifié (archive 16 de 0x0201ADA4, 60 octets par fiche)
+const GROWTH := "a/0/1/7" ## vérifié (archive 17 de 0x02019BB0, 101 u32 par courbe)
+const LEARNSETS := "a/0/1/8" ## vérifié (archive 18 de 0x0201ADEC)
+const EVOLUTIONS := "a/0/1/9" ## vérifié (archive 19 de 0x0201B780)
+const MOVES := "a/0/2/1" ## vérifié (archive 21 de 0x0201BD44, 36 octets par capacité)
 const FONTS := "a/0/2/3" ## vérifié (NFTR)
 ## Caméras du terrain : fichier 0, 38 fiches de 44 octets (archive 60 ouverte par 0x0218DFB8).
 const FIELD_CAMERAS := "a/0/6/0" ## vérifié
@@ -30,10 +33,10 @@ const SCRIPTS := "a/0/5/7"
 const FIELD_LIGHTS := "a/0/6/1" ## vérifié (éclairages du terrain selon l'heure)
 const MAP_TEXTURE_ANIMATIONS := "a/0/6/9" ## vérifié (NSBTA des textures de cartes)
 const MAP_TEXTURE_PATTERNS := "a/0/7/0" ## vérifié (changements d'image des textures de cartes)
-const TRAINERS := "a/0/9/2"
-const TRAINER_TEAMS := "a/0/9/3"
+const TRAINERS := "a/0/9/2" ## vérifié (archive 92 de 0x0202A344, 20 octets par dresseur)
+const TRAINER_TEAMS := "a/0/9/3" ## vérifié (archive 93 de 0x0202A354)
 const ZONE_EVENTS := "a/1/2/5" ## vérifié (objets à lire, PNJ, portes, déclencheurs)
-const ENCOUNTERS := "a/1/2/6"
+const ENCOUNTERS := "a/1/2/6" ## vérifié (archive 126 de 0x0215E248, 0xE8 octets par saison)
 const SOUND := "wb_sound_data.sdat" ## vérifié
 const TITLE_SCREEN := "a/0/2/6" ## vérifié (logo, crédit, écran The Pokémon Company / Nintendo)
 const INTRO_CARDS := "a/1/6/1" ## vérifié (« GAME FREAK PRÉSENTE », « POKÉMON VERSION NOIRE / BLANCHE »)
@@ -57,6 +60,19 @@ const TEXT_SPECIES_NAMES := 70
 const TEXT_LOCATION_NAMES := 89
 const TEXT_ABILITY_NAMES := 182
 const TEXT_MOVE_NAMES := 203
+## Textes des combats : « X utilise Y ! » (3 messages par capacité : le sien, sauvage, ennemi),
+## messages à trois variantes (K.O., efficacité, statistiques...), messages ordinaires (apparitions,
+## fuite, expérience, capture...), interface (FUITE...), sac et équipe en combat.
+const TEXT_BATTLE_MOVES := 13
+const TEXT_BATTLE_SET := 14
+const TEXT_BATTLE := 15
+const TEXT_BATTLE_UI := 16
+const TEXT_BATTLE_BAG := 17
+const TEXT_BATTLE_PARTY := 18
+## Dresseurs : leurs paroles (avec a/0/9/0 et a/0/9/1), leurs noms, leurs classes.
+const TEXT_TRAINER_SPEECH := 189
+const TEXT_TRAINER_NAMES := 190
+const TEXT_TRAINER_CLASSES := 191
 
 ## Descriptions affichées par l'explorateur de ROM.
 const DESCRIPTIONS := {
@@ -69,10 +85,12 @@ const DESCRIPTIONS := {
 	ZONE_HEADERS: "En-têtes de zones",
 	AREA_DATA: "Zones de textures (bâtiments, textures, animations)",
 	MAP_TEXTURES: "Textures des cartes",
-	PERSONAL: "Statistiques des Pokémon (à confirmer)",
-	LEARNSETS: "Capacités apprises par niveau (à confirmer)",
-	EVOLUTIONS: "Évolutions (à confirmer)",
-	MOVES: "Données des capacités (à confirmer)",
+	BATTLE_BACKGROUNDS: "Décors des combats (sols et fonds)",
+	PERSONAL: "Données des Pokémon (statistiques, types, talents)",
+	GROWTH: "Courbes d'expérience",
+	LEARNSETS: "Capacités apprises par niveau",
+	EVOLUTIONS: "Évolutions",
+	MOVES: "Données des capacités",
 	FONTS: "Polices du jeu",
 	ITEMS: "Données des objets (prix, poche du sac...)",
 	FIELD_OBJECTS: "Objets 3D et sprites des personnages du terrain",
@@ -81,10 +99,10 @@ const DESCRIPTIONS := {
 	FIELD_LIGHTS: "Éclairages du terrain selon l'heure",
 	MAP_TEXTURE_ANIMATIONS: "Animations des textures des cartes",
 	MAP_TEXTURE_PATTERNS: "Changements d'image des textures des cartes (écume, cascades)",
-	TRAINERS: "Dresseurs (à confirmer)",
-	TRAINER_TEAMS: "Équipes des dresseurs (à confirmer)",
+	TRAINERS: "Dresseurs",
+	TRAINER_TEAMS: "Équipes des dresseurs",
 	ZONE_EVENTS: "Événements des zones : objets à lire, PNJ, portes, déclencheurs",
-	ENCOUNTERS: "Rencontres sauvages (à confirmer)",
+	ENCOUNTERS: "Rencontres sauvages",
 	SOUND: "Musiques et bruitages (SDAT)",
 	TITLE_SCREEN: "Écran titre (logo, crédits)",
 	INTRO_CARDS: "Cartons de l'intro",

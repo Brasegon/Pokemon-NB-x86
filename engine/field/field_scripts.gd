@@ -336,14 +336,27 @@ func party_species(slot: int) -> int:
 	return state.party[slot].species if slot >= 0 and slot < state.party.size() else 0
 
 
-## Décomptes de l'équipe de la commande 0x103 (pas encore d'œufs ni de Pokémon K.O.).
+## Le Pokémon n° slot de l'équipe, ou null.
+func party_member(slot: int) -> Pokemon:
+	return state.party[slot] if slot >= 0 and slot < state.party.size() else null
+
+
+## Décomptes de l'équipe de la commande 0x103 (pas encore d'œufs) : 0 tous, 1 sans les œufs, 2 en
+## état de se battre, 3 et 4 des œufs, 5 places libres.
 func party_count(mode: int) -> int:
 	match mode:
-		0, 1, 2:
+		0, 1:
 			return state.party.size()
+		2:
+			return state.able_pokemon().size()
 		5:
 			return GameState.PARTY_SIZE - state.party.size()
 	return 0
+
+
+## Commande 0x104 : toute l'équipe soignée (0x0201BA50).
+func heal_party() -> void:
+	state.heal_party()
 
 
 func receive_pokedex() -> void:

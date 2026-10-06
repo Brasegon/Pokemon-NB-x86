@@ -86,8 +86,8 @@ func _on_chosen(index: int) -> void:
 
 func _party_text() -> String:
 	var lines := PackedStringArray([_label(Action.POKEMON)])
-	for pokemon: Dictionary in state.party:
-		lines.append("%s   N.%d" % [Autoloads.rom().text(BWFiles.TEXT_SPECIES_NAMES, pokemon.species), pokemon.level])
+	for pokemon in state.party:
+		lines.append("%s   N.%d   PV %d/%d" % [pokemon.name(), pokemon.level, pokemon.hp, pokemon.max_hp()])
 	return "\n".join(lines)
 
 

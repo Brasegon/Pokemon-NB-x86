@@ -130,6 +130,29 @@ func read_arm7() -> PackedByteArray:
 	return _read(arm7["offset"], arm7["size"])
 
 
+## L'exécutable ARM9 tel qu'il est en mémoire (à partir de arm9.ram_address) : sa fin est
+## compressée en BLZ. La fin de la partie compressée est donnée par les paramètres du module, repérés
+## par 0xDEC00621 0x2106C0DE (champ +0x14 = adresse de fin ; 0 = rien de compressé).
+func read_arm9_code() -> PackedByteArray:
+	var code := read_arm9()
+	var params := -1
+	for at in range(0, code.size() - 8, 4):
+		if code.decode_u32(at) == 0xDEC00621 and code.decode_u32(at + 4) == 0x2106C0DE:
+			params = at - 0x1C
+			break
+	if params < 0:
+		return code
+	var compressed_end := code.decode_u32(params + 0x14)
+	if compressed_end == 0:
+		return code
+	var end: int = compressed_end - arm9["ram_address"]
+	if end <= 0 or end > code.size():
+		return code
+	var unpacked := Lz.decompress_backward(code.slice(0, end))
+	unpacked.append_array(code.slice(end))
+	return unpacked
+
+
 ## Overlay ARM9 n° index (code et données, chargés en mémoire à overlays9[index].ram_address),
 ## décompressé s'il le faut. Vide si l'overlay n'existe pas.
 func read_overlay(index: int) -> PackedByteArray:

@@ -20,6 +20,8 @@ const FRAME := FieldMap.FRAME
 const GAME_VERSION := 20
 ## Champ « espèce » des données d'un Pokémon (0x02017E38).
 const POKEMON_SPECIES := 5
+## Langue de la version de référence (champ 0x0C des Pokémon) : le français.
+const LANGUAGE_FRENCH := 3
 
 ## L'hôte : messages, PNJ, sons... (voir FieldScripts).
 var host: Object
@@ -243,10 +245,15 @@ func _step() -> bool:
 			return false
 		0x4C:
 			host.set_word(_u8(), host.player_name())
-		0x53, 0x54:
-			# Espèce, surnom d'un Pokémon de l'équipe (pas encore de surnoms : le nom de l'espèce).
+		0x53:
+			# Espèce d'un Pokémon de l'équipe (champ 5, 0x0201EE50).
 			var word := _u8()
 			host.set_word(word, _system_text(BWFiles.TEXT_SPECIES_NAMES, host.party_species(_value())))
+		0x54:
+			# Surnom d'un Pokémon de l'équipe (champ 0x73, 0x0201EEA0) ; sans surnom, son espèce.
+			var word := _u8()
+			var member: Pokemon = host.party_member(_value())
+			host.set_word(word, member.name() if member else "")
 		0x4D, 0x4F:
 			var word := _u8()
 			host.set_word(word, _system_text(BWFiles.TEXT_ITEM_NAMES, _value()))
@@ -397,10 +404,10 @@ func _step() -> bool:
 		0xF9:
 			host.add_money(_value())
 		0x101:
-			# 1 si le Pokémon n° x de l'équipe a tous ses PV (champs 0xA0 et 0xA1) ou est un œuf :
-			# sans combats, l'équipe est toujours en pleine forme.
+			# 1 si le Pokémon n° x de l'équipe a tous ses PV (champs 0xA0 et 0xA1) ou est un œuf.
 			var id := _u16()
-			work.set_var(id, int(_value() < host.party_count(0)))
+			var member: Pokemon = host.party_member(_value())
+			work.set_var(id, int(member != null and member.hp >= member.max_hp()))
 		0x103:
 			# Décomptes de l'équipe : 0 tous, 1 sans les œufs, 2 en état de se battre, 3 et 4 des
 			# œufs, 5 les places libres (0x0201AA34, 0x0201AA38, 0x0201AA6C, 0x0201AAA4, 0x0201AAF0).
@@ -414,15 +421,16 @@ func _step() -> bool:
 			_value()
 			work.set_var(id, 0)
 		0x110:
-			# Un champ d'un Pokémon de l'équipe, parmi 12 permis (table 0x02171112) : 5 = espèce ;
-			# les autres (117 : a-t-il un surnom...) attendent les vraies données de la phase 4.
+			# Un champ d'un Pokémon de l'équipe, parmi les 12 de la table 0x02171112 (paramètres de
+			# 0x02017E38) : 5 espèce, 6 objet tenu, 0x0C langue, 0x6D ?, 0x6E sexe, 0x6F forme,
+			# 0x70 nature, 0x75 surnom donné, 0x77 version, 0x99 niveau de rencontre, 0x9A sexe du
+			# dresseur d'origine, 0x9E niveau.
 			var id := _u16()
 			var slot := _value()
-			var field := _value()
-			work.set_var(id, host.party_species(slot) if field == POKEMON_SPECIES else 0)
+			work.set_var(id, party_field(host.party_member(slot), _value()))
 		0x104:
-			# Soigner l'équipe (0x0201BA50) : elle n'a encore ni PV ni PP à rendre.
-			pass
+			# Soigner l'équipe (0x0201BA50) : PV, statut et PP.
+			host.heal_party()
 		0x10C:
 			# Donner un Pokémon (espèce, forme, niveau) : 1 dans la variable s'il rejoint l'équipe,
 			# 0 si elle est pleine (0x0215C4B0).
@@ -518,6 +526,24 @@ func _step() -> bool:
 		_:
 			return _skip(op)
 	return true
+
+
+## Champ n° field d'un Pokémon de l'équipe (commande 0x110), d'après les paramètres de 0x02017E38.
+static func party_field(pokemon: Pokemon, field: int) -> int:
+	if pokemon == null:
+		return 0
+	match field:
+		POKEMON_SPECIES: return pokemon.species
+		0x06: return pokemon.held_item
+		0x0C: return LANGUAGE_FRENCH
+		0x6E: return pokemon.gender
+		0x6F: return pokemon.form
+		0x70: return pokemon.nature
+		0x75: return int(not pokemon.nickname.is_empty())
+		0x77: return GAME_VERSION
+		0x99: return pokemon.met_level
+		0x9E: return pokemon.level
+	return 0
 
 
 ## Une ligne des textes système (noms d'objets, de Pokémon...), pour les mots variables des messages.

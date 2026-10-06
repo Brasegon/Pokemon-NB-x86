@@ -533,7 +533,8 @@ func _test_save() -> void:
 		"profil relu : nom, sexe, argent")
 	_check(state.work.get_flag(679) and state.work.get_var(0x4081) == 2 and state.work.get_var(0x8010) == 0,
 		"drapeaux et variables relus, sans les variables temporaires")
-	_check(state.party == [{"species": 498, "form": 0, "level": 5}] and state.item_count(4) == 5, "équipe et sac relus")
+	_check(state.party.size() == 1 and state.party[0].species == 498 and state.party[0].level == 5
+		and state.party[0].ot_id == state.trainer_id and state.item_count(4) == 5, "équipe et sac relus")
 	_check(state.zone == ZoneTable.HERO_ROOM and state.tile == Vector2i(5, 6) and state.started, "lieu relu")
 	DirAccess.remove_absolute(game.save_path)
 	game.save_path = player_save
