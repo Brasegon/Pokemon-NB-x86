@@ -7,12 +7,13 @@ embarquer : chaque découverte est ensuite notée, avec ses preuves, dans
 Prérequis : Python 3.13 et capstone (`pip install capstone`). La ROM vient de la variable
 `POKEMON_ROM`, sinon du premier `.nds` à la racine du dépôt. Lancer les scripts depuis ce dossier.
 
-Pour les outils Ghidra (`ghidra_project.py`, `decomp.py`) : Ghidra 12, un JDK 21 ou plus et
-PyGhidra, livré avec Ghidra
+Pour les outils Ghidra (`ghidra_project.py`, `ghidra_names.py`, `decomp.py`) : Ghidra 12, un JDK 21
+ou plus et PyGhidra, livré avec Ghidra
 (`python -m pip install --no-index -f <Ghidra>/Ghidra/Features/PyGhidra/pypkg/dist pyghidra`). Au
 premier lancement, donner le dossier de Ghidra (variable `GHIDRA_INSTALL_DIR`) et le JDK
 (`JAVA_HOME`) ; Ghidra les retient ensuite (dans `%APPDATA%\ghidra`) et les variables ne servent
-plus.
+plus. Piège pour écrire un outil : `pyghidra.start()` retire le dossier courant du chemin des modules
+Python, donc les modules de ce dossier s'importent avant.
 
 **Le désassemblage est du code de Nintendo / Game Freak** : `disasm.py` l'écrit dans `out/`, que
 git ignore, comme le projet Ghidra. Ne jamais les versionner ni les partager. Le pseudo-C de
@@ -23,8 +24,10 @@ jamais des copies de code.
 | --- | --- |
 | `nds.py` | Bibliothèque commune : fichiers NitroFS, archives NARC, ARM9 et overlays décompressés (BLZ). |
 | `disasm.py` | Désassemble l'ARM9 (Thumb et ARM) et les 237 overlays (Thumb) dans `out/`, avec la valeur des littéraux. |
-| `ghidra_project.py` | Projet Ghidra du code du jeu dans `out/ghidra/` (environ 7 minutes, une seule fois ; `--force` pour le recréer) : l'ARM9 avec ses sections ITCM et DTCM, et chaque overlay dans son espace d'adresses (`ov010::0216CE74`), avec leurs fonctions retrouvées par l'analyse de Ghidra et par les pointeurs rangés dans les données. Les appels d'un overlay vers un autre ne sont pas suivis. |
-| `decomp.py` | Pseudo-C de fonctions du jeu (`0x02011298`, `ov21:0x021B1568`) par le décompilateur de Ghidra, avec les positions qui les appellent ou citent leur adresse. Crée et enregistre une fonction que Ghidra ne connaissait pas, sauf si son code est invalide (`--arm` pour du code ARM). `--with 10,21` : les appels vers ces overlays, supposés chargés en même temps, sont résolus, sans rien enregistrer. |
+| `ghidra_project.py` | Projet Ghidra du code du jeu dans `out/ghidra/` (environ 7 minutes, une seule fois ; `--force` pour le recréer) : l'ARM9 avec ses sections ITCM et DTCM, et chaque overlay dans son espace d'adresses (`ov010::0216CE74`), avec leurs fonctions retrouvées par l'analyse de Ghidra et par les pointeurs rangés dans les données, puis les noms de `names.txt`. Les appels d'un overlay vers un autre ne sont pas suivis. |
+| `names.txt` | Noms des fonctions et des données du jeu, chacun tiré d'un fait de `docs/FORMATS.md`, avec sa description (le commentaire dans Ghidra) ; rôles des commandes de script et d'effets, par leur numéro. |
+| `ghidra_names.py` | Applique `names.txt` au projet Ghidra (à relancer après l'avoir modifié) : nomme les fonctions (et crée celles que Ghidra n'avait pas, dans le mode de leur section, si leur code est valide), les données, et les 678 fonctions des tables de commandes (`script_cmd_085_trainer_battle`, sinon `script_cmd_0A5`). |
+| `decomp.py` | Pseudo-C de fonctions du jeu (`0x02011298`, `ov21:0x021B1568`, ou un nom : `script_vm_run`) par le décompilateur de Ghidra, avec les positions qui les appellent ou citent leur adresse. Crée et enregistre une fonction que Ghidra ne connaissait pas, sauf si son code est invalide (`--arm` pour du code ARM). `--with 10,21` : les appels vers ces overlays, supposés chargés en même temps, sont résolus, sans rien enregistrer. |
 | `search.py` | Cherche une expression régulière multiligne dans le désassemblage. |
 | `find.py` | Cherche une chaîne ou une valeur de 32 bits (pointeur, constante) dans le code et ses données. |
 | `calls.py` | Liste les appels vers une fonction ou une plage d'adresses, avec la valeur de `r0`. |
@@ -46,7 +49,8 @@ jamais des copies de code.
 ```bash
 python disasm.py
 python ghidra_project.py
-python decomp.py ov21:0x021B1568 --with 10
+python ghidra_names.py
+python decomp.py script_cmd_033 --with 10
 python search.py "^.*ldrh (r\d), \[r\d\]\n(?:.*\n){0,3}.*muls .*\n(?:.*\n){0,3}.*lsls (r\d), \2, #3\n(?:.*\n){0,3}.*ldr r\d, \[r\d, #4\]$"
 python calls.py 0x02048C98-0x02049500 --r0 57
 python terrain.py grid 0
@@ -70,10 +74,12 @@ C'est ainsi qu'ont été retrouvées les hauteurs du terrain (overlay 21) :
    moteur.
 
 Depuis Ghidra : pour comprendre une fonction déjà repérée (une commande de script, un appel trouvé
-par `calls.py`), `decomp.py` donne son pseudo-C, bien plus rapide à lire que l'assembleur. Ce n'est
-qu'une piste : les noms (`FUN_...`, `param_1`) viennent de Ghidra, qui peut se tromper sur les types
-et les paramètres, et un appel vers un autre overlay n'est résolu qu'avec `--with`. La preuve reste
-l'adresse dans le code et le test sur la ROM.
+par `calls.py`), `decomp.py` donne son pseudo-C, bien plus rapide à lire que l'assembleur. Les
+fonctions déjà comprises y portent leur nom (`script_read_u16` plutôt que `FUN_02011330`) ; le reste
+(`FUN_...`, `param_1`) vient de Ghidra, qui peut se tromper sur les types et les paramètres, et un
+appel vers un autre overlay n'est résolu qu'avec `--with`. Ce n'est qu'une piste : la preuve reste
+l'adresse dans le code et le test sur la ROM. Une fois le fait noté dans `docs/FORMATS.md`, donner
+son nom à la fonction ou à la table dans `names.txt`, puis lancer `ghidra_names.py`.
 
 Repères : table des archives en `0x020A6BF8` (ARM9) ; overlay 10 (`0x02155100`) = cœur du terrain
 (chargement des matrices, des scripts, des événements) ; overlay 21 (`0x02187EA0`) = chargeur des

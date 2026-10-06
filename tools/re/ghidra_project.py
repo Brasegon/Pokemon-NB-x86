@@ -14,6 +14,7 @@ d'entrée de l'ARM9 (en ARM) et les constructeurs statiques des overlays (liste 
 des overlays) ; l'analyse automatique de Ghidra trouve le reste (appels, débuts de fonctions). Puis,
 tant qu'il en apparaît, les pointeurs de fonctions Thumb rangés hors du code (tables de commandes,
 fonctions de rappel des réserves de littéraux) deviennent des fonctions, et l'analyse reprend.
+Enfin, les fonctions et les données reçoivent les noms de names.txt (voir ghidra_names.py).
 
 Prérequis :
 - Ghidra 12 : variable GHIDRA_INSTALL_DIR, sinon la dernière installation lancée ;
@@ -165,6 +166,9 @@ def main():
     parser = argparse.ArgumentParser(description="Crée et analyse le projet Ghidra du code du jeu.")
     parser.add_argument("--force", action="store_true", help="recrée le programme s'il existe déjà")
     args = parser.parse_args()
+    # Importé ici (ghidra_names importe ce fichier) et avant pyghidra.start(), qui retire le dossier
+    # courant du chemin des modules Python.
+    from ghidra_names import apply_names, summary
     rom = Rom()
     os.makedirs(OUT, exist_ok=True)
     pyghidra.start()
@@ -196,12 +200,17 @@ def main():
                 with open(os.path.join(OUT, "analyse.log"), "w", encoding="utf-8") as f:
                     f.write(log)
             add_pointed_functions(program, base, overlays)
-            program.save("Analyse automatique", TaskMonitor.DUMMY)
+            try:
+                names = summary(*apply_names(program, rom))
+            except ValueError as error:
+                names = "Noms non donnés : %s" % error
+            program.save("Analyse automatique et noms", TaskMonitor.DUMMY)
             spaces = Counter(str(f.getEntryPoint().getAddressSpace().getName())
                              for f in program.getFunctionManager().getFunctions(True))
             overlays = sum(n for name, n in spaces.items() if name.startswith("ov"))
             print("Analyse faite en %d min : %d fonctions dans l'ARM9, %d dans les overlays."
                   % ((time.time() - start) / 60, spaces["ram"], overlays))
+            print(names)
         finally:
             program.release(consumer)
 

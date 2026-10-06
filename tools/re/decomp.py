@@ -1,10 +1,12 @@
 """Pseudo-C des fonctions du jeu, par le décompilateur de Ghidra, dans le projet créé par
 ghidra_project.py.
 
-Une adresse s'écrit en hexadécimal, précédée s'il le faut du numéro de son overlay (en décimal) :
+Une adresse s'écrit en hexadécimal, précédée s'il le faut du numéro de son overlay (en décimal) ; une
+fonction nommée par names.txt (ghidra_names.py) se donne aussi par son nom :
 
     python decomp.py 0x02011298                 fonction de l'ARM9 (la machine des scripts)
     python decomp.py ov21:0x021B1568            fonction de l'overlay 21
+    python decomp.py script_vm_run              fonction nommée
     python decomp.py 10:0216CE74 21:021B1568    plusieurs fonctions : Ghidra ne démarre qu'une fois
     python decomp.py ov10:0x0216CE74 --with 21  appels vers l'overlay 21 résolus
 
@@ -31,15 +33,20 @@ import pyghidra
 from ghidra_project import OUT, PROJECT, PROGRAM
 
 SPEC = re.compile(r"^(?:(?:ov)?(\d+):)?(?:0x)?([0-9a-f]+)$", re.IGNORECASE)
+IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 MAX_CALLERS = 8
 
 
 def parse(spec):
-    """« ov21:0x021B1568 », « 21:021B1568 » ou « 0x02011298 » → (overlay ou None, adresse)."""
+    """« ov21:0x021B1568 », « 21:021B1568 » ou « 0x02011298 » → (overlay ou None, adresse, None) ;
+    un nom (« script_vm_run ») → (None, None, nom). Un mot fait seulement de lettres hexadécimales,
+    sans chiffre (« add »), est un nom. Les erreurs lèvent ValueError, avec le message à afficher."""
     m = SPEC.match(spec)
-    if not m:
-        sys.exit("Adresse illisible : %s (exemples : 0x02011298, ov21:0x021B1568)." % spec)
-    return (int(m.group(1)) if m.group(1) else None), int(m.group(2), 16)
+    if m and (m.group(1) or spec.lower().startswith("0x") or re.search(r"\d", m.group(2))):
+        return (int(m.group(1)) if m.group(1) else None), int(m.group(2), 16), None
+    if IDENTIFIER.match(spec):
+        return None, None, spec
+    raise ValueError("Adresse illisible : %s (exemples : 0x02011298, ov21:0x021B1568, script_vm_run)." % spec)
 
 
 def name(address):
@@ -61,7 +68,7 @@ def block_address(block, offset):
 def overlay_block(program, number):
     block = program.getMemory().getBlock("ov%03d" % number)
     if block is None:
-        sys.exit("Pas d'overlay %d." % number)
+        raise ValueError("Pas d'overlay %d." % number)
     return block
 
 
@@ -72,7 +79,7 @@ def locate(program, overlay, offset):
     if overlay is not None:
         block = overlay_block(program, overlay)
         if not in_block(block, offset):
-            sys.exit("0x%08X n'est pas dans l'overlay %d (0x%08X-0x%08X)." % (
+            raise ValueError("0x%08X n'est pas dans l'overlay %d (0x%08X-0x%08X)." % (
                 offset, overlay, block.getStart().getOffset(), block.getEnd().getOffset()))
         return block_address(block, offset)
     address = program.getAddressFactory().getDefaultAddressSpace().getAddress(offset)
@@ -82,10 +89,24 @@ def locate(program, overlay, offset):
     if len(owners) == 1:
         return block_address(owners[0], offset)
     if not owners:
-        sys.exit("0x%08X n'est ni dans l'ARM9 ni dans un overlay." % offset)
+        raise ValueError("0x%08X n'est ni dans l'ARM9 ni dans un overlay." % offset)
     numbers = [int(str(b.getName())[2:]) for b in owners]
-    sys.exit("0x%08X est dans %d overlays (%s) : préciser lequel, par exemple ov%d:0x%08X." % (
+    raise ValueError("0x%08X est dans %d overlays (%s) : préciser lequel, par exemple ov%d:0x%08X." % (
         offset, len(owners), ", ".join(map(str, numbers)), numbers[0], offset))
+
+
+def resolve(program, spec):
+    """Adresse Ghidra d'une adresse écrite (voir parse) ou d'un nom donné par names.txt."""
+    overlay, offset, symbol_name = parse(spec)
+    if symbol_name is None:
+        return locate(program, overlay, offset)
+    symbols = list(program.getSymbolTable().getGlobalSymbols(symbol_name))
+    if not symbols:
+        raise ValueError("Nom inconnu du projet Ghidra : %s." % symbol_name)
+    if len(symbols) > 1:
+        raise ValueError("%s désigne %d adresses : %s." % (
+            symbol_name, len(symbols), ", ".join(name(s.getAddress()) for s in symbols)))
+    return symbols[0].getAddress()
 
 
 def find_function(program, address):
@@ -193,68 +214,91 @@ def header(program, address, function, created, calls):
     return "\n".join(lines)
 
 
+def open_decompiler(program):
+    from ghidra.app.decompiler import DecompileOptions, DecompInterface
+    decompiler = DecompInterface()
+    options = DecompileOptions()
+    options.grabFromProgram(program)
+    decompiler.setOptions(options)
+    decompiler.openProgram(program)
+    return decompiler
+
+
+def open_project():
+    """Le projet de ghidra_project.py ; quitte avec un message s'il manque ou s'il est déjà ouvert."""
+    try:
+        return pyghidra.open_project(OUT, PROJECT)
+    except FileNotFoundError:
+        sys.exit("Pas de projet Ghidra dans %s : lancer d'abord ghidra_project.py." % OUT)
+    except Exception as error:
+        sys.exit("Le projet Ghidra ne s'ouvre pas (est-il ouvert dans Ghidra ?) : %s" % error)
+
+
+def show(program, decompiler, specs, partner_numbers, thumb):
+    """Pseudo-C des fonctions demandées (voir l'en-tête du fichier)."""
+    from ghidra.util.task import TaskMonitor
+    partners = [overlay_block(program, n) for n in partner_numbers]
+
+    # 1. Fonctions demandées : créées si besoin, et enregistrées.
+    targets = []
+    for spec in specs:
+        address = resolve(program, spec)
+        function = find_function(program, address)
+        created = function is None
+        if created:
+            function = add_function(program, decompiler, address, thumb)
+            if function is None:
+                raise ValueError("Pas de code %s valide en %s : essayer %s, ou un autre overlay." % (
+                    "Thumb" if thumb else "ARM", name(address), "--arm" if thumb else "sans --arm"))
+        targets.append((address, function, created))
+    if any(created for _, _, created in targets):
+        program.save("decomp.py : fonctions créées", TaskMonitor.DUMMY)
+
+    # 2. Appels vers les overlays de --with : jamais enregistrés.
+    calls = {}
+    with pyghidra.transaction(program, "decomp.py --with"):
+        for _, function, _ in targets:
+            calls[str(function.getEntryPoint())] = cross_calls(program, function, partners)
+            for _, target, target_thumb in calls[str(function.getEntryPoint())]:
+                if find_function(program, target) is None:
+                    create_function(program, target, target_thumb)
+        for found in calls.values():
+            redirect(program, found)
+    decompiler.flushCache()
+
+    for address, function, created in targets:
+        print(header(program, address, function, created, calls[str(function.getEntryPoint())]))
+        print(decompile(decompiler, function))
+        print()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Pseudo-C des fonctions du jeu (décompilateur de Ghidra).")
-    parser.add_argument("addresses", nargs="+", help="adresse en hexadécimal, précédée de « ovN: » pour l'overlay N")
+    parser.add_argument("addresses", nargs="+",
+                        help="adresse en hexadécimal (« ovN: » devant pour l'overlay N) ou nom de fonction")
     parser.add_argument("--with", dest="partners", default="",
                         help="overlays chargés en même temps, séparés par des virgules (21 ou 10,21)")
     parser.add_argument("--arm", action="store_true", help="crée les fonctions manquantes en ARM, pas en Thumb")
     args = parser.parse_args()
-    specs = [parse(spec) for spec in args.addresses]
+    try:
+        for spec in args.addresses:
+            parse(spec)
+    except ValueError as error:
+        sys.exit(str(error))
     try:
         partner_numbers = [int(n) for n in args.partners.split(",") if n.strip()]
     except ValueError:
         sys.exit("--with attend des numéros d'overlays séparés par des virgules (21 ou 10,21).")
 
     pyghidra.start()
-    from ghidra.app.decompiler import DecompileOptions, DecompInterface
-    from ghidra.util.task import TaskMonitor
-    try:
-        project = pyghidra.open_project(OUT, PROJECT)
-    except FileNotFoundError:
-        sys.exit("Pas de projet Ghidra dans %s : lancer d'abord ghidra_project.py." % OUT)
-    except Exception as error:
-        sys.exit("Le projet Ghidra ne s'ouvre pas (est-il ouvert dans Ghidra ?) : %s" % error)
+    project = open_project()
     try:
         with pyghidra.program_context(project, "/" + PROGRAM) as program:
-            partners = [overlay_block(program, n) for n in partner_numbers]
-            decompiler = DecompInterface()
-            options = DecompileOptions()
-            options.grabFromProgram(program)
-            decompiler.setOptions(options)
-            decompiler.openProgram(program)
+            decompiler = open_decompiler(program)
             try:
-                # 1. Fonctions demandées : créées si besoin, et enregistrées.
-                targets = []
-                for overlay, offset in specs:
-                    address = locate(program, overlay, offset)
-                    function = find_function(program, address)
-                    created = function is None
-                    if created:
-                        function = add_function(program, decompiler, address, not args.arm)
-                        if function is None:
-                            sys.exit("Pas de code %s valide en %s : essayer %s, ou un autre overlay." % (
-                                "ARM" if args.arm else "Thumb", name(address), "sans --arm" if args.arm else "--arm"))
-                    targets.append((address, function, created))
-                if any(created for _, _, created in targets):
-                    program.save("decomp.py : fonctions créées", TaskMonitor.DUMMY)
-
-                # 2. Appels vers les overlays de --with : jamais enregistrés.
-                calls = {}
-                with pyghidra.transaction(program, "decomp.py --with"):
-                    for _, function, _ in targets:
-                        calls[str(function.getEntryPoint())] = cross_calls(program, function, partners)
-                        for _, target, thumb in calls[str(function.getEntryPoint())]:
-                            if find_function(program, target) is None:
-                                create_function(program, target, thumb)
-                    for found in calls.values():
-                        redirect(program, found)
-                decompiler.flushCache()
-
-                for address, function, created in targets:
-                    print(header(program, address, function, created, calls[str(function.getEntryPoint())]))
-                    print(decompile(decompiler, function))
-                    print()
+                show(program, decompiler, args.addresses, partner_numbers, not args.arm)
+            except ValueError as error:
+                sys.exit(str(error))
             finally:
                 decompiler.dispose()
     finally:

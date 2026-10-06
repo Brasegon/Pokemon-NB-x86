@@ -1,0 +1,762 @@
+# Noms des fonctions et des données du jeu, que ghidra_names.py donne au projet Ghidra.
+#
+# Chaque nom vient d'un fait de docs/FORMATS.md, prouvé dans le code ou sur la ROM ; la description
+# le résume et devient le commentaire de la fonction ou de la donnée dans Ghidra.
+#
+# Une ligne : l'adresse (« ovN: » devant pour l'overlay N, comme pour decomp.py), le nom
+# (identifiant anglais, unique), puis la description. Une adresse que le document cite au milieu
+# d'une fonction (un appel, une lecture) nomme la fonction qui la contient, donnée ici par son début.
+# Les fonctions sont en Thumb, sauf celles de la section [fonctions en ARM] (le code ARM de
+# l'ARM9) ; ghidra_names.py le vérifie. Les commandes de script et d'effets sont désignées par leur
+# numéro en hexadécimal : la fonction que leur table indique devient script_cmd_085_trainer_battle ;
+# les commandes sans ligne gardent un nom générique (script_cmd_0A5, effect_cmd_2E).
+
+[fonctions]
+
+# Son (ARM9)
+0x02006148        sound_seq_player                lecteur (octet 09 de la séquence) d'un bruitage
+0x0200616C        sound_play_se_channel           joue un bruitage sur le canal n (lecteur n + 1)
+0x020061A4        sound_play_se                   joue un bruitage sur le lecteur de sa séquence
+0x02006268        sound_set_pitch_pan             hauteur (64e de demi-ton) et panoramique de toutes les pistes
+0x02006984        cry_play                        joue l'onde d'un cri directement (vitesse de départ 0x64E1)
+0x02006A8C        cry_add_volume                  ajoute au volume d'un cri
+0x02006AEC        cry_add_speed                   ajoute à la vitesse d'un cri
+
+# Sac, profil, sauvegarde (ARM9)
+0x02007DF8        bag_item_max                    nombre maximal d'un objet : 999, 1 dans la poche des CT et CS
+0x02007E3C        bag_has_room                    y a-t-il la place pour ajouter un objet au sac
+0x02007E50        bag_add_item                    ajoute un objet au sac
+0x02007F1C        bag_remove_item                 retire un objet du sac
+0x02007F68        bag_has_item                    le sac a-t-il assez d'exemplaires d'un objet
+0x02007FB8        bag_item_count                  nombre d'exemplaires d'un objet dans le sac
+0x020084BC        player_name                     nom du héros (entrée 4 du menu du terrain)
+0x02008550        player_gender                   sexe du héros (octet +0x1D du profil)
+0x0200C278        money_add                       ajoute de l'argent, plafond 9 999 999
+0x0200C2F0        profile_set_bit_45              met un bit de l'octet +0x45 du profil (commande 0xE7)
+0x0200CA28        pokedex_set_obtained            Pokédex reçu : bit 0 du mot +4 de ses données
+0x0200CDE0        pokedex_register                inscrit un Pokémon au Pokédex
+0x0200E3E8        save_set_bits_21c               range deux valeurs dans un champ de bits de la sauvegarde (commande 0x21C)
+0x02012900        save_set_value_d9               range une valeur de 1 à 17 dans la sauvegarde (commande 0xD9)
+0x02012B38        save_field_block                bloc de la sauvegarde du terrain : script en attente en +0x12
+0x02012FFC        options_text_speed              vitesse du texte des options (table 0x0209DF48)
+0x02013284        victory_music                   musique de victoire contre un dresseur : SEQ_BGM_WIN2 par défaut
+
+# En-tête de zone (ARM9)
+0x02013B84        zone_default_position           position par défaut de la zone (champs 24, 28, 2C, en cases)
+0x02013BB8        zone_is_outdoor                 champ 1C bits 6-8 : 1 dehors, 0 dedans
+0x02013BCC        zone_camera_type                type de caméra de la zone (champ 1C bits 9-15)
+0x02013BE0        zone_camera_rects               fichier des rectangles de la caméra (champ 20, a/1/0/8 ; 0xFFFF aucun)
+0x02013EE8        zone_events_file                fichier des événements de la zone (champ 16, a/1/2/5)
+0x02013EF4        zone_battle_background          décor des combats de la zone (champ 1E bits 5-9)
+0x02014188        warp_set_destination            garde la destination d'une porte et son repère (+0x0A)
+0x02014280        new_game_location               lieu de départ d'une nouvelle partie : zone 391, case (5, 6)
+
+# Drapeaux et variables, terrain (ARM9)
+0x02014304        event_flag_get                  état d'un drapeau
+0x02014330        event_flag_set                  met un drapeau
+0x02014358        event_flag_clear                enlève un drapeau
+0x02014384        event_flags_clear_temp          remet à zéro les drapeaux 0 à 99
+0x020143F4        event_vars_clear                efface des variables (0x4000 à 0x401E au changement de zone)
+0x020144F8        field_leave_for_app             quitte le terrain pour une application
+0x020145E8        field_return_from_app           retrouve le terrain après une application
+0x02014958        field_light_params              lumière du terrain, pour l'éclairage du décor des combats
+
+# Sprites MCSS (ARM9)
+0x02014DAC        mcss_draw                       dessine les sprites MCSS à plat, face à la caméra (code cité en 0x02014E60)
+0x020159E4        mcss_create                     crée un sprite MCSS (Pokémon, dresseur)
+0x02015C94        mcss_set_offset                 décalage du sprite ([MCSS+0x11C]), ajouté à sa position
+0x02015DCC        mcss_set_anim_bit               met le bit 8 de [MCSS+0x140] (animation du sprite, commande d'effet 0x19)
+0x02015DDC        mcss_clear_anim_bit             enlève le bit 8 de [MCSS+0x140]
+0x02016A04        mcss_palette_fade               fondu de palette d'un sprite (commande d'effet 0x1B)
+
+# Pokémon (ARM9)
+0x020056EC        rand_range                      tirage dans [0, n) du générateur 64 bits du jeu
+0x02017638        pokemon_create                  crée un Pokémon (PID, IV, nature, sexe, talent...)
+0x02017E38        pokemon_get_param               lit un paramètre d'un Pokémon (structure de 0xDC octets)
+0x02017EF4        pokemon_is_shiny                chromatique : ID ^ ID secret ^ moitiés du PID < 8
+0x02017F24        pokemon_update_gender           recalcule le sexe d'un Pokémon (espèce, forme, PID)
+0x02017F6C        species_gender                  sexe selon le taux de l'espèce et l'octet bas du PID
+0x02017FCC        pokemon_learn_level_moves       apprend les capacités de niveau inférieur ou égal
+0x020180B0        pokemon_add_move                capacité dans la première place libre
+0x02018118        pokemon_push_move               capacité ajoutée en décalant les quatre
+0x0201844C        pokemon_level_for_exp           niveau atteint pour une expérience
+0x020185A0        species_exp_curve               courbe d'expérience d'une espèce (paramètre 23)
+0x020187AC        pokemon_hidden_power            Puissance Cachée : type d'après les IV (bits pondérés 1 à 32)
+0x02018A1C        pokemon_set_ability_slot        talent d'un Pokémon (3 = caché)
+0x02018A98        pokemon_calc_stats              calcule les statistiques (PV, autres, nature)
+0x02019B20        nature_apply                    applique la nature à une statistique (x 110 ou x 90, / 100)
+0x02019BC0        exp_for_level                   expérience totale d'un niveau sur une courbe
+0x02019C98        species_has_ability2            deux talents si +0x19 de la fiche n'est pas nul
+0x0201A9A8        party_add                       ajoute un Pokémon à l'équipe
+0x0201AA30        party_capacity                  capacité de l'équipe (+0)
+0x0201AA34        party_count                     nombre de Pokémon de l'équipe (+4)
+0x0201ADC0        personal_load                   lit la fiche d'une espèce (a/0/1/6)
+0x0201ADEC        learnset_load                   ouvre la liste des capacités apprises (a/0/1/8)
+0x0201AE38        personal_get_param              champ d'une fiche d'espèce (switch de 44 cas)
+0x0201AFF0        personal_form_entry             fiche d'une forme : +0x1C + forme - 1
+0x0201B780        evolutions_load                 évolutions d'une espèce (a/0/1/9)
+0x0201BA50        party_heal                      soigne l'équipe
+
+# Capacités, mots variables, objets (ARM9)
+0x0201BD44        move_get_param                  paramètre d'une capacité
+0x0201BDD0        move_data_param                 champ des données d'une capacité (switch de 32 cas)
+0x0201BED4        move_has_flag                   teste un drapeau d'une capacité (contact, charge...)
+0x0201BF74        move_status_turns               durée de l'altération, tours min et max
+0x0201C0D8        move_stat_changes               statistiques modifiées, crans et chances
+0x0201C174        move_max_pp                     PP max : pp + pp x 20 x min(PP Plus, 3) / 100
+0x0201C1A0        move_weather                    météo d'une capacité
+0x0201C210        move_never_misses               précision 101 : ne rate jamais
+0x0201CD00        text_writer                     écriture du texte lettre par lettre
+0x0201CE10        text_speed_for_writer           traduit la vitesse des options pour l'écriture
+0x0201ED50        words_set                       remplit un mot variable des messages
+0x0201ED9C        words_set_system_message        mot = message n° x d'un fichier des textes système
+0x0201EE2C        words_set_species               mot = nom d'espèce
+0x0201EE50        words_set_pokemon_species       mot = espèce d'un Pokémon (champ 5)
+0x0201EEA0        words_set_pokemon_nickname      mot = surnom d'un Pokémon (champ 0x73)
+0x0201EEEC        words_set_item                  mot = nom d'objet (fichier système 54)
+0x0201EF00        words_set_item_plural           mot = nom d'objet au pluriel (fichier 280)
+0x0201EF48        words_set_number                mot = nombre
+0x0201EFD0        words_set_player_name           mot = nom du héros
+0x02020ED0        item_load                       ouvre le fichier d'un objet (archive 0x18 ; au-delà de 626, l'objet 0)
+0x02020F80        item_pocket                     poche du sac d'un objet (paramètre 5)
+0x02020FB0        item_get_param                  paramètre d'un objet (switch de 18 cas)
+0x02021064        item_pokemon_effect             les 45 effets d'un objet sur un Pokémon
+0x02021F00        palette_blend                   couleur + ((but - couleur) x evy >> 4), sur 5 bits
+0x0202757C        status_icons_archive            archive des icônes de statut (0x53, a/0/8/3)
+0x0202765C        status_icon                     icône d'un statut (paralysie 1, sommeil 3, gel 2, brûlure 5, poison 4, K.O. 6)
+0x0202CFCC        hp_bar_color                    couleur de la barre de PV : vert, jaune, rouge
+
+# Musique (ARM9)
+0x02028B38        bgm_set_state                   état du gestionnaire de son (2 pour une musique d'événement)
+0x02028B74        bgm_event_end                   fin de la marque de la musique d'événement
+0x020295B8        bgm_resume                      reprend la musique après une fanfare
+0x020297C8        fanfare_play                    joue une fanfare
+0x02029838        bgm_fade_to_zone                retour en fondu à la musique de la zone
+0x0202991C        bgm_play_event                  joue une musique d'événement
+0x02029C88        bgm_play_zone                   joue la musique de la zone
+
+# Dresseurs (ARM9)
+0x0202A1C8        trainer_get_param               champ de la fiche d'un dresseur
+0x0202A230        trainer_has_message             le dresseur a-t-il une parole de ce genre (a/0/9/1)
+0x0202A2A8        trainer_load_message            charge une parole du dresseur (fichier système 189)
+0x0202A344        trainer_data_load               fiche d'un dresseur (archive 92)
+0x0202A354        trainer_party_load              équipe d'un dresseur (archive 93)
+0x0202A370        trainer_class_special           ligne d'une classe à part (table 0x0209FE6C)
+0x0202A394        trainer_class_music             genre de musique d'une classe (bits 7-10 ; défaut 12)
+0x0202A3B8        trainer_class_background        genre de décor imposé par une classe (bits 11-15 ; 17 = celui du lieu)
+0x0202A3D8        trainer_name                    nom d'un dresseur (fichier système 190)
+0x0202A44C        trainer_party_create            crée l'équipe d'un dresseur (PID, IV, capacités, objets)
+0x0202A92C        trainer_pokemon_gender_ability  applique le sexe et le talent d'un membre (octet +1)
+0x0202A98C        trainer_pokemon_finish          bonheur, forme et talent d'un membre
+
+# Machine des scripts (ARM9)
+0x0201121C        script_vm_create                crée une machine des scripts
+0x02011290        script_vm_stop                  arrête la machine
+0x02011298        script_vm_run                   fait tourner la machine (scripts du terrain et effets du combat)
+0x02011328        script_vm_set_control           installe la fonction de contrôle (+24) et son argument (+28)
+0x02011330        script_read_u16                 lit un u16 dans le script
+0x0201134C        script_read_u32                 lit un u32 dans le script
+0x020113B0        script_jump                     saut
+0x020113B4        script_call                     appel (empile la position)
+0x020113C4        script_return                   retour d'appel
+0x020113D0        script_wait                     met la machine en attente d'une fonction
+
+# Cœur du terrain (overlay 10)
+ov10:0x02158940   script_start_child              crée une machine pour un autre script (commande 0x1C)
+ov10:0x021589D4   script_run_own_context          joue un script dans son propre contexte
+ov10:0x02158A30   field_run_zone_script           joue le script de type 2 d'une zone (changement de zone)
+ov10:0x02158A68   field_start_script_4            script de type 4 au démarrage du terrain (changement de carte)
+ov10:0x02158A74   field_start_script_3            script de type 3 au démarrage du terrain
+ov10:0x02158A80   field_zone_reset                remet à zéro les drapeaux 0 à 99 et les variables 0x4000 à 0x401E
+ov10:0x02158ADC   field_entry_script              cherche une entrée des scripts d'arrivée (jusqu'au type 0)
+ov10:0x02158B0C   field_find_scene                scène de type 1 : premier triplet dont la variable vaut la valeur
+ov10:0x02158B9C   script_start                    installe la table des commandes et démarre un script
+ov10:0x02158C70   script_resolve                  fichiers de scripts et de textes d'un numéro de script
+ov10:0x02158F14   script_words                    mots variables du contexte du script
+ov10:0x02158F70   script_temp_var                 variable temporaire du contexte du script
+ov10:0x02158F80   script_var                      variable d'un paramètre : sauvegarde (0x4000-0x7FFF), temporaire (0x8000-0xBFFF)
+ov10:0x021590E4   field_mark_set                  pose une marque (0xD : musique d'événement)
+ov10:0x02159108   field_mark_clear                enlève une marque
+ov10:0x02159540   script_wait_child               attend la fin d'un autre script
+ov10:0x02159A88   script_read_var                 lit un paramètre et donne la variable
+ov10:0x02159AB0   script_read_value               lit un paramètre et donne sa valeur
+ov10:0x02159B34   field_map_update                mise à jour lancée par la commande 0xDA (pas encore suivie)
+ov10:0x02159EC8   script_table_var                valeur d'une variable de la table 0x02170F40, ou 0
+ov10:0x0215A454   trainer_is_double               le dresseur est-il un dresseur de combat double
+ov10:0x0215C4B0   script_give_pokemon             crée un Pokémon et l'ajoute à l'équipe (commande 0x10C)
+ov10:0x0215C5DC   app_starter_choice              lance l'application du choix du starter (overlay 223)
+ov10:0x0215E248   encounter_data_load             charge les rencontres de la zone (0xE8 octets par saison)
+ov10:0x0215F5DC   event_whiteout                  après une défaite : fondu, soins, retour au dernier lieu de soin
+ov10:0x0215F678   event_whiteout_create           crée l'événement d'après une défaite
+ov10:0x021623E0   zone_entry_scripts              scripts d'arrivée de la zone (pointeur en +0x120)
+ov10:0x021623EC   warp_disable                    désactive une porte (FFFF en 00 et 02)
+ov10:0x02162440   zone_events_load                charge les événements de la zone (a/1/2/5)
+ov10:0x02162578   warp_special                    porte de destination 0x100 : cas spécial
+ov10:0x0216258C   warp_arrival                    arrivée par une porte, avec le repère de la porte de départ
+ov10:0x02162624   warp_destination                fabrique la destination d'une porte (00 et 02)
+ov10:0x02162648   warp_entry_direction            direction d'entrée : 1 vers le bas, 2 le haut, 3 la droite, 4 la gauche
+ov10:0x021626D8   zone_npc_move                   déplace un PNJ des événements (direction, x, z, y)
+ov10:0x02162704   zone_npc_set_sprite             change le sprite d'un PNJ des événements
+ov10:0x02162718   zone_npc_set_script             change le script d'un PNJ des événements
+ov10:0x02162A34   warp_arrival_tile               case d'arrivée d'après le repère de la porte de départ
+ov10:0x02162AF8   warp_entry_code                 repère : sens de sortie x 0x100 + taille x 0x10 + case dans la porte
+ov10:0x02162BE4   warp_exit_direction             sens de sortie d'une porte : champ 04 moins 1
+ov10:0x02162C14   warp_arrival_position           arrivée sur la porte de destination
+ov10:0x02162CBC   zone_find_warp                  une position est-elle sur une porte
+ov10:0x02162E9C   zone_find_trigger               une case est-elle sur un déclencheur
+ov10:0x0216385C   npc_step_blocked                le pas d'un PNJ est-il bloqué (étendue, terrain, dénivelé...)
+ov10:0x02163C2C   npc_step_out_of_range           le pas sort-il de l'étendue du PNJ
+ov10:0x02163C94   npc_step_terrain_blocked        le terrain bloque-t-il le pas
+ov10:0x02169790   terrain_height                  hauteur du sol : position - centre du morceau, fonction du type
+ov10:0x0216CC6C   field_open_characters           ouvre l'archive des personnages (a/0/4/9)
+ov10:0x0216CDFC   npc_create                      crée un PNJ absent des événements (commande 0x69)
+ov10:0x0216CE3C   zone_npcs_create                crée les PNJ des événements de la zone
+ov10:0x0216CE74   zone_npc_create                 fait apparaître un PNJ des événements (commande 0x6B)
+ov10:0x0216CF54   npc_from_event                  recopie les 36 octets d'un PNJ dans le personnage
+ov10:0x0216D3A0   character_set_action            donne une action à un personnage (+0x26, étape en +0x28)
+ov10:0x0216D4D8   character_set_flags             met des bits des indicateurs du personnage
+ov10:0x0216D4E0   character_clear_flags           enlève des bits des indicateurs du personnage
+ov10:0x0216D52C   character_movement_code         code de mouvement d'un personnage (+0x0E)
+ov10:0x0216D570   character_set_direction         direction d'un personnage
+ov10:0x0216D850   character_set_sprite_height     hauteur du sprite au-dessus du sol (sauts)
+ov10:0x0216DB10   character_keep_on_zone_change   met le bit 0x20 : le personnage reste au changement de zone
+ov10:0x0216DE24   characters_find                 cherche un personnage par son numéro (héros compris)
+ov10:0x0216DE70   characters_find_player          trouve le héros (numéro 0xFF)
+ov10:0x0216DEAC   characters_remove_on_zone_change  retire les personnages sans le bit 0x20
+ov10:0x0216E014   character_set_tile              place un personnage au centre d'une case
+ov10:0x0216E210   field_open_object_table         ouvre la table des objets (a/0/4/8)
+ov10:0x0216E368   npc_sprite                      sprite d'un PNJ : de 0xA2 à 0xB1, lu dans les variables 0x4020-0x402F
+ov10:0x0216E390   movement_code_entry             description d'un code de mouvement (table 0x021D5D94)
+ov10:0x0216E3A8   npc_event_no_script             le script d'un PNJ des événements vaut-il 0xFFFF
+ov10:0x0216E7A8   field_trainer_battle            lance un combat de dresseurs (commande 0x85)
+ov10:0x0216E8EC   field_capture_demo              démonstration de capture de la professeure (commande 0x17D)
+ov10:0x0216EB28   event_trainer_battle            événement du combat d'un dresseur
+ov10:0x0216EF38   battle_result_lookup            lit la table des résultats de combat (0x02172568)
+
+# Terrain, monde (overlay 21)
+ov21:0x021886F8   field_update                    mise à jour du terrain à chaque image
+ov21:0x0218926C   field_track_zone                suit la zone de la case du héros, à chaque image
+ov21:0x02189310   field_zone_changed              la zone de la case du héros diffère-t-elle de la zone actuelle
+ov21:0x02189360   field_change_zone               change de zone : personnages, événements, PNJ, script de type 2
+ov21:0x02189480   field_create_npcs               crée les PNJ de la nouvelle zone
+ov21:0x021894B8   field_zone_music_check          état de la partie avant la musique de zone (2 = pas de changement)
+ov21:0x02189938   field_clear_transparent         fond 3D transparent (coupure « VS »)
+ov21:0x021899C4   field_fade_done                 le fondu autour d'une application est-il fini
+ov21:0x0218A6D8   field_run_pending               lance le script en attente, puis les scènes de type 1
+ov21:0x0218AC70   field_warp_on_arrival           porte de genre 0, 5 ou 6 prise en arrivant sur la case
+ov21:0x0218AD20   field_take_warp                 prend une porte : repère et case d'entrée
+ov21:0x0218ADE8   field_front_tile                case devant le héros
+ov21:0x0218AE4C   warp_direction_ok               la direction convient-elle à la porte (masque 0x61)
+ov21:0x0218AE74   field_warp_on_push              porte prise en poussant contre une case bloquée
+ov21:0x0218BA6C   building_id                     numéro du bâtiment gardé
+ov21:0x0218BC50   building_kind                   genre d'un type de bâtiment (table 0x021D3D54)
+ov21:0x0218C524   building_find_in_rect           premier bâtiment chargé d'un genre dans le rectangle
+ov21:0x0218C778   building_find_near              cherche un bâtiment d'un genre près d'une position
+ov21:0x0218C800   building_release                libère le bâtiment gardé
+ov21:0x0218C82C   building_play_anim              joue une animation d'un bâtiment
+ov21:0x0218C878   building_anim_done              l'animation du bâtiment est-elle finie
+ov21:0x0218C8E4   building_sound_entry            entrée de la table des sons des bâtiments
+ov21:0x0218C930   building_anim_sound             son d'une animation de bâtiment
+ov21:0x0218C944   building_sound_done             le son de l'animation est-il fini
+ov21:0x0218C964   building_search_rect            rectangle de recherche : 2 cases en x, 3 en z
+ov21:0x0218DA8C   terrain_choose_layer            couche la plus proche de la hauteur actuelle
+ov21:0x0218DFB8   field_camera_create             crée la caméra du terrain avec le type de caméra de la zone
+ov21:0x0218E12C   field_camera_apply              applique une fiche de caméra
+ov21:0x0218E200   field_camera_load               lit la fiche n° type de a/0/6/0
+ov21:0x0218E254   field_camera_place              place la caméra autour du point visé
+ov21:0x0218E2F8   field_camera_rects_update       applique les rectangles de la caméra à chaque image
+ov21:0x0218F0B4   field_camera_rects_copy         copie les rectangles en +0x88
+ov21:0x0218F0EC   field_camera_rects_load         lit le fichier des rectangles (a/1/0/8)
+ov21:0x0218F19C   field_camera_clamp              borne le point visé dans un rectangle
+ov21:0x0218F7B8   field_camera_save               garde l'état de la caméra (commande 0x13F)
+ov21:0x0218F818   field_camera_restore_mode       libère l'état gardé (commande 0x140)
+ov21:0x0218F8A0   field_camera_move               amène la caméra au plan préparé (commande 0x143)
+ov21:0x0218F964   field_camera_back_to_saved      ramène la caméra à l'état gardé (commande 0x144)
+ov21:0x0218F9E0   field_camera_back_to_zone       ramène la caméra de la zone (commande 0x147)
+ov21:0x02190450   yes_no_texts                    textes OUI / NON du menu (fichier système 233)
+ov21:0x02193338   terrain_height_wb               hauteur d'un morceau « WB » : une couche
+ov21:0x02193438   terrain_height_gc               hauteur d'un morceau « GC » : deux couches
+ov21:0x02193498   terrain_height_gc_first         hauteur d'un morceau « GC » : la première couche
+ov21:0x021935BC   terrain_height_ng               morceau « NG » : aucun résultat
+ov21:0x02193730   terrain_height_rd               hauteur d'un morceau « RD » : cases de 24 octets
+ov21:0x02197D6C   task_movement_list              tâche d'une liste de mouvements (commande 0x64)
+ov21:0x02197E1C   movement_for_direction          action d'une famille pour une direction
+ov21:0x02197E54   movement_action_step            lit l'action d'un personnage et son étape
+ov21:0x02197EC0   movement_run_step               appelle table[action][étape](personnage)
+ov21:0x02197F0C   movement_turn                   famille d'actions : se tourner
+ov21:0x02197F60   movement_walk                   famille d'actions : marcher d'une case
+ov21:0x021982B8   movement_walk_in_place          famille d'actions : marcher sur place
+ov21:0x02198460   movement_jump_init              prépare un saut : direction, vitesse, images, courbe, pas
+ov21:0x021984CC   movement_jump                   famille d'actions : sauter
+ov21:0x021984F0   movement_jump_update            avance un saut d'une image
+ov21:0x02198900   movement_wait                   famille d'actions : attendre
+ov21:0x02198BA8   movement_walk_eased             famille d'actions : marcher avec une vitesse tirée d'une table
+ov21:0x0219A0F0   npc_look_around                 PNJ : regarder au hasard (mise à jour)
+ov21:0x0219A230   npc_wander_init                 PNJ : se promener (création)
+ov21:0x0219A258   npc_wander                      PNJ : se promener (mise à jour)
+ov21:0x0219A4EC   npc_face                        PNJ : tourné vers une direction (mise à jour)
+ov21:0x021A4538   player_decide_step              décide du pas du héros (2 marcher, 4 bloqué, 5 rebord)
+ov21:0x021A4D60   player_walk_action              action de la marche (0x0C) ou de la course (0x10)
+ov21:0x021A4E78   player_apply_step               applique le pas décidé : pour 5, saut du rebord (action 0x38 + direction)
+ov21:0x021A7C88   task_door                       tâche : passer une porte
+ov21:0x021A81E4   door_wait                       attend la fin de l'animation de la porte
+ov21:0x021A8218   door_open                       ouvre la porte (animation 0)
+ov21:0x021A8248   door_close                      ferme la porte (animation 1)
+ov21:0x021A8B58   field_menu                      bâtit le menu du terrain (fichier système 34)
+ov21:0x021A9450   encounter_rate_modifiers        applique les indicateurs du Pokémon de tête au taux
+ov21:0x021A97C8   encounter_lead_flags            indicateurs du Pokémon de tête (talent, objet)
+ov21:0x021A99FC   encounter_group_slots           créneaux d'un groupe de rencontres
+ov21:0x021A9AA0   encounter_level                 niveau : min + pourcent % (max - min + 1)
+ov21:0x021A9C4C   encounter_held_item             objet tenu d'un Pokémon sauvage
+ov21:0x021A9D68   encounter_percent               pourcent = rand(0xFFFF) / 0x290
+ov21:0x021A9D80   encounter_slot_grass            créneau des herbes (20, 20, 10, 10, 10, 10, 5, 5, 4, 4, 1, 1 %)
+ov21:0x021A9E04   encounter_slot_surf             créneau du surf (60, 30, 5, 4, 1 %)
+ov21:0x021A9E38   encounter_slot_fishing          créneau de la pêche (40, 40, 15, 4, 1 %)
+ov21:0x021A9EE0   encounter_step                  test de rencontre à chaque pas
+ov21:0x021AA2A4   encounter_battle_terrain        décor du combat : genre de la case et heure
+ov21:0x021AA2FC   encounter_tile_group            groupe de rencontres de la case
+ov21:0x021AA380   encounter_group_rate            taux d'un groupe
+ov21:0x021AA39C   encounter_roll                  tirage de la rencontre
+ov21:0x021AA698   encounter_set_reference         pose la case de référence quand un combat commence
+ov21:0x021AA6C8   encounter_step_count            compteur de pas
+ov21:0x021AAC74   field_tile_effects              liste les cases à phénomène autour du héros
+ov21:0x021AB090   tile_behavior                   comportement d'une case (16 bits du bas)
+ov21:0x021AB098   tile_flags                      indicateurs d'une case (16 bits du haut)
+ov21:0x021AB0A0   tile_is_valid                   case valide : attributs ≠ 0xFFFFFFFF et comportement ≠ 0xFF
+ov21:0x021AB0E0   behavior_is_08_09               comportement 0x08 ou 0x09 (+10 au taux de rencontre)
+ov21:0x021AB0F8   behavior_is_ledge_up            rebord 0x74 (vers le haut)
+ov21:0x021AB104   behavior_is_ledge_down          rebord 0x75 (vers le bas)
+ov21:0x021AB110   behavior_is_ledge_left          rebord 0x73 (vers la gauche)
+ov21:0x021AB11C   behavior_is_ledge_right         rebord 0x72 (vers la droite)
+ov21:0x021AB1F0   behavior_is_06_07_22            comportement 0x06, 0x22 ou 0x07
+ov21:0x021AB210   behavior_is_09                  comportement 0x09
+ov21:0x021AB21C   behavior_is_04_05_08_21         comportement 0x04, 0x21, 0x05 ou 0x08
+ov21:0x021AB23C   behavior_is_dark_grass          herbes sombres (0x06, 0x07, 0x09, 0x22)
+ov21:0x021AB25C   behavior_is_grass               herbe (0x021AB21C ou 0x021AB23C)
+ov21:0x021AB4A4   behavior_effect_kind            genre de phénomène d'une case d'indicateur 0x04
+ov21:0x021AB520   behavior_battle_terrain         genre de case pour le décor des combats (table 0x021D8E30)
+ov21:0x021AF1DC   script_se_done                  l'effet sonore est-il fini (commande 0xA8)
+ov21:0x021B0024   task_yes_no                     tâche du menu Oui / Non
+ov21:0x021B0384   msg_window_create               crée la fenêtre simple des messages
+ov21:0x021B0420   msg_window_close                ferme la fenêtre simple
+ov21:0x021B0B4C   msg_bubble                      message dans la bulle d'un personnage
+ov21:0x021B0FA8   msg_window2                     message dans l'autre fenêtre simple
+ov21:0x021B1044   msg_window2_close               ferme l'autre fenêtre simple
+ov21:0x021B1608   script_character                personnage d'une commande : 0xFF héros, 0xF1 interlocuteur, 0xF2 compagnon
+ov21:0x021B2EB8   task_app_fade                   tâche du fondu autour d'une application
+ov21:0x021BE8B8   field_battle_transition         transition du terrain vers le combat et retour (commandes 0x8E, 0x179)
+ov21:0x021C1A80   cutin_camera                    caméra de la coupure « VS » : perspective, œil (0, 0, 128)
+ov21:0x021C1D58   cutin_start                     lance la coupure « VS »
+ov21:0x021C1E08   task_cutin                      tâche de la coupure « VS » (12 états)
+ov21:0x021C2140   cutin_emitters                  lance les émetteurs après leur délai
+ov21:0x021C21C8   cutin_model0_anim               animations du premier modèle
+ov21:0x021C2238   cutin_model1_anim               animations du second modèle
+ov21:0x021C22AC   cutin_load                      chargement de la coupure
+ov21:0x021C2448   cutin_emitter                   crée un émetteur à la position de la ressource + (0, 0, 0x40)
+ov21:0x021C247C   cutin_effect_load               lit la fiche de l'effet de terrain (a/1/1/7)
+ov21:0x021C2710   cutin_capture_field             capture l'écran 3D du terrain (DISPCAPCNT = 0x81330010)
+ov21:0x021C2AA8   cutin_fade_to_white             fondu au blanc
+ov21:0x021C2AE8   cutin_fade_from_white           retour du blanc
+ov21:0x021C2B70   cutin_portrait                  remplace la texture du portrait de l'adversaire
+ov21:0x021C2C80   cutin_fade_to_black             fondu au noir avant le combat
+ov21:0x021C2CF4   task_cutin_textures             tâche : remplace les textures (portraits, noms)
+ov21:0x021C2F10   cutin_names                     remplace les textures des noms
+ov21:0x021C30E4   cutin_sounds                    bruitages de l'effet de terrain à leur image
+ov21:0x021C5A38   nickname_screen                 écran du surnom (commande 0x105)
+ov21:0x021CF428   encounter_effect_start          lance l'effet de rencontre
+ov21:0x021CF568   field_battle_background         décor des combats (se sert du test « herbe »)
+ov21:0x021CF6D8   encounter_effect_choose         choisit l'effet de rencontre (classes à part, lieu)
+ov21:0x021D1454   terrain_tile_plane              case → plan : normale, attributs, hauteur
+
+# Coupures « VS » (overlays 73 et 74)
+ov73:0x021F5318   cutin_flash_task                tâche : deux flashs blancs, puis la coupure
+ov74:0x021F5460   cutin_kind                      fiche d'un genre de coupure (table 0x021F5470)
+
+# Moteur du combat (overlay 93)
+ov93:0x021B857C   battle_text_speed               vitesse d'écriture des messages (options)
+ov93:0x021BC814   battle_action_order             ordre des actions
+ov93:0x021BC8E8   battle_speed                    vitesse d'un Pokémon
+ov93:0x021BD5AC   battle_escape                   la fuite réussit-elle
+ov93:0x021BFA00   battle_accuracy                 précision : la capacité touche-t-elle
+ov93:0x021C1E14   battle_damage                   dégâts d'une capacité
+ov93:0x021C6370   battle_confusion_damage         dégâts de la confusion (puissance 40)
+ov93:0x021CB274   battle_exp_share                partage de l'expérience
+ov93:0x021CB4FC   battle_exp_gain                 expérience reçue
+ov93:0x021CBAD4   battle_capture                  calcul de la capture
+ov93:0x021CBC94   capture_dark_grass              modificateur des herbes sombres (0,3 à 1)
+ov93:0x021CBCE8   capture_ball                    multiplicateur des Balls
+ov93:0x021CBE48   capture_critical                capture critique
+ov93:0x021CE890   battle_trainer_speech           paroles du dresseur en combat (table 0x021EFF18)
+ov93:0x021D1FD0   client_move                     client : commande 0x31 (animation d'une capacité)
+ov93:0x021D7614   battle_mul_clamp                multiplicateurs bornés de 0x29 à 0x20000
+ov93:0x021D784C   battle_rand                     tirage dans [0, n) du générateur du combat
+ov93:0x021D7884   battle_stage_ratio              crans d'une statistique (table 0x021F03E8)
+ov93:0x021D78A8   battle_accuracy_ratio           crans de précision (table 0x021F0402)
+ov93:0x021D78D0   battle_critical                 coup critique (table 0x021F03BC)
+ov93:0x021D7988   battle_type_factor              efficacité contre deux types
+ov93:0x021D79E4   battle_base_damage              dégâts de base
+ov93:0x021D7AB0   fx_mul_round                    arrondi des multiplicateurs (au-delà de 0x800 vers le haut)
+ov93:0x021D7B44   battle_hit_count                nombre de coups (table 0x021F03C1)
+ov93:0x021D7B74   battle_weather_damage           dégâts du sable et de la grêle (1/16)
+ov93:0x021D7E54   battle_exp_yield                expérience donnée
+ov93:0x021D7F5C   battle_prize                    somme gagnée
+ov93:0x021D7F98   battle_money_lost               somme perdue
+ov93:0x021EB524   intro_fade_in                   ouverture depuis le noir (16 à 0, un cran toutes les 2 images)
+ov93:0x021EB630   intro_wild                      début d'un combat sauvage (9 étapes)
+ov93:0x021EB7C0   intro_wild_message              « Un X sauvage apparaît ! »
+ov93:0x021EB810   intro_trainer                   début d'un combat contre un dresseur (12 étapes)
+ov93:0x021ECE00   battle_msg_instant              message écrit d'un coup (attente 0)
+ov93:0x021ECE58   battle_msg                      message du combat (attente de 80 images)
+ov93:0x021ECF08   battle_msg_machine              machine des messages (8 états)
+ov93:0x021ED0B8   client_move_effect_setup        prépare l'effet d'une capacité (lanceur, cible, variante)
+ov93:0x021ED0F8   client_move_effect_task         ferme la boîte, joue l'effet de la capacité, attend sa fin
+ov93:0x021ED9A4   gauge_enter                     la jauge entre
+ov93:0x021EE0A4   tray_ball_state                 état d'une Ball de la rangée : vide, en forme, K.O., statut
+
+# Affichage du combat (overlay 94)
+ov94:0x021F6500   battle_platforms                socles (fichier 2 de a/1/5/2)
+ov94:0x021F6AA4   battle_backgrounds              fonds (fichier 1 de a/1/5/2)
+ov94:0x021F6DDC   battle_camera_init              caméra du combat : objet de 0xB8 octets
+ov94:0x021F6EE8   battle_camera_move              déplacement de la caméra
+ov94:0x021F6FA0   battle_camera_shake             tremblement de la caméra
+ov94:0x021F70A8   battle_camera_orbit             orbite de la caméra
+ov94:0x021F71A8   battle_camera_default           vue par défaut
+ov94:0x021F71DC   battle_camera_update            mise à jour de la caméra à chaque image
+ov94:0x021F7344   battle_camera_orbit_angles      recalcule les angles et la distance de l'orbite
+ov94:0x021F74E4   battle_background_setup         décor du combat : tables de a/1/5/2 (code cité en 0x021F75E0)
+ov94:0x021F7ACC   battle_play_move_effect         joue l'effet d'une capacité
+ov94:0x021F8238   palette_fade_start              fondu des palettes du décor (commande d'effet 0x2A)
+ov94:0x021F82C4   palette_fade_wait               attentes 6 à 9 des fondus de palettes
+ov94:0x021F9200   motion_update                   mouvements génériques (caméra, sprites)
+ov94:0x021F9304   palette_fade_step               une image du fondu des palettes
+ov94:0x021F9498   effect_start                    commence le script d'un effet au décalage de sa variante
+ov94:0x021F97F8   effect_sound                    joue un son (commande d'effet 0x34)
+ov94:0x021F98E8   effect_sound_glide              fait glisser un réglage du son (commandes 0x36, 0x37)
+ov94:0x021FC6E4   effect_wait                     attente de la commande 0x38 (tout, caméra, particules...)
+ov94:0x021FC9A4   effect_sprite_target            cible des commandes de sprites (0 à 20)
+ov94:0x021FD16C   effect_particle_placement       placement des particules (rappel)
+ov94:0x021FD86C   effect_particle_path            trajectoire en demi-cercle des particules
+ov94:0x021FDAE0   effect_sound_params             son : canal, panoramique, délai, hauteur, volume
+ov94:0x021FDB50   effect_variable                 variable d'un effet (0 à 57)
+ov94:0x021FE158   effect_particle_project         projette la position décalée (repère « écran »)
+ov94:0x021FE32C   effect_ball_file                fichier de particules de la Ball
+ov94:0x021FE534   task_sound_glide                tâche : glissement d'un réglage du son
+ov94:0x021FF098   effect_sprite_delete            supprime un sprite (commande 0x1F)
+ov94:0x021FF39C   battle_sprite_positions         positions des Pokémon (table 0x02209FF0)
+ov94:0x021FF810   effect_sprite_anim              animation du sprite figée, relancée ou qui bégaie (commande 0x19)
+ov94:0x021FF9B8   effect_sprite_ellipse           ellipse (commande 0x13)
+ov94:0x022004FC   effect_draw_order               ordre de dessin en combat double ou triple (commande 0x4C)
+ov94:0x022006EC   motion_setup                    règle un mouvement générique
+ov94:0x02200C70   task_sprite_stutter             tâche : animation qui bégaie
+ov94:0x02200DBC   task_sprite_ellipse             tâche : ellipse
+ov94:0x022018D4   sprite_screen_scale             taille en mode « écran » : 16.0 ou 32.0 en seizièmes
+ov94:0x02206B68   gauge_load                      charge les jauges (palette 162 de a/0/1/1)
+ov94:0x022073D0   gauge_background                fond de la jauge : 165/166 en face, 168/169 joueur
+ov94:0x02207960   gauge_hp_bar                    place la barre de PV (table 0x0220AA70)
+ov94:0x02207F0C   gauge_hp_drain                  descente des PV d'un PV par image
+ov94:0x02207FD4   gauge_hp_pixels                 pixels = PV x 48 / PV max, au moins 1
+ov94:0x02208094   gauge_name                      nom
+ov94:0x022083C0   gauge_hp_numbers                PV en chiffres (joueur)
+ov94:0x022084F0   gauge_level                     niveau
+ov94:0x022085F0   gauge_caught_ball               petite Ball si l'espèce est déjà capturée
+ov94:0x02208D4C   tray_create                     crée une rangée de Balls
+ov94:0x02209008   tray_hide                       la rangée disparaît d'un coup
+ov94:0x02209054   tray_update                     une image de la rangée de Balls
+
+[fonctions en ARM]
+
+# Caméra, archives, luminosité (ARM9)
+0x02046B78        camera_set_projection           projection d'une caméra (0 ou 1)
+0x020489BC        camera_create                   crée une caméra (celle du combat)
+0x02048C84        archive_set_paths               confie la table des chemins à la bibliothèque d'archives
+0x0204E5D0        brightness_fade_update          avance le fondu de luminosité
+0x0204E68C        brightness_set_multiplier       multiplicateur du pas des fondus (2 au démarrage)
+0x0204E6B8        brightness_fade_start           fondu de luminosité : écrans, départ, arrivée, vitesse
+0x0204E79C        brightness_fade_done            le fondu de luminosité est-il fini
+0x0204E7BC        brightness_write                écrit les registres de luminosité (0x0400006C, 0x0400106C)
+
+# Particules (ARM9)
+0x02050B80        particles_draw_update           dessine puis met à jour tous les gestionnaires
+0x02050BC8        particle_manager_create         gestionnaire de particules (r2 = 1 : sa propre caméra)
+0x020513AC        particles_draw                  dessine les particules avec la caméra du gestionnaire
+0x020515E0        particle_camera                 caméra des particules (perspective, ou orthographique [-4, 4] x [-3, 3])
+0x02052538        emitter_create                  crée un émetteur d'après un modèle
+0x02052708        particles_update                met à jour tous les gestionnaires
+0x020531B0        emitter_update                  met à jour les particules d'un émetteur
+0x020539F8        emitter_init                    prépare un émetteur d'après un modèle
+0x02055430        particles_draw_stretched        particules étirées le long de leur vitesse
+0x02055F6C        particles_draw_billboards       particules en carrés face à la caméra
+0x0205661C        particles_spawn_children        particules enfants
+0x0205693C        emitter_emit                    émet les particules tous les « interval » images
+
+# Calcul (ARM9)
+0x0207C700        fx_div                          FX_Div : ((a << 32) / b + 0x80000) >> 20
+0x0207C74C        fx_sqrt                         FX_Sqrt : (racine entière de (x << 32) + 0x200) >> 10
+0x0207C998        vec_sub                         différence de deux vecteurs
+0x0209BFEC        fx_mul64_round                  multiplication 64 bits arrondie
+
+[données]
+
+# ARM9
+0x0209DF48        text_speed_table                vitesse du texte : lente 3, moyenne 1, rapide -2
+0x0209E220        hidden_power_types              types de la Puissance Cachée
+0x0209E2BC        nature_table                    5 s8 par nature (Attaque, Défense, Attaque Spéciale, Défense Spéciale, Vitesse)
+0x0209E89C        item_ball_table                 objet → Ball (25 Balls)
+0x0209EA38        tm_moves                        capacité de chaque CT et CS
+0x0209FE6C        trainer_special_classes         28 classes à part : classe, genre de musique, décor
+0x0209FEA4        trainer_class_gender            classes féminines (base du PID 0x78)
+0x020A01C4        trainer_class_sprites           image de chaque classe de dresseur (a/0/7/2)
+0x020A1500        particle_camera_target          point visé par la caméra des particules (l'origine)
+0x020A150C        particle_camera_up              vecteur haut de la caméra des particules
+0x020A1518        particle_camera_eye             œil de la caméra des particules (0, 0, 4)
+0x020A1AC0        sin_table                       table de sinus (angle sur 0x10000, index angle >> 4)
+0x020A1E40        camera_fov_table                demi-angles de vue (sinus et cosinus en +0x0C, +0x0E)
+0x020A6BF8        archive_paths                   235 pointeurs vers les chemins a/0/0/0 à a/2/3/4
+0x020AA234        sound_handles                   une poignée de 8 octets par lecteur
+0x02146A2C        particle_seed                   graine du générateur des particules
+
+# Overlay 10
+ov10:0x02170138   script_ranges                   46 plages de scripts communs (numéros, fichiers de scripts et de textes)
+ov10:0x02170568   script_command_count            nombre de commandes (609)
+ov10:0x0217056C   script_conditions               conditions 0 à 5 des sauts et appels conditionnels
+ov10:0x021705BC   script_commands                 table des 609 commandes de script
+ov10:0x02170F40   script_var_table                10 fiches de 6 octets (commande 0xDA)
+ov10:0x02171112   party_param_table               12 champs lisibles par la commande 0x110
+ov10:0x02172568   battle_results                  5 octets par résultat de combat
+
+# Overlay 21
+ov21:0x021D3D18   building_sounds                 sons des bâtiments : 6 entrées de 10 octets
+ov21:0x021D3D54   building_kinds                  genre de chaque type de bâtiment (16 octets)
+ov21:0x021D3D6C   chunk_types                     types de morceaux : lettres, chargement, deux fonctions de hauteur
+ov21:0x021D3DF8   yes_no_values                   valeurs 0 et 1 du menu Oui / Non
+ov21:0x021D49E0   movement_list_states            états de la tâche des listes de mouvements
+ov21:0x021D4F34   look_wait_table                 attentes de 16, 32, 48 ou 64 images
+ov21:0x021D5088   look_direction_sets             ensembles de directions où regarder
+ov21:0x021D5CFC   direction_actions               actions par direction (sauts des rebords 0x38-0x3B)
+ov21:0x021D5D94   movement_codes                  description des codes de mouvement des PNJ
+ov21:0x021D5EE8   movement_actions                étapes des 378 actions de mouvement
+ov21:0x021D61DC   movement_actions_alt            étapes des actions quand le bit 0x2000 est mis
+ov21:0x021D8D5C   held_item_rates                 chances des objets tenus des Pokémon sauvages
+ov21:0x021D8D68   encounter_slot_rolls            fonctions de tirage des créneaux
+ov21:0x021D8E30   battle_terrain_kinds            comportement → genre de case (37 paires)
+ov21:0x021DA6B0   cutin_sound_table               bruitages des effets de terrain (son, image)
+ov21:0x021DAA70   rare_item_numbers               numéros 26 à 52 des objets rares
+ov21:0x021DB48C   encounter_effects               37 effets de rencontre de 0x14 octets
+ov21:0x021DB770   battle_music_kinds              musique de combat des genres 0 à 10
+ov21:0x021DB786   encounter_effect_kinds          effet de rencontre par ligne de la table des classes à part
+ov21:0x021DB930   plane_normals                   329 normales des plans du terrain (3 x fx16)
+ov21:0x021DC0E8   plane_distances                 distances des plans (fx32)
+ov21:0x021DD998   camera_rect_functions           fonctions des rectangles de la caméra
+ov21:0x021DDB54   jump_curves                     trois courbes de saut (16 hauteurs fx32)
+
+# Overlays 74 et 223
+ov74:0x021F5470   cutin_kinds                     26 fiches de genres de coupures (0x14 octets)
+ov223:0x021BC6B0  starter_species                 les trois starters (495, 498, 501)
+
+# Overlay 93
+ov93:0x021EFF18   trainer_speech_order            genres des paroles en combat (18, 17, 19, 20)
+ov93:0x021F0080   client_commands                 commandes du client : 92 paires gestionnaire, numéro
+ov93:0x021F03BC   critical_table                  coups critiques : 1 chance sur 16, 8, 4, 3, 2
+ov93:0x021F03C1   hit_count_table                 coups multiples : seuils 35, 70, 85, 100
+ov93:0x021F03CD   badge_money_table               somme perdue selon les badges (2 à 30)
+ov93:0x021F03E8   stage_ratio_table               rapports des crans des statistiques
+ov93:0x021F0402   accuracy_ratio_table            rapports des crans de précision
+ov93:0x021F041C   type_chart                      table des types 17 x 17 (0 aucun effet, 2 moitié, 4 normal, 8 double)
+ov93:0x021F0E14   ability_handlers_1              gestionnaires des talents (1)
+ov93:0x021F114C   ability_handlers_2              gestionnaires des talents (2)
+ov93:0x021F125C   ability_handlers_3              gestionnaires des talents (3)
+ov93:0x021F1E44   item_handlers                   gestionnaires des 171 objets tenus
+ov93:0x021F2FD0   move_handlers_1                 gestionnaires des capacités à part (1)
+ov93:0x021F3518   move_handlers_2                 gestionnaires des capacités à part (2)
+
+# Overlay 94
+ov94:0x02209D6C   effect_vm_descriptor            descripteur de la machine des effets
+ov94:0x02209E28   effect_commands                 table des 78 commandes des effets
+ov94:0x02209F60   cry_pans                        panoramiques des cris (20 ou 107)
+ov94:0x02209F68   sprite_world_scales             échelles en mode « monde » (0x1030 joueur, 0x11BF en face)
+ov94:0x02209FC0   trainer_world_scales            échelles des dresseurs en mode « monde »
+ov94:0x02209FF0   positions_single                positions des Pokémon en combat simple
+ov94:0x0220A020   positions_double                positions des Pokémon en combat double
+ov94:0x0220A0B0   trainer_positions_single        positions des dresseurs en combat simple
+ov94:0x0220A0F8   positions_triple                positions des Pokémon en combat triple
+ov94:0x0220A140   positions_rotation              positions des Pokémon en combat rotatif
+ov94:0x0220AA60   status_icon_offsets             place de l'icône de statut par rapport à la jauge
+ov94:0x0220AA70   hp_bar_positions                place de la barre de PV
+ov94:0x0220AA78   tray_anchors                    centres des jauges pour les rangées de Balls
+ov94:0x0220AB0C   tray_positions                  positions des rangées de Balls
+ov94:0x0220AC40   camera_start_views              vues de départ de la caméra
+ov94:0x0220AC88   camera_eyes                     yeux des prises de vue
+ov94:0x0220ACA0   camera_targets                  points visés des prises de vue
+
+[commandes de script]
+
+000               nop                             rien
+001               nop                             rien
+002               end                             fin du script
+003               wait                            attente en images
+004               call                            appel
+005               return                          retour
+008               push_const                      empile une constante
+009               push_value                      empile une valeur
+00A               pop_var                         dépile dans une variable
+010               push_flag                       empile l'état d'un drapeau
+011               compare                         compare les deux valeurs du sommet de la pile
+019               compare_var_const               compare une variable et une constante
+01A               compare_var_var                 compare deux variables
+01C               call_script                     appel d'un autre script (commun ou de la zone)
+01D               end_cleanup                     fin du script, en nettoyant
+01E               jump                            saut
+01F               jump_if                         saut conditionnel
+020               call_if                         appel conditionnel
+021               set_pending_script              script en attente, rangé dans la sauvegarde
+023               flag_set                        met un drapeau
+024               flag_clear                      enlève un drapeau
+026               add                             ajoute
+027               sub                             soustrait
+028               set_var                         donne une valeur à une variable
+029               copy_var                        copie une variable
+02A               set_var_value                   donne une valeur (constante ou contenu d'une variable)
+02E               lock_all                        fige le jeu
+02F               release_all                     relâche tout
+030               release_npc                     relâche le PNJ
+032               wait_button                     attend une touche
+034               message                         message dans la fenêtre simple
+036               close_window                    ferme la fenêtre simple
+038               message2                        message dans une autre fenêtre simple
+039               close_window2                   ferme l'autre fenêtre simple
+03C               message_bubble                  message dans la bulle d'un personnage
+03D               message_npc                     message du PNJ à qui l'on parle
+03E               close_message                   ferme le message
+03F               close_windows                   ferme toutes les fenêtres
+043               sign                            panneau (attend une touche)
+044               close_sign                      ferme le panneau
+047               yes_no                          menu Oui / Non
+048               message_bubble_gendered         bulle, second message si le héros est une fille
+049               message_bubble_b                comme 0x3C (sans le message pour une fille)
+04A               message2_b                      message dans une autre fenêtre simple
+04B               wait_confirm                    attend Valider ou Annuler
+04C               word_player                     mot = nom du héros
+04D               word_item                       mot = nom d'objet
+04E               word_item_count                 mot = nom d'objet, au pluriel si le nombre dépasse 1
+04F               word_item_b                     mot = nom d'objet
+050               word_tm_move                    mot = capacité d'une CT ou d'une CS
+051               word_move                       mot = nom de capacité
+052               word_pocket                     mot = poche du sac
+053               word_party_species              mot = espèce d'un Pokémon de l'équipe
+054               word_party_nickname             mot = surnom d'un Pokémon de l'équipe
+056               word_type                       mot = nom de type
+057               word_species                    mot = nom d'espèce
+05C               word_number                     mot = nombre
+064               movement                        lance une liste de mouvements
+065               wait_movement                   attend la fin des listes de mouvements
+068               player_tile                     case du héros (x, z)
+069               npc_create                      crée un PNJ absent des événements
+06B               npc_show                        fait apparaître un PNJ des événements
+06C               npc_remove                      retire un PNJ
+06D               place_character                 place un personnage au centre d'une case
+074               face_player                     le PNJ se tourne vers le héros
+085               trainer_battle                  combat de dresseurs
+08C               defeat                          après une défaite : crée l'événement du retour au dernier lieu de soin et arrête la machine
+08D               battle_won                      0 si le joueur a perdu le dernier combat, sinon 1
+08E               battle_return                   transition de retour du combat
+098               event_music                     musique d'événement
+09E               zone_music                      retour en fondu à la musique de la zone
+0A6               sound                           effet sonore
+0A8               wait_sound                      attend la fin de l'effet sonore
+0A9               fanfare                         fanfare
+0AA               wait_fanfare                    attend la fin de la fanfare, puis la musique reprend
+0B3               fade                            fondu de luminosité
+0B4               wait_fade                       attend la fin du fondu
+0B5               bag_add                         ajoute un objet au sac
+0B6               bag_remove                      retire un objet du sac
+0B7               bag_has_room                    y a-t-il la place dans le sac
+0B8               bag_has                         en a-t-on assez dans le sac
+0B9               bag_count                       nombre d'exemplaires dans le sac
+0BB               item_pocket                     poche d'un objet
+0D9               save_value                      range une valeur de 1 à 17 dans la sauvegarde
+0DA               table_var                       variable de la table 0x02170F40
+0E0               game_version                    version du jeu (20 dans Pokémon Blanc)
+0E1               player_gender                   sexe du héros
+0E7               profile_bit                     un bit de l'octet +0x45 du profil
+0F9               add_money                       ajoute de l'argent
+101               party_full_hp                   un Pokémon de l'équipe a-t-il tous ses PV
+103               party_count                     décompte de l'équipe
+104               heal_party                      soigne l'équipe
+105               nickname                        écran du surnom
+10C               give_pokemon                    donne un Pokémon
+110               party_param                     un champ d'un Pokémon de l'équipe
+127               building_find                   cherche un bâtiment d'un genre près de la case
+128               building_release                libère le bâtiment
+129               building_anim                   joue une animation du bâtiment, avec son son
+12A               building_wait                   attend la fin de l'animation du bâtiment
+13F               camera_save                     garde l'état de la caméra
+140               camera_release                  libère l'état gardé
+141               camera_detach                   détache la caméra du héros
+142               camera_attach                   rattache la caméra au héros
+143               camera_shot                     prépare un plan et y amène la caméra
+144               camera_back_saved               ramène la caméra à l'état gardé
+145               camera_wait                     attend la fin du déplacement de la caméra
+146               camera_shot_archive             prend un plan dans l'archive 0xA3
+147               camera_back_zone                ramène la caméra de la zone
+14A               field_return                    retrouve le terrain après une application
+14B               field_leave                     quitte le terrain pour une application
+153               starter_choice                  choix du starter (overlay 223)
+155               xtransceiver                    application de l'overlay 174 (le Vokit)
+179               battle_transition               transition vers le combat
+17D               capture_demo                    démonstration de capture de la professeure
+1AD               fade_from_black                 fondu depuis le noir autour d'une application
+1AE               fade_to_black                   fondu vers le noir autour d'une application
+1AF               fade_from_white                 fondu depuis le blanc autour d'une application
+1B1               wait_app_fade                   attend la fin de ce fondu
+1D0               pokedex_obtained                Pokédex reçu
+21C               save_bits                       deux valeurs dans un champ de bits de la sauvegarde
+241               keep_character                  le personnage restera au changement de zone
+25F               end_event_music                 fin de la marque de la musique d'événement
+
+[commandes d'effets]
+
+00                camera_shot                     plan de la caméra (switch des plans en 0x021F9C74)
+01                camera_eye_target               œil et point visé de la caméra
+02                camera_orbit                    orbite de la caméra
+03                camera_shake                    tremblement de la caméra
+04                sprite_mode                     mode des sprites (« écran » ou « monde »)
+05                camera_save                     garde la caméra (plan 13)
+12                sprite_move                     déplacement d'un sprite
+13                sprite_ellipse                  ellipse
+15                sprite_scale                    échelle d'effet d'un sprite
+16                sprite_rotation                 rotation d'un sprite
+17                sprite_alpha                    opacité d'un sprite
+19                sprite_anim                     animation du sprite figée, relancée ou qui bégaie
+1A                sprite_anim_stop                animation arrêtée (bits 9 et 10)
+1B                sprite_palette_fade             fondu de palette d'un sprite
+1C                sprite_hide                     cache un sprite (bit 11)
+1D                sprite_shadow                   ombre d'un sprite (bit 23)
+1F                sprite_delete                   supprime un sprite
+20                trainer_create                  crée le sprite d'un dresseur
+21                trainer_move                    déplace un dresseur
+22                trainer_sequence                séquence de la multi-cellule d'un dresseur
+23                trainer_delete                  supprime un dresseur
+2A                background_fade                 fondu des palettes du décor
+33                gauges                          jauges
+34                sound                           joue un son
+35                sound_stop                      arrête un son
+36                sound_pan_glide                 panoramique d'un côté à l'autre
+37                sound_glide                     fait glisser la hauteur, le volume ou le panoramique
+38                wait                            attend (tout, caméra, particules, sprites, dresseurs, cris...)
+39                wait_frames                     attend n images
+3A                yield                           céder ou non
+3B                jump_if_value                   saut si une variable se compare à une valeur
+3C                jump_if_var                     saut si une variable se compare à une autre
+3D                jump_if_place                   saut si une place est (ou non) occupée
+3E                set_register                    registre de travail = constante
+3F                set_register_var                registre de travail = variable
+40                set_var                         écrit une variable
+43                cry                             joue le cri
+44                ball                            Ball du Pokémon de la place
+46                call_system                     appelle un effet du système
+47                return_system                   revient d'un effet du système
+48                jump                            saut
+49                wait_signal                     attend un signal
+4A                goto_effect                     continue dans un autre effet (charge son fichier, a/0/6/6 ou a/0/6/7)
+4C                draw_order                      ordre de dessin en combat double ou triple
+4D                end                             fin
