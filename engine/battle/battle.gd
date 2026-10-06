@@ -265,27 +265,23 @@ func run() -> void:
 func _start() -> void:
 	push({"type": "music", "id": music})
 	var foe_side := enemy()
-	# Comme le jeu : le Pokémon sauvage apparaît puis le message ; un dresseur annonce son Pokémon
-	# avant de lancer sa Ball, et le joueur aussi (« Go ! »).
-	if is_wild():
-		var wild_mon := _send_out(foe_side, 0)
-		state.register_seen(wild_mon.pokemon.species)
-		_push_send_out(wild_mon, true)
-		say(BattleText.WILD_APPEARED, {0: wild_mon.name()})
-	else:
-		push({"type": "trainer", "side": BattleSide.ENEMY, "show": true})
-		say(BattleText.TRAINER_CHALLENGE, {0: foe_side.trainer.class_name_text(), 1: foe_side.trainer.name()})
-		var first := _first_able(foe_side)
-		push({"type": "trainer", "side": BattleSide.ENEMY, "show": false})
-		var sent := _send_out(foe_side, first)
-		state.register_seen(sent.pokemon.species)
-		say(BattleText.TRAINER_SENT, {0: foe_side.trainer.class_name_text(), 1: foe_side.trainer.name(), 2: sent.name()})
-		_push_send_out(sent, true)
+	var foe := _send_out(foe_side, 0 if is_wild() else _first_able(foe_side))
+	state.register_seen(foe.pokemon.species)
 	var lead := _send_out(player(), _first_able(player()))
-	# Le héros entre en scène (la caméra recule) avant d'annoncer son Pokémon.
-	push({"type": "player_entry"})
-	say(BattleText.GO, {0: lead.name()})
-	_push_send_out(lead, true)
+	# Le début du combat est joué d'un bloc par l'écran, comme le client du jeu (0x021EB630 en combat
+	# sauvage, 0x021EB810 contre un dresseur) : effets, messages, jauges et rangées de Balls.
+	var intro := {"type": "intro", "trainer": not is_wild(), "enemy": _send_out_event(foe, true),
+		"player": _send_out_event(lead, true), "go": _text(BattleText.GO, {0: lead.name()})}
+	if is_wild():
+		intro.appeared = _text(BattleText.WILD_APPEARED, {0: foe.name()})
+	else:
+		var trainer_words := {0: foe_side.trainer.class_name_text(), 1: foe_side.trainer.name()}
+		intro.challenge = _text(BattleText.TRAINER_CHALLENGE, trainer_words)
+		var sent_words := trainer_words.duplicate()
+		sent_words[2] = foe.name()
+		intro.sent = _text(BattleText.TRAINER_SENT, sent_words)
+		intro.parties = [player().party.duplicate(), foe_side.party.duplicate()]
+	push(intro)
 	_mark_opponents()
 	# Talents d'entrée : du plus rapide au plus lent.
 	for mon in _by_speed(all_active()):
@@ -313,8 +309,17 @@ func _send_out(side: BattleSide, index: int) -> BattleMon:
 ## Le Pokémon arrive à l'écran (`intro` : au début du combat). Le moteur joue tout le tour
 ## d'avance : l'interface reçoit les PV et le niveau de ce moment.
 func _push_send_out(mon: BattleMon, intro := false) -> void:
-	push({"type": "send_out", "side": mon.side, "slot": 0, "mon": mon, "intro": intro, "hp": mon.hp(), "max": mon.max_hp(),
-		"level": mon.level(), "status": mon.status()})
+	push(_send_out_event(mon, intro))
+
+
+func _send_out_event(mon: BattleMon, intro := false) -> Dictionary:
+	return {"type": "send_out", "side": mon.side, "slot": 0, "mon": mon, "intro": intro, "hp": mon.hp(), "max": mon.max_hp(),
+		"level": mon.level(), "status": mon.status()}
+
+
+## Un message à montrer plus tard (fichier, ligne, mots des tampons), comme say().
+static func _text(line: int, words := {}, file := BWFiles.TEXT_BATTLE) -> Dictionary:
+	return {"file": file, "line": line, "words": words}
 
 
 ## Chaque Pokémon du joueur au combat a affronté chaque adversaire au combat (partage de

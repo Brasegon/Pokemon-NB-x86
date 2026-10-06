@@ -14,8 +14,10 @@ const LINE_SPACING := 16
 const SCROLL_DURATION := 0.12
 const ARROW_COLOR := Color("#e04838")
 ## Vitesses du texte proposées dans les options (lettres par seconde, 0 = instantané).
-## N&B : lente = 1 lettre toutes les 4 images, moyenne = toutes les 2, rapide = à chaque image.
-const TEXT_SPEEDS := {"lente": 15.0, "moyenne": 30.0, "rapide": 60.0, "instantanee": 0.0}
+## N&B (table 0x0209DF48 de l'ARM9, lue par 0x02012FFC sur le terrain et 0x021B857C en combat) :
+## lente = 3 images d'attente entre deux lettres (une lettre toutes les 4 images), moyenne = 1 (toutes
+## les 2), rapide = -2 (deux lettres par image) ; 0x0201CE10 traduit la valeur pour l'écriture.
+const TEXT_SPEEDS := {"lente": 15.0, "moyenne": 30.0, "rapide": 120.0, "instantanee": 0.0}
 const TEXT_SPEED_LABELS := {"lente": "Lente", "moyenne": "Moyenne", "rapide": "Rapide", "instantanee": "Instantanée"}
 const DEFAULT_TEXT_SPEED := "moyenne"
 
@@ -25,6 +27,12 @@ const DEFAULT_TEXT_SPEED := "moyenne"
 @export var accepts_input := true
 ## Si positif, la boîte passe toute seule à la suite après ce délai d'attente (en secondes).
 @export var auto_advance := 0.0
+## Bruitage joué quand le texte reprend après une attente {BE00} / {BE01} (le combat joue
+## SEQ_SE_MESSAGE, 0x021ED07C) ; vide : aucun.
+var resume_sound := ""
+## Vrai : un texte qui finit par {BE00} / {BE01} attend encore une fois après la reprise, comme les
+## messages du combat (0x021ECF08 : l'écriture reprend, trouve la fin, puis attend de nouveau).
+var hold_at_end := false
 ## Contenu des tampons de texte variable, par numéro de tampon (rempli par les scripts du jeu).
 var buffers := {}
 ## Utilisé quand le texte demande le nom du joueur et qu'aucun tampon n'est rempli.
@@ -47,6 +55,8 @@ var _scroll := 0.0
 var _scrolled_out := ""
 var _blink := 0.0
 var _waited := 0.0
+## Dernière attente après une attente {BE..} qui finissait le texte (hold_at_end).
+var _final_hold := false
 
 
 func _init() -> void:
@@ -77,8 +87,10 @@ static func preferred_size() -> Vector2i:
 	return Vector2i(300, VISIBLE_LINES * LINE_SPACING + 14)
 
 
-## Commence à afficher une ligne (caractères bruts de MsgFile.get_chars()).
-func show_chars(chars: PackedInt32Array) -> void:
+## Commence à afficher une ligne (caractères bruts de MsgFile.get_chars()) ; `instant` : tout le
+## texte jusqu'à la première attente d'un coup (le combat écrit ainsi « Que doit faire X ? »,
+## 0x021ECE00).
+func show_chars(chars: PackedInt32Array, instant := false) -> void:
 	_steps = _expand(TextFlow.tokenize(chars))
 	_step = 0
 	_clear_lines()
@@ -86,7 +98,10 @@ func show_chars(chars: PackedInt32Array) -> void:
 	_done = false
 	_budget = 0.0
 	_scroll = 0.0
+	_final_hold = false
 	visible = true
+	if instant:
+		_run(-1)
 	queue_redraw()
 	_text_area.queue_redraw()
 
@@ -131,8 +146,7 @@ func is_complete() -> bool:
 		return true
 	if _step < _steps.size():
 		return false
-	var last: Variant = _steps[_steps.size() - 1] if not _steps.is_empty() else null
-	return not (last is int and last in [TextFlow.Kind.WAIT_CLEAR, TextFlow.Kind.WAIT_SCROLL])
+	return not _ends_with_wait()
 
 
 func is_closed() -> bool:
@@ -220,12 +234,22 @@ func _run(count: int) -> void:
 
 func _resume() -> void:
 	_waiting = false
+	if _step >= _steps.size() and hold_at_end and not _final_hold and _ends_with_wait():
+		_final_hold = true
+		_waiting = true
+		_waited = 0.0
+		if not resume_sound.is_empty() and Autoloads.sound():
+			Autoloads.sound().play_effect(resume_sound)
+		queue_redraw()
+		return
 	if _step >= _steps.size():
 		_done = true
 		visible = false
 		finished.emit()
 		return
 	var wait: TextFlow.Kind = _steps[_step - 1]
+	if not resume_sound.is_empty() and Autoloads.sound():
+		Autoloads.sound().play_effect(resume_sound)
 	if wait == TextFlow.Kind.WAIT_CLEAR:
 		_clear_lines()
 	else:
@@ -239,6 +263,11 @@ func _resume() -> void:
 		_step += 1
 	_text_area.queue_redraw()
 	queue_redraw()
+
+
+func _ends_with_wait() -> bool:
+	var last: Variant = _steps[_steps.size() - 1] if not _steps.is_empty() else null
+	return last is int and last in [TextFlow.Kind.WAIT_CLEAR, TextFlow.Kind.WAIT_SCROLL]
 
 
 func _expand(tokens: Array[TextFlow.Token]) -> Array:

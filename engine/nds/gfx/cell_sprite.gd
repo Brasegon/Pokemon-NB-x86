@@ -76,6 +76,14 @@ func play_multi_sequence(index: int) -> void:
 	queue_redraw()
 
 
+## Joue la séquence `index` du NANR depuis le début (sprites sans multi-cellules).
+func play_sequence(index: int) -> void:
+	if _multi or _cell_anims == null or index < 0 or index >= _cell_anims.sequences.size():
+		return
+	_cursors = [NANR.Cursor.new(_cell_anims.sequences[index])]
+	queue_redraw()
+
+
 ## La séquence jouée est arrivée au bout (séquences sans boucle).
 func is_finished() -> bool:
 	if _multi_cursor:

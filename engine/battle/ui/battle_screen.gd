@@ -34,9 +34,13 @@ const STAT_LINES: Array[int] = [38, 42, 44, 46, 48, 50]
 
 const MARGIN := 4
 const MESSAGE_HEIGHT := 46
-## Attente après un message entièrement affiché (les messages des combats défilent seuls).
-const MESSAGE_PAUSE := 0.9
+## Attente après un message entièrement écrit, et à chaque {BE00} / {BE01} : 80 images, Valider
+## l'abrège (0x021ECE58 avec 0x50, machine 0x021ECF08). Le texte reprend avec SEQ_SE_MESSAGE.
+const MESSAGE_PAUSE := 80.0 / 60.0
+const MESSAGE_RESUME_SOUND := "SEQ_SE_MESSAGE"
 const FADE_TIME := 0.35
+## Ouverture depuis le noir au début du combat (0x021EB524) : 16 crans, un toutes les 2 images.
+const INTRO_FADE_TIME := 32.0 / 60.0
 const GAUGE_SLIDE_TIME := 0.25
 ## Une image du jeu : les effets, la caméra et les sprites avancent à 60 images par seconde.
 const FRAME := 1.0 / 60.0
@@ -78,7 +82,8 @@ var _ball: Sprite2D
 var _menu: Control
 var _status := [Pokemon.Status.NONE, Pokemon.Status.NONE]
 var _frame_time := 0.0
-var _intro_done := false
+## Rangées de Balls à l'écran (début d'un combat contre un dresseur).
+var _trays: Array[BattleTray] = []
 
 
 static func create(fight: Battle, scene_options := {}) -> BattleScreen:
@@ -149,6 +154,8 @@ func _build() -> void:
 	messages.ink = GameTheme.LIGHT_INK
 	messages.shadow = GameTheme.LIGHT_SHADOW
 	messages.auto_advance = MESSAGE_PAUSE
+	messages.resume_sound = MESSAGE_RESUME_SOUND
+	messages.hold_at_end = true
 	messages.player_name = battle.state.player_name if battle and battle.state else "Joueur"
 	add_child(messages)
 	messages.close()
@@ -225,6 +232,11 @@ func tick_frame() -> void:
 	effects.tick()
 	for sprite: BattleSprite in slots.values():
 		sprite.tick()
+	for tray: BattleTray in _trays.duplicate():
+		if is_instance_valid(tray):
+			tray.tick()
+		else:
+			_trays.erase(tray)
 	particles.tick()
 	stage.tick()
 
@@ -277,8 +289,8 @@ func _play(event: Dictionary) -> void:
 			_play_music(event.id)
 		"message":
 			await _show_message(event.file, event.line, event.get("words", {}))
-		"player_entry":
-			await play_effect(BattleEffects.PLAYER_ENTRY)
+		"intro":
+			await _intro(event)
 		"send_out":
 			await _send_out(event)
 		"withdraw":
@@ -329,8 +341,9 @@ func _play(event: Dictionary) -> void:
 
 # --- Messages et sons -------------------------------------------------------------------------------
 
-## Affiche un message du jeu (fichier système, ligne, mots des tampons) et attend qu'il soit passé.
-func _show_message(file: int, line: int, words: Dictionary, wait := true) -> void:
+## Affiche un message du jeu (fichier système, ligne, mots des tampons) et attend qu'il soit passé ;
+## `instant` : écrit d'un coup (0x021ECE00).
+func _show_message(file: int, line: int, words: Dictionary, wait := true, instant := false) -> void:
 	var text: MsgFile = Autoloads.rom().text_file(BWFiles.TEXT_SYSTEM, file)
 	if text == null:
 		return
@@ -339,7 +352,7 @@ func _show_message(file: int, line: int, words: Dictionary, wait := true) -> voi
 		messages.buffers[int(key)] = str(words[key])
 	messages.accepts_input = wait
 	messages.auto_advance = MESSAGE_PAUSE if wait else 0.0
-	messages.show_chars(text.get_chars(line))
+	messages.show_chars(text.get_chars(line), instant)
 	if wait:
 		await messages.finished
 		# La boîte garde le dernier texte jusqu'au message suivant, comme sur DS.
@@ -438,10 +451,9 @@ func _sync_side_arrays() -> void:
 	trainer_sprites = [slots.get(BattleSprite.PLAYER_TRAINER), slots.get(BattleSprite.ENEMY_TRAINER)]
 
 
-## Un Pokémon arrive : au début du combat, l'intro du Pokémon sauvage (effet 561) ou le lancer de la
-## Ball par le dresseur (569 en face, 564 pour le joueur, après l'arrivée du héros, 562) ; en cours
-## de combat, l'effet 621. Sa jauge glisse ensuite à l'écran.
-func _send_out(event: Dictionary) -> void:
+## Met le Pokémon d'un événement « send_out » à sa place (l'effet d'envoi le montre) et prépare sa
+## jauge, encore cachée. Renvoie sa place.
+func _prepare_pokemon(event: Dictionary) -> int:
 	var side: int = event.side
 	var mon: BattleMon = event.mon
 	var slot := _slot_of(side)
@@ -456,17 +468,14 @@ func _send_out(event: Dictionary) -> void:
 	_status[side] = event.get("status", Pokemon.Status.NONE)
 	gauge.status = _status[side]
 	gauge.caught_mark = battle.is_wild() and side == BattleSide.ENEMY and battle.state.caught.has(mon.pokemon.species)
-	var intro: bool = event.get("intro", false)
-	if intro and side == BattleSide.ENEMY and battle.is_wild():
-		_fade.fade_to(0.0, FADE_TIME)
-		await play_effect(BattleEffects.WILD_INTRO, slot)
-	elif intro and side == BattleSide.ENEMY:
-		await play_effect(BattleEffects.ENEMY_SEND_OUT, slot)
-	elif intro:
-		await play_effect(BattleEffects.PLAYER_SEND_OUT, slot)
-	else:
-		await play_effect(BattleEffects.SWITCH_IN, slot)
-	_slide_gauge(side, true)
+	return slot
+
+
+## Un Pokémon arrive en cours de combat (effet 621), puis sa jauge glisse à l'écran.
+func _send_out(event: Dictionary) -> void:
+	var slot := _prepare_pokemon(event)
+	await play_effect(BattleEffects.SWITCH_IN, slot)
+	_slide_gauge(event.side, true)
 
 
 func _withdraw(side: int) -> void:
@@ -502,9 +511,7 @@ func _slide_gauge(side: int, show: bool) -> void:
 		tween.tween_callback(func() -> void: gauge.visible = false)
 
 
-## Le dresseur d'en face. Au début du combat, il est là en silhouette et la caméra tourne autour
-## avant de le dévoiler (effet 567) ; il s'efface quand il lance sa Ball (dans l'effet 569). Quand il
-## revient après sa défaite, il glisse à sa place.
+## Le dresseur d'en face revient après sa défaite : il glisse à sa place (effet 624).
 func _show_trainer(side: int, show: bool) -> void:
 	var trainer := battle.sides[side].trainer
 	if trainer == null or not show:
@@ -514,14 +521,112 @@ func _show_trainer(side: int, show: bool) -> void:
 	if sprite == null:
 		return
 	_put_sprite(slot, sprite)
-	if not slots.has(_slot_of(side)) and not _intro_done:
-		_intro_done = true
-		_fade.fade_to(0.0, FADE_TIME)
-		await play_effect(BattleEffects.TRAINER_INTRO)
+	if slots.has(_slot_of(side)):
+		slots[_slot_of(side)].invisible = true
+	await play_effect(BattleEffects.TRAINER_RETURN)
+
+
+# --- Début du combat -------------------------------------------------------------------------------
+
+## Le début du combat, déroulé comme le client du jeu ; l'événement « intro » de Battle donne les
+## deux Pokémon envoyés et les messages.
+func _intro(event: Dictionary) -> void:
+	if event.get("trainer", false):
+		await _trainer_intro(event)
 	else:
-		if slots.has(_slot_of(side)):
-			slots[_slot_of(side)].invisible = true
-		await play_effect(BattleEffects.TRAINER_RETURN)
+		await _wild_intro(event)
+
+
+## Combat sauvage (0x021EB630) : l'intro du Pokémon (effet 561) pendant l'ouverture depuis le noir,
+## « Un X sauvage apparaît ! », sa jauge entre et la boîte se ferme, le héros arrive (562), puis il
+## envoie son Pokémon.
+func _wild_intro(event: Dictionary) -> void:
+	var slot := _prepare_pokemon(event.enemy)
+	messages.close()
+	effects.play(BattleEffects.WILD_INTRO, slot)
+	_fade.fade_to(0.0, INTRO_FADE_TIME)
+	await _until_effects_done()
+	await _say(event.appeared)
+	_slide_gauge(BattleSide.ENEMY, true)
+	messages.close()
+	await play_effect(BattleEffects.PLAYER_ENTRY)
+	await _send_player(event)
+
+
+## Combat contre un dresseur (0x021EB810) : intro du dresseur (567) pendant l'ouverture, sa rangée de
+## Balls et « Un combat est lancé par... » ; quand le message est passé, la fin de son animation
+## (568) et la boîte se ferme ; « Un X est envoyé par... », puis l'envoi (569) : sa rangée disparaît
+## et la boîte se ferme. Ensuite la rangée du joueur, la jauge d'en face et l'arrivée du héros (562),
+## et le joueur envoie son Pokémon quand l'effet et sa rangée sont finis.
+func _trainer_intro(event: Dictionary) -> void:
+	var trainer := battle.sides[BattleSide.ENEMY].trainer
+	var sprite := BattleSprite.for_trainer(trainer.trainer_class) if trainer else null
+	if sprite:
+		_put_sprite(BattleSprite.ENEMY_TRAINER, sprite)
+	messages.close()
+	effects.play(BattleEffects.TRAINER_INTRO, BattleSprite.ENEMY)
+	_fade.fade_to(0.0, INTRO_FADE_TIME)
+	await _until_effects_done()
+	var parties: Array = event.get("parties", [[], []])
+	var enemy_tray := _show_tray(BattleSide.ENEMY, parties[BattleSide.ENEMY])
+	await _say(event.challenge)
+	effects.play(BattleEffects.TRAINER_READY, BattleSprite.ENEMY)
+	messages.close()
+	await _until_effects_done()
+	await _say(event.sent)
+	var slot := _prepare_pokemon(event.enemy)
+	effects.play(BattleEffects.ENEMY_SEND_OUT, slot)
+	_remove_tray(enemy_tray)
+	messages.close()
+	await _until_effects_done()
+	var player_tray := _show_tray(BattleSide.PLAYER, parties[BattleSide.PLAYER])
+	_slide_gauge(BattleSide.ENEMY, true)
+	effects.play(BattleEffects.PLAYER_ENTRY)
+	while effects.is_running() or player_tray.busy:
+		await get_tree().process_frame
+	await _send_player(event, player_tray)
+
+
+## Le joueur envoie son Pokémon : l'effet 564 et « X ! Go ! » commencent ensemble ; quand le message
+## est passé, la rangée de Balls disparaît et la boîte se ferme ; la jauge entre à la fin de l'effet.
+func _send_player(event: Dictionary, tray: BattleTray = null) -> void:
+	var slot := _prepare_pokemon(event.player)
+	effects.play(BattleEffects.PLAYER_SEND_OUT, slot)
+	await _say(event.go)
+	_remove_tray(tray)
+	messages.close()
+	await _until_effects_done()
+	_slide_gauge(BattleSide.PLAYER, true)
+
+
+## Message préparé par Battle._text() : écrit, puis 80 images d'attente.
+func _say(text: Dictionary) -> void:
+	await _show_message(text.file, text.line, text.get("words", {}))
+
+
+func _until_effects_done() -> void:
+	if effects.is_running():
+		await effects.finished
+
+
+## Rangée de Balls d'une équipe, à la place de la jauge du même côté (0x021F81DC).
+func _show_tray(side: int, party: Array) -> BattleTray:
+	var tray_side := BattleTray.PLAYER if side == BattleSide.PLAYER else BattleTray.ENEMY
+	var tray := BattleTray.create(tray_side, BattleTray.states_of(party))
+	var gauge_at := ENEMY_GAUGE if side == BattleSide.ENEMY else _player_gauge_position()
+	tray.position = gauge_at + Vector2(BattleGauge.SIZE) / 2.0
+	add_child(tray)
+	move_child(tray, messages.get_index())
+	_trays.append(tray)
+	_play_sound("SEQ_SE_TB_START")
+	return tray
+
+
+## La rangée disparaît d'un coup (0x021F8200).
+func _remove_tray(tray: BattleTray) -> void:
+	if tray and is_instance_valid(tray):
+		_trays.erase(tray)
+		tray.queue_free()
 
 
 # --- Effets : ce que la machine des effets demande à l'écran --------------------------------------
@@ -883,7 +988,7 @@ func _no_pp_left(mon: BattleMon) -> bool:
 
 ## Un Pokémon de l'équipe (n°), ou -1 si le joueur annule (quand il le peut).
 func _choose_party(prompt: int, cancellable: bool) -> int:
-	await _show_message(BWFiles.TEXT_BATTLE_PARTY, prompt, {}, false)
+	await _show_message(BWFiles.TEXT_BATTLE_PARTY, prompt, {}, false, true)
 	var active := battle.player().mon(0)
 	var panel := BattlePartyPanel.create(battle.player().party, active.party_index if active and not active.is_fainted() else -1)
 	panel.cancellable = cancellable

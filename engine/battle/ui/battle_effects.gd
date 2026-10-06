@@ -23,6 +23,8 @@ const PLAYER_ENTRY := 562
 const PLAYER_SEND_OUT := 564
 const CAMERA_HOME := 566
 const TRAINER_INTRO := 567
+## Attend la fin des animations des dresseurs (attente 4) : joué après « Un combat est lancé... ».
+const TRAINER_READY := 568
 const ENEMY_SEND_OUT := 569
 const FAINT := 571
 const SHINY := 608

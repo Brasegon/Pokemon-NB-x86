@@ -249,17 +249,24 @@ static func _auto(battle: Battle, request: Dictionary) -> Variant:
 	return null
 
 
-## Texte des messages d'un combat (pour les vérifier et pour lire le déroulement).
+## Texte des messages d'un combat (pour les vérifier et pour lire le déroulement) ; ceux du début
+## du combat sont dans l'événement « intro ».
 func _transcript(battle: Battle) -> PackedStringArray:
 	var lines := PackedStringArray()
 	for event in battle.events:
-		if event.type != "message":
-			continue
-		var file: MsgFile = _rom.text_file(BWFiles.TEXT_SYSTEM if event.file != BWFiles.TEXT_TRAINER_SPEECH else BWFiles.TEXT_SYSTEM, event.file)
-		var words := {}
-		for key: int in event.words:
-			words[key] = event.words[key]
-		lines.append(TextFlow.plain(file.get_chars(event.line), words).replace("
+		var texts: Array = []
+		if event.type == "message":
+			texts = [event]
+		elif event.type == "intro":
+			for key: String in ["appeared", "challenge", "sent", "go"]:
+				if event.has(key):
+					texts.append(event[key])
+		for text: Dictionary in texts:
+			var file: MsgFile = _rom.text_file(BWFiles.TEXT_SYSTEM, text.file)
+			var words := {}
+			for key: int in text.words:
+				words[key] = text.words[key]
+			lines.append(TextFlow.plain(file.get_chars(text.line), words).replace("
 ", " "))
 	return lines
 
