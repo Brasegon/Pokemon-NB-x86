@@ -64,6 +64,23 @@ d'une lecture en +4).
 - **Overlay 10** (0x02155100) : le cœur du terrain (chargement des matrices, des scripts, des
   événements). **Overlay 21** (0x02187EA0) : le chargeur des morceaux de carte et le calcul des
   hauteurs (voir *Permissions* plus bas).
+- **Sections de l'ARM9** (`Rom.arm9_layout()` de `tools/re/nds.py`) : les paramètres du module
+  (+0 et +4 début et fin d'une liste, +8 début des données, +0C et +10 bss) décrivent des sections
+  recopiées au démarrage, rangées après le code fixe (0x02004000-0x020A9E20). Entrées de 16 octets :
+  adresse, taille, l'adresse encore, taille du bss. ITCM en 0x01FF8000 (0x820 octets), DTCM en
+  0x02FE0000 (0xA0, plus 0x20 de bss), et 0x20 octets en 0x02400000 et en 0x06898000, juste devant
+  les overlays 139 à 142 (0x02400020, 0x02400040) et 95 (0x06898020, en VRAM). Les tailles
+  s'additionnent exactement jusqu'à la liste (0x900 octets). Le bss du code fixe va de 0x020A9E20
+  à 0x02154260, où commencent les overlays.
+- **ARM9i** (en-tête 1C0 : code propre à la DSi, chargé en 0x02400000) : chiffré dans la ROM, il
+  n'est pas lu. 62 appels de l'ARM9 visent des adresses 0x027xxxxx où rien n'est chargé (par
+  exemple 0x02088230 → 0x02704318) : sans doute du code propre à la DSi (non vérifié).
+- **Projet Ghidra** (`tools/re/ghidra_project.py`) : 6 495 fonctions dans l'ARM9 et 26 325 dans
+  les overlays, dont 5 243 trouvées par leurs pointeurs (tables, fonctions de rappel). Restent
+  inconnues de Ghidra les fonctions qu'un overlay n'atteint que dans un autre overlay : 8 964
+  appels, et 199 commandes de script de l'overlay 21 rangées dans la table de l'overlay 10
+  (`tools/re/decomp.py` les crée à la demande). L'ARM9 appelle aussi des overlays directement (118
+  appels, par exemple 0x0205AE64 → 0x02165FE0).
 
 ## Formats 2D Nitro (`engine/nds/gfx/`)
 
@@ -752,11 +769,13 @@ les PNJ « t4x4flip » ont 7 images, la droite étant la gauche retournée.
 **Machine virtuelle** (ARM9) : 0x0201121C la crée, 0x02011298 l'exécute. Structure : +4 table des
 commandes, +8 nombre de commandes, +0C profondeur de la pile d'appels, +0D état (0 arrêtée,
 1 en marche, 2 en attente d'une fonction), +10 fonction d'attente, +14 position dans le script,
-+18 pile d'appels, +20 contexte. Chaque tour : numéro de commande (u16, 0x02011330), arrêt s'il
-dépasse le nombre de commandes, appel de `table[numéro](machine, contexte)` ; la commande renvoie 1
-pour rendre la main (attente), 0 pour continuer. Utilitaires : 0x02011330 lit un u16, 0x0201134C un
-u32, 0x020113B0 saute, 0x020113B4 appelle (empile la position), 0x020113C4 revient, 0x020113D0 met
-la machine en attente d'une fonction, 0x02011290 l'arrête.
++18 pile d'appels, +20 contexte, +24 et +28 une fonction de contrôle et son argument (installés par
+0x02011328). Chaque tour : numéro de commande (u16, 0x02011330), arrêt s'il dépasse le nombre de
+commandes, appel de la fonction de contrôle si elle existe (machine, contexte, argument, numéro ;
+si elle renvoie 0 la machine s'arrête, 0x020112EE), puis de `table[numéro](machine, contexte)` ; la
+commande renvoie 1 pour rendre la main (attente), 0 pour continuer. Utilitaires : 0x02011330 lit un
+u16, 0x0201134C un u32, 0x020113B0 saute, 0x020113B4 appelle (empile la position), 0x020113C4
+revient, 0x020113D0 met la machine en attente d'une fonction, 0x02011290 l'arrête.
 
 **Table des commandes** : 609 fonctions en 0x021705BC (overlay 10), nombre lu en 0x02170568 ;
 installée par 0x02158B9C. 9 entrées sont vides (137, 143-145, 153, 154, 156, 157, 435). Les

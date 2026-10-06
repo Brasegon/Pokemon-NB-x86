@@ -76,5 +76,8 @@ Autres tests : `test_explorer`, `test_ui`, `test_sound`, `test_navigation`, `tes
   SDK .NET. Écrire les gros scripts Python dans un fichier plutôt qu'en heredoc.
 - Outils de rétro-ingénierie dans [tools/re/](tools/re/) (lecture de la ROM, désassemblage, recherche
   de motifs ; méthode dans son README). Le désassemblage va dans `tools/re/out/`, ignoré par git.
+- Ghidra 12 (Java 21 ou plus) et PyGhidra : `tools/re/ghidra_project.py` crée le projet Ghidra du
+  code dans `tools/re/out/ghidra/`, `tools/re/decomp.py` donne le pseudo-C d'une fonction
+  (`ov21:0x021B1568`). Les chemins de Ghidra et du JDK dépendent du PC (voir la mémoire).
 - Mémoire de Claude exportée dans [.claude/memoire/](.claude/memoire/) (son README explique comment la
   restaurer sur un autre PC).
