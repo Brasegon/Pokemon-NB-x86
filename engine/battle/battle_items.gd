@@ -587,7 +587,12 @@ func use_from_bag(mon: BattleMon, action: Dictionary) -> void:
 	var item: int = action.item
 	var data := ItemData.of(item)
 	var side := battle.sides[mon.side]
-	if side.is_player():
+	if side.is_player() and battle.demo:
+		# La professeure explique, puis lance sa Poké Ball (fichier 20, lignes 0 et 1).
+		battle.state.remove_item(item, 1)
+		battle.say(0, {}, Battle.DEMO_TEXT)
+		battle.say(1, {}, Battle.DEMO_TEXT)
+	elif side.is_player():
 		battle.state.remove_item(item, 1)
 		battle.say(BattleText.PLAYER_USED_ITEM, {0: battle.state.player_name, 1: _name(item)})
 	else:
@@ -677,6 +682,9 @@ func throw_ball(mon: BattleMon, ball: int) -> void:
 	var grass := BattleCalc.dark_grass_ratio(battle.state.caught_count()) if battle.dark_grass else BattleCalc.FX_ONE
 	var result := BattleCalc.capture(target.max_hp(), target.hp(), data.catch_rate if data else 255, ball_ratio(ball, target),
 		status_ratio, grass, battle.state.caught_count(), battle.random, ball == MASTER_BALL)
+	if battle.demo:
+		# La Ball de la démonstration réussit toujours.
+		result = {"caught": true, "shakes": 3, "critical": false}
 	battle.push({"type": "ball", "ball": ball, "shakes": result.shakes, "caught": result.caught, "critical": result.critical})
 	if not result.caught:
 		battle.say([BattleText.BROKE_FREE, BattleText.ALMOST_1, BattleText.ALMOST_2, BattleText.ALMOST_3][clampi(result.shakes, 0, 3)])
@@ -685,6 +693,10 @@ func throw_ball(mon: BattleMon, ball: int) -> void:
 	battle.push({"type": "sound", "name": "SEQ_ME_POKEGET", "fanfare": true})
 	battle.say(BattleText.CAUGHT, {0: target.name()})
 	var pokemon := target.pokemon
+	if battle.demo:
+		battle.caught_pokemon = pokemon
+		battle.result = Battle.Result.CAUGHT
+		return
 	var new_entry: bool = not battle.state.caught.has(pokemon.species)
 	battle.state.register_caught(pokemon.species)
 	if new_entry and battle.state.has_pokedex:

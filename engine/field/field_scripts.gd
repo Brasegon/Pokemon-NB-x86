@@ -7,8 +7,10 @@ extends Node
 
 signal script_started(id: int)
 signal script_finished(id: int)
-## Un combat commence (commande 0x85) ; la phase 4 s'y branchera.
+## Un combat de script commence (commande 0x85 ; 0 et 0 pour la démonstration de capture).
 signal battle_started(trainer: int, partner: int)
+## Le joueur a perdu : retour au dernier lieu de soin (commande 0x8C).
+signal blackout_requested
 
 ## Script lancé au début d'une nouvelle partie : il met une centaine de drapeaux qui cachent les PNJ
 ## des moments suivants de l'histoire (premier script de la plage commune 9600-9699, fichier 866).
@@ -62,6 +64,13 @@ var _starter_answer := -1
 var _buildings: Array[Dictionary] = []
 var _building_time := {}
 var _battle_time := 0.0
+## Qui joue les combats : l'écran du terrain pose l'écran de combat par-dessus le terrain, puis
+## appelle end_battle(). Sans lui (tests des scripts), le combat est gagné d'office après un court
+## passage au noir.
+var battle_host := Callable()
+## Résultat du dernier combat (lu par la commande 0x8D).
+var last_battle_result := Battle.Result.WIN
+var _battle_running := false
 ## Temps écoulé depuis le début d'une fanfare ou d'un effet sonore attendu.
 var _sound_time := 0.0
 
@@ -431,16 +440,38 @@ func starter_answer() -> int:
 	return _starter_answer
 
 
-## Combat de dresseurs (commande 0x85). Les combats viennent avec la phase 4 : en attendant, un
-## court passage au noir, et le joueur gagne.
+## Combat de dresseurs (commande 0x85). Les combats doubles ne sont pas encore là : on affronte le
+## premier dresseur (ou le second s'il est seul).
 func start_battle(trainer: int, partner: int, _flags: int) -> void:
-	print("Combat contre le dresseur n° %d%s (phase 4)" % [trainer, " et %d" % partner if partner else ""])
 	battle_started.emit(trainer, partner)
+	_run_battle(Battle.against_trainer(state, trainer if trainer > 0 else partner))
+
+
+## Démonstration de capture de la professeure (commande 0x17D).
+func start_capture_demo() -> void:
+	battle_started.emit(0, 0)
+	_run_battle(Battle.capture_demo())
+
+
+func _run_battle(battle: Battle) -> void:
 	_battle_time = 0.0
-	fade_screen(3, 0, 16, -1)
+	if battle_host.is_valid() and battle != null:
+		_battle_running = true
+		battle_host.call(battle)
+	else:
+		last_battle_result = Battle.Result.WIN
+		fade_screen(3, 0, 16, -1)
+
+
+## Fin du combat joué par l'hôte.
+func end_battle(result: Battle.Result) -> void:
+	last_battle_result = result
+	_battle_running = false
 
 
 func battle_done(delta: float) -> bool:
+	if battle_host.is_valid():
+		return not _battle_running
 	_battle_time += delta
 	if _battle_time < BATTLE_PLACEHOLDER_TIME:
 		return false
@@ -448,8 +479,17 @@ func battle_done(delta: float) -> bool:
 	return true
 
 
+## Commande 0x8D : 1 sauf après une défaite (table 0x02172568 lue par 0x0216EF38, colonne 1 : le
+## combat gagné, la fuite ou la capture donnent 1).
 func battle_won() -> bool:
-	return true
+	return last_battle_result != Battle.Result.LOSE
+
+
+## Commande 0x8C (événement 0x0215F5DC) : l'équipe est soignée et le héros retourne au dernier lieu
+## de soin ; l'écran du terrain s'en charge.
+func black_out() -> void:
+	state.heal_party()
+	blackout_requested.emit()
 
 
 func ask_yes_no() -> void:
@@ -547,7 +587,7 @@ func set_character_position(id: int, x: int, _y: int, z: int, direction: int) ->
 
 ## Au plus quelques secondes d'attente pour un son : sans pilote audio (tests), il ne finit pas.
 const SOUND_LIMIT := 10.0
-## Durée de l'écran qui tient lieu de combat, en attendant la phase 4.
+## Durée du passage au noir qui tient lieu de combat quand personne ne joue les combats (tests).
 const BATTLE_PLACEHOLDER_TIME := 1.5
 
 

@@ -26,6 +26,16 @@ const MUSIC_WILD := 1128
 const MUSIC_WILD_VICTORY := 1148
 ## Talents et objets cités par le moteur lui-même.
 const EXP_SHARE := 216
+const POKE_BALL := 4
+## Démonstration de capture (voir capture_demo()).
+const DEMO_SPECIES := 572
+const DEMO_LEVEL := 7
+const DEMO_MOVES: Array[int] = [1, 45]
+const DEMO_WILD_SPECIES := 504
+const DEMO_WILD_LEVEL := 2
+const DEMO_WILD_MOVES: Array[int] = [33, 43]
+## Textes de la démonstration (fichier système 20) : la professeure explique, puis lance sa Ball.
+const DEMO_TEXT := 20
 const LUCKY_EGG := 231
 const STRUGGLE := 165
 ## Dégâts de l'empoisonnement grave : n/16 des PV (n de 1 à 15).
@@ -46,7 +56,7 @@ var turn := 0
 var result := Result.NONE
 ## File des événements, que l'interface vide.
 var events: Array[Dictionary] = []
-## Pour les tests : répond tout de suite aux demandes (Callable(battle, demande) -> réponse).
+## Répond tout de suite aux demandes (Callable(battle, demande) -> réponse) : tests, démonstration.
 var auto_answer := Callable()
 ## Demande en attente de réponse ({} : aucune).
 var pending := {}
@@ -99,6 +109,30 @@ static func against_trainer(game: GameState, trainer_id: int, options := {}) -> 
 		enemy.items = trainer.items.duplicate()
 		battle.music = trainer.battle_music()
 		battle.victory_music = trainer.victory_music()
+	return battle
+
+
+## Démonstration de capture de la professeure sur la Route 1 (commande 0x17D, préparée par
+## 0x0216E8EC) : son Minccino (572) niveau 7 avec Écras'Face (1) et Rugissement (45), contre un
+## Ratentif (504) niveau 2 avec Charge (33) et Groz'Yeux (43), décor 0 et genre de case 5. Elle se
+## joue toute seule : une attaque, puis la Poké Ball de la professeure (textes du fichier 20), qui
+## réussit. La partie du joueur n'est pas touchée (ni son équipe, ni son Pokédex).
+static func capture_demo(options := {}) -> Battle:
+	var random: GameRandom = options.get("random", GameRandom.from_time())
+	var professor := GameState.new()
+	professor.party.append(Pokemon.create(DEMO_SPECIES, DEMO_LEVEL, {"moves": DEMO_MOVES, "random": random}))
+	professor.add_item(POKE_BALL, 1)
+	var wild_mon := Pokemon.create(DEMO_WILD_SPECIES, DEMO_WILD_LEVEL, {"moves": DEMO_WILD_MOVES, "random": random})
+	var battle := Battle.wild(professor, wild_mon, {"random": random, "background": 0, "terrain": 5})
+	battle.demo = true
+	var turns := [0]
+	battle.auto_answer = func(_battle: Battle, request: Dictionary) -> Variant:
+		if request.kind != "action":
+			return -1
+		turns[0] += 1
+		if turns[0] == 1:
+			return {"action": Action.FIGHT, "move": 0}
+		return {"action": Action.BAG, "item": POKE_BALL, "target": 0}
 	return battle
 
 
@@ -537,6 +571,8 @@ func _check_faints() -> void:
 ## tiennent un Multi Exp, x 1,5 contre un dresseur, ajustée aux niveaux (0x021CB4FC), x 1,5 ou 1,7
 ## pour un Pokémon échangé, x 1,5 avec un Œuf Chance ; EV de l'espèce vaincue.
 func _give_exp(defeated: BattleMon) -> void:
+	if demo:
+		return
 	var party := player().party
 	var base := BattleCalc.base_exp_yield(defeated.pokemon)
 	if not is_wild():

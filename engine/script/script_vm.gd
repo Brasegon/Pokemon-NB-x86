@@ -334,6 +334,12 @@ func _step() -> bool:
 			host.start_battle(trainer, partner, _value())
 			_wait = host.battle_done
 			return false
+		0x8C:
+			# Défaite : l'événement 0x0215F5DC (soins, retour au dernier lieu de soin) remplace le
+			# script, qui s'arrête là (0x0215B34C).
+			host.black_out()
+			stop()
+			return false
 		0x8D:
 			# 1 si le joueur a gagné le dernier combat (table 0x02172568, lue par 0x0216EF38).
 			work.set_var(_u16(), int(host.battle_won()))
@@ -500,9 +506,8 @@ func _step() -> bool:
 			# Transition vers un combat (0x021BE8B8) : le passage au noir de 0x17D suffit.
 			pass
 		0x17D:
-			# Démonstration de capture de la professeure (0x0216E8EC), sur la Route 1 : comme les
-			# combats, en attendant la phase 4.
-			host.start_battle(0, 0, 0)
+			# Démonstration de capture de la professeure (0x0216E8EC), sur la Route 1.
+			host.start_capture_demo()
 			_wait = host.battle_done
 			return false
 		0x1AD:
