@@ -81,6 +81,10 @@ var _vars := {}
 var _stack: Array[Dictionary] = []
 ## Caméra sauvée (0x05) : [œil, point visé].
 var _saved_camera := []
+## Bruitages en attente de leur délai (0x34, tâche 0x021FE4EC) et glissements de son en cours (0x36,
+## 0x37, tâche 0x021FE534).
+var _delayed_sounds: Array[Dictionary] = []
+var _sweeps: Array[Dictionary] = []
 
 
 ## Lance l'effet n° `effect` (0x021F9498) ; `attacker` et `target` : places (0 à 7), ou NO_SLOT ;
@@ -133,8 +137,9 @@ static func _load(effect_number: int) -> PackedByteArray:
 	return archive.get_file(index)
 
 
-## Une image de la machine (0x02011298).
+## Une image de la machine (0x02011298), après les tâches des sons.
 func tick() -> void:
+	_tick_sounds()
 	match _state:
 		0:
 			return
@@ -310,9 +315,14 @@ func _run(op: int, p: Array[int]) -> bool:
 		0x33:
 			host.effect_gauges(p[0], p[1], _attacker)
 		0x34:
-			host.effect_sound(p[0])
+			_sound(p)
 		0x35:
-			host.effect_stop_sound()
+			# 5 : le lecteur par défaut ; sinon le canal n (0x020061F8).
+			host.effect_stop_sound(-1 if p[0] == 5 else p[0] + 1)
+		0x36:
+			_start_sweep(p[0], p[1], 2, _sound_pan(p[2]), _sound_pan(p[3]), p[4], p[5], p[6], p[7])
+		0x37:
+			_start_sweep(p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8])
 		0x38:
 			_yield = 1
 			return _wait_for(p[0])
@@ -340,8 +350,10 @@ func _run(op: int, p: Array[int]) -> bool:
 			elif p[0] == 56:
 				_flags = (_flags & ~0x8000) | ((p[1] & 1) << 15)
 		0x43:
+			# Cri (0x021FBF60, 0x022001B8) : vitesse ajoutée (0x80000000 : normale), volume ajouté.
+			var speed := 0 if p[1] == -0x80000000 else p[1]
 			for slot in _slots(p[0]):
-				host.effect_cry(slot)
+				host.effect_cry(slot, speed, p[2])
 		0x44:
 			_particle_slot = p[0]
 		0x46:
@@ -452,7 +464,97 @@ func _wait_done() -> bool:
 	if kind == 16:
 		if host.effect_cry_busy():
 			return false
+	# Sons (0x021FC826...) : 10 tous les lecteurs, 11 à 14 les canaux 1, 2, 4, 3 ; aussi tant qu'un
+	# son attend son délai ou qu'un glissement est en cours (bits 2 et 3 de [+0]).
+	if kind >= 10 and kind <= 15:
+		if not _delayed_sounds.is_empty() or not _sweeps.is_empty():
+			return false
+		var channel: int = [-1, 1, 2, 4, 3, -1][kind - 10]
+		if host.effect_sound_busy(-1 if channel < 0 else channel + 1):
+			return false
 	return true
+
+
+# --- Sons -------------------------------------------------------------------------------------------
+
+## Commande 0x34 (0x021F97F8) : son, canal (1 à 4 ; 5 : le lecteur de la séquence), panoramique (0
+## gauche, 1 droite, 2 milieu, sinon le côté d'une place : gauche pour le joueur), délai en images,
+## hauteur (64e de demi-ton), volume (0 à 127) ; joué par 0x021FDAE0.
+func _sound(p: Array[int]) -> void:
+	var sound := {"id": p[0], "player": -1 if p[1] == 5 else p[1] + 1, "pan": _sound_pan(p[2]), "delay": p[3],
+		"pitch": p[4], "volume": clampi(p[5], 0, 127)}
+	if sound.delay <= 0:
+		_play_sound(sound)
+	else:
+		_delayed_sounds.append(sound)
+
+
+func _play_sound(sound: Dictionary) -> void:
+	host.effect_sound(sound.id, sound.player, sound.volume, sound.pan, sound.pitch)
+
+
+## Panoramique d'un paramètre de son (0x021F97F8, 0x021FBA98).
+func _sound_pan(spec: int) -> int:
+	match spec:
+		0:
+			return -128
+		1:
+			return 127
+		2:
+			return 0
+	return 127 if (_slot_param(spec) & 1) == 1 else -128
+
+
+## Glissement d'un réglage d'un son (0x021F98E8) : canal, sorte (0 une fois, 1 aller-retour `times`
+## fois), réglage (0 hauteur, 1 volume, 2 panoramique), de `from` à `to`, délai, pas par trajet
+## (`steps` + 1), attente entre deux pas.
+func _start_sweep(channel: int, mode: int, param: int, from: int, to: int, delay: int, steps: int, wait: int, times: int) -> void:
+	var count := times * 2
+	if mode == 1 and count == 0:
+		count = 2
+	_sweeps.append({"player": channel + 1, "mode": mode, "param": ["pitch", "volume", "pan"][clampi(param, 0, 2)],
+		"from": from, "to": to, "value": from << 12, "step": BattleMotion.fx_div(to - from << 12, maxi(steps, 1) << 12),
+		"delay": delay, "steps": steps, "steps_reload": steps, "counter": 0, "wait": wait, "count": count})
+
+
+## Une image des tâches des sons : délais (0x021FE4EC) et glissements (0x021FE534).
+func _tick_sounds() -> void:
+	for sound: Dictionary in _delayed_sounds.duplicate():
+		sound.delay -= 1
+		if sound.delay <= 0:
+			_delayed_sounds.erase(sound)
+			_play_sound(sound)
+	for sweep: Dictionary in _sweeps.duplicate():
+		if _step_sweep(sweep):
+			_sweeps.erase(sweep)
+
+
+func _step_sweep(w: Dictionary) -> bool:
+	if w.delay > 0:
+		w.delay -= 1
+		return false
+	if w.counter != 0:
+		w.counter -= 1
+		return false
+	w.counter = w.wait
+	w.value += w.step
+	var value: int = w.value >> 12
+	var goal: int = w.from if (w.count & 1) == 1 else w.to
+	if (w.step >= 0 and value > goal) or (w.step < 0 and value < goal):
+		value = goal
+	w.value = value << 12
+	host.effect_sound_param(w.player, w.param, value)
+	if w.steps != 0:
+		w.steps -= 1
+		return false
+	w.steps = w.steps_reload
+	if w.mode != 1:
+		return true
+	w.count -= 1
+	if w.count <= 0:
+		return true
+	w.step = -w.step
+	return false
 
 
 # --- Variables --------------------------------------------------------------------------------------

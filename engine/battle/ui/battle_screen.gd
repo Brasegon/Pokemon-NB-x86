@@ -725,22 +725,40 @@ func effect_gauges(show: int, which: int, attacker: int) -> void:
 			gauge.visible = show == 1
 
 
-## Commande 0x34 : effet sonore n° `id` du SDAT.
-func effect_sound(id: int) -> void:
+## Commande 0x34 : effet sonore n° `id` du SDAT sur le lecteur `player` (-1 : le sien), avec son
+## volume, son panoramique et sa hauteur.
+func effect_sound(id: int, player := -1, volume := 127, pan := 0, pitch := 0) -> void:
 	var sound := Autoloads.sound()
 	if sound:
-		sound.play_effect_id(id)
+		sound.play_effect_id(id, player, volume, pan, pitch)
 
 
-func effect_stop_sound() -> void:
-	pass
+func effect_stop_sound(player := -1) -> void:
+	var sound := Autoloads.sound()
+	if sound:
+		sound.stop_effect(player)
+
+
+func effect_sound_busy(player := -1) -> bool:
+	var sound := Autoloads.sound()
+	return sound != null and sound.is_effect_playing(player)
+
+
+## Glissements 0x36 et 0x37 : un réglage ("pitch", "volume", "pan") du lecteur change en cours de son.
+func effect_sound_param(player: int, param: String, value: int) -> void:
+	var sound := Autoloads.sound()
+	if sound:
+		sound.set_effect_param(player, param, value)
 
 
 ## Commande 0x43 : cri du Pokémon de la place.
-func effect_cry(slot: int) -> void:
+## Commande 0x43 : cri du Pokémon de la place, panoramique selon la place (table 0x02209F60 : 20
+## côté joueur, 107 en face), vitesse et volume ajoutés.
+func effect_cry(slot: int, speed := 0, volume_delta := 0) -> void:
 	var sprite: BattleSprite = slots.get(slot)
-	if sprite and sprite.pokemon:
-		_play_cry(sprite.pokemon.species)
+	var sound := Autoloads.sound()
+	if sprite and sprite.pokemon and sound:
+		sound.play_cry(sprite.pokemon.species, sprite.pokemon.form, speed, 127 + volume_delta, 20 if slot % 2 == 0 else 107)
 
 
 func effect_cry_busy() -> bool:
