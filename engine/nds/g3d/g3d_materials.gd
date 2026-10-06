@@ -40,11 +40,17 @@ uniform vec3 diffuse = vec3(1.0);
 uniform vec3 ambient = vec3(0.0);
 uniform vec3 specular = vec3(0.0);
 uniform vec3 emission = vec3(0.0);
+// Fondu des palettes des textures (combat, 0x021F9304) : couleur visée (sRGB) et force evy / 16.
+uniform vec4 palette_fade = vec4(0.0);
 
 varying vec4 ds_color;
 
 vec3 to_linear(vec3 c) {
 	return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, lessThan(c, vec3(0.04045)));
+}
+
+vec3 to_srgb(vec3 c) {
+	return mix(1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, c * 12.92, lessThan(c, vec3(0.0031308)));
 }
 
 float wrap_coord(float x, int mode) {
@@ -86,6 +92,12 @@ void fragment() {
 		uv = vec2(uv.x * k - uv.y * s, uv.x * s + uv.y * k) - tex_translation;
 		uv = vec2(wrap_coord(uv.x, wrap_mode.x), wrap_coord(uv.y, wrap_mode.y));
 		vec4 t = texture(ds_texture, uv);
+		if (palette_fade.a > 0.0) {
+			// Mélange de la DS sur 5 bits (0x02021F00) : c + ((but - c) x evy >> 4).
+			vec3 c5 = round(to_srgb(t.rgb) * 31.0);
+			vec3 t5 = round(palette_fade.rgb * 31.0);
+			t.rgb = to_linear((c5 + floor((t5 - c5) * palette_fade.a)) / 31.0);
+		}
 		if (polygon_mode == 1) {
 			c.rgb = mix(c.rgb, t.rgb, t.a);
 		} else {

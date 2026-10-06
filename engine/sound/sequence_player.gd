@@ -510,7 +510,9 @@ func _note_on(track_index: int, key: int, velocity: int, duration: int) -> void:
 	voice.track = track_index
 	voice.key = key
 	voice.velocity = velocity
-	voice.length = maxi(duration, 1) if not track.tie else -1
+	# Durée 0 : la note n'est pas relâchée d'elle-même, l'échantillon sonne jusqu'au bout (la note
+	# des cris, « 3C 7F 00 » dans SEQ_PV001, sinon coupée au bout d'un tic).
+	voice.length = duration if duration > 0 and not track.tie else -1
 	voice.type = region.type
 	voice.wave = wave
 	voice.duty = region.wave

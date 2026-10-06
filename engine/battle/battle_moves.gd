@@ -152,12 +152,13 @@ func use_move(mon: BattleMon, action: Dictionary) -> void:
 	if not await _charge_turn(mon, data, forced):
 		return
 	var target := _target(mon, data)
-	push_anim(mon, target, move)
+	# L'animation n'est jouée que si la capacité part vraiment (pas d'échec, pas d'esquive).
 	if not _before_move(mon, target, data):
 		_after_failed(mon, data)
 		return
 	if data.target in [MoveData.Target.USER, MoveData.Target.ALLY_OR_USER, MoveData.Target.ALLY,
 			MoveData.Target.ALL_ALLIES, MoveData.Target.USER_SIDE, MoveData.Target.FIELD, MoveData.Target.ALL]:
+		push_anim(mon, mon, move)
 		await _status_move(mon, mon, data)
 		return
 	if target == null or target.is_fainted():
@@ -181,11 +182,14 @@ func use_move(mon: BattleMon, action: Dictionary) -> void:
 			battle.say_mon(BattleText.AVOIDED, target)
 			_after_failed(mon, data)
 			return
+		push_anim(mon, target, move)
 		await _status_move(mon, target, data)
 
 
-func push_anim(mon: BattleMon, target: BattleMon, move: int) -> void:
-	battle.push({"type": "move", "side": mon.side, "target": target.side if target else mon.side, "move": move})
+## Animation d'une capacité (effet n° de la capacité) ; `variant` : variante du script (tour des
+## capacités en deux tours...), variable 10 des effets.
+func push_anim(mon: BattleMon, target: BattleMon, move: int, variant := 0) -> void:
+	battle.push({"type": "move", "side": mon.side, "target": target.side if target else mon.side, "move": move, "variant": variant})
 
 
 func _move_name(move: int) -> String:
@@ -387,6 +391,7 @@ func _damaging_move(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 		_after_failed(mon, data)
 		return
 	if data.category == MoveData.Category.OHKO:
+		push_anim(mon, target, data.id)
 		if battle.abilities.has_ability(target, BattleAbilities.STURDY):
 			battle.abilities.announce(target)
 			battle.say_mon(BattleText.UNAFFECTED, target)
@@ -405,6 +410,8 @@ func _damaging_move(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 	for i in hit_count:
 		if target.is_fainted() or mon.is_fainted():
 			break
+		# Une animation par coup (Double Pied...).
+		push_anim(mon, target, data.id)
 		var critical := _critical(mon, target, data)
 		var amount := calc_damage(mon, target, data, critical, move_type, effectiveness)
 		var dealt := _deal_damage(mon, target, data, amount, critical, effectiveness)

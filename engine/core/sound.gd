@@ -89,12 +89,20 @@ func play_effect_id(id: int) -> bool:
 	return play_effect(archive.sequence_names[id])
 
 
-## Cri d'un Pokémon : la séquence SEQ_PV001 jouée avec la banque de l'espèce (BANK_PV001...).
-func play_cry(species: int) -> bool:
+## Cri d'un Pokémon : la séquence SEQ_PV001 jouée avec la banque de l'espèce. Les banques sont
+## rangées par n° national : BANK_PV001 à BANK_PV493 (indices 1 à 493), puis les cris de la 5e
+## génération (BANK_PMWB_xxx, numérotés à la façon des développeurs, indices 494 à 649), puis
+## BANK_PV492_SKY (650, Shaymin forme Céleste).
+func play_cry(species: int, form := 0) -> bool:
 	var archive := sdat()
-	if archive == null:
+	if archive == null or species <= 0:
 		return false
-	return _play(_cries, "SEQ_PV001", archive.find_bank("BANK_PV%03d" % species))
+	var bank := species
+	if species == 492 and form == 1:
+		bank = archive.find_bank("BANK_PV492_SKY")
+	if archive.bank_info(bank).is_empty():
+		return false
+	return _play(_cries, "SEQ_PV001", bank)
 
 
 func is_cry_playing() -> bool:

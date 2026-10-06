@@ -72,6 +72,10 @@ var invisible := false
 var invisible_saved := false
 ## Animation arrêtée (bits 9 et 10, commande 0x1A).
 var pause_bits := 0
+## Animation figée (bit 8 de [+0x140], commande 0x19 et 0x021FF200) ; `animation_locked` : figée
+## pour de bon ([emplacement+0x54] bit 0), seul le mode 4 la relance.
+var animation_frozen := false
+var animation_locked := false
 ## Sans ombre (bit 23, commande 0x1D).
 var no_shadow := false
 ## Mode « monde » : la taille suit la perspective (calculé par l'écran à chaque image).
@@ -89,6 +93,8 @@ var fade_evy := 0
 var fade_color := Color.BLACK
 ## Décalage en pixels du sprite pour les petites animations hors effets (élan, chute).
 var lift := Vector2.ZERO
+## Décalage dans le décor ajouté à la position ([+0x11C], 0x02015C94 ; ellipses de 0x13).
+var offset := Vector3i.ZERO
 var shadow_visible := true
 
 var _fading := false
@@ -100,6 +106,11 @@ var _fade_counter := 0
 var _applied_evy := 0
 var _applied_color := Color.BLACK
 var _motions := {}
+## Ellipse en cours (commande 0x13, tâche 0x02200DBC) : {rx, ry, step, angle, backward, quadrant,
+## plane, skip, counter, turns, pause, pause_reload}.
+var _orbit := {}
+## Animation qui bégaie (0x19 mode 2, tâche 0x02200C70) : {interval, counter, toggles}.
+var _stutter := {}
 var _tween: Tween
 ## Animation de dresseur en cours (commande 0x22).
 var _acting := false
@@ -170,7 +181,7 @@ static func home(index: int) -> Vector3i:
 
 ## Point d'appui dans le décor, en unités Godot.
 func anchor() -> Vector3:
-	return Vector3(world) / 4096.0
+	return Vector3(world + offset) / 4096.0
 
 
 func is_player_side() -> bool:
@@ -195,6 +206,18 @@ func pixel_scale(ds_pixel: float, perspective: float) -> Vector2:
 	return effect * ds_pixel * Vector2(base_scale.x, base_scale.y) / float(0x10000)
 
 
+## Coupe le sprite sous le sol (`ground` : point du sol sous lui, dans le repère de l'écran), ou
+## plus du tout (null) : sur DS, en mode « monde », le sprite est dans la 3D et le sol le cache
+## quand il s'enfonce (K.O.).
+func set_ground_clip(ground: Variant) -> void:
+	if cell == null or not (cell.material is ShaderMaterial):
+		return
+	var shader_material := cell.material as ShaderMaterial
+	shader_material.set_shader_parameter("clip_enabled", ground != null)
+	if ground != null:
+		shader_material.set_shader_parameter("clip_y", cell.to_local(ground).y)
+
+
 ## Place le sprite : `at` = point d'appui à l'écran, `pixel` = taille d'un pixel du sprite.
 func place(at: Vector2, pixel: Vector2) -> void:
 	position = at + lift * pixel
@@ -213,11 +236,15 @@ func tick() -> void:
 		_set_motion_value(kind, motion.step(_motion_value(kind)))
 		if motion.done:
 			_motions.erase(kind)
+	if not _orbit.is_empty():
+		_step_orbit()
+	if not _stutter.is_empty():
+		_step_stutter()
 	if _fading:
 		_step_fade()
 	if cell:
 		cell.playing = false
-		if pause_bits == 0:
+		if pause_bits == 0 and not animation_frozen:
 			cell.advance(1.0)
 		if _acting and cell.is_finished():
 			_acting = false
@@ -225,12 +252,115 @@ func tick() -> void:
 
 ## Un effet anime encore ce sprite (attente 3 du jeu, 0x021FFC50).
 func is_busy() -> bool:
-	return not _motions.is_empty() or _fading
+	return not _motions.is_empty() or _fading or not _orbit.is_empty()
 
 
-## Lance un mouvement (0x022006EC) ; il remplace celui de même sorte.
+## Lance un mouvement (0x022006EC) ; il remplace celui de même sorte. Le déplacement et l'ellipse
+## partagent le compteur de génération [vue+0x542] : l'un arrête l'autre.
 func start_motion(kind: int, motion: BattleMotion) -> void:
 	_motions[kind] = motion
+	if kind == Motion.POSITION:
+		_orbit.clear()
+
+
+## Ellipse (commande 0x13, 0x021FF9B8) : le sprite fait `turns` tours d'une ellipse de rayons `rx`
+## et `ry` (unités du décor), un tour en `frames` pas, un pas toutes les `skip` + 1 images, `pause`
+## images d'arrêt après chaque tour. `mode` : bit 0 sens (1 : angle décroissant), bits 1-2 plan
+## (0 et 3 : y et z, 1 : x et z, 2 : x et y). `quadrant` : centre de l'ellipse par rapport au départ
+## (0 : +rx, 1 : -rx, 2 : +ry, 3 : -ry), inversé (bit 0) en face, sauf 2 et 3 dans les plans
+## y-z et x-y (modes 0, 1, 4, 5). Le décalage revient à zéro à la fin.
+func start_orbit(mode: int, quadrant: int, rx: int, ry: int, frames: int, skip: int, turns: int, pause: int) -> void:
+	_motions.erase(Motion.POSITION)
+	if slot % 2 == 1 and not (mode in [0, 1, 4, 5] and quadrant in [2, 3]):
+		quadrant ^= 1
+	_orbit = {
+		"rx": rx, "ry": ry, "step": 0x10000 / maxi(frames, 1), "angle": 0x10000 if (mode & 1) == 1 else 0,
+		"backward": (mode & 1) == 1, "quadrant": quadrant, "plane": (mode & 7) >> 1, "skip": skip, "counter": 0,
+		"turns": turns, "pause": 0, "pause_reload": pause,
+	}
+
+
+## Fige ou relance l'animation (0x021FF200) : 0 relance, 1 fige, 2 bascule, 3 fige pour de bon,
+## 4 enlève le verrou et relance ; rien tant que le verrou est mis (sauf 4).
+func set_animation_state(state: int) -> void:
+	if state == 4:
+		animation_locked = false
+		animation_frozen = false
+		return
+	if animation_locked:
+		return
+	match state:
+		1:
+			animation_frozen = true
+		2:
+			animation_frozen = not animation_frozen
+		3:
+			animation_frozen = true
+			animation_locked = true
+		_:
+			animation_frozen = false
+
+
+## Animation qui bégaie (0x19 mode 2) : toutes les `interval` + 1 images, elle se fige ou repart,
+## `times` x 2 fois, puis elle repart.
+func stutter_animation(interval: int, times: int) -> void:
+	_stutter = {"interval": interval, "counter": 0, "toggles": maxi(times, 1) * 2}
+
+
+func _step_stutter() -> void:
+	if _stutter.counter > 0:
+		_stutter.counter -= 1
+		return
+	_stutter.counter = _stutter.interval
+	set_animation_state(2)
+	_stutter.toggles -= 1
+	if _stutter.toggles <= 0:
+		set_animation_state(0)
+		_stutter.clear()
+
+
+## Un pas de l'ellipse (0x02200DBC).
+func _step_orbit() -> void:
+	var o := _orbit
+	if o.pause > 0:
+		o.pause -= 1
+		return
+	if o.counter != o.skip:
+		o.counter += 1
+		return
+	o.counter = 0
+	o.angle += -o.step if o.backward else o.step
+	if (o.angle & ~0xFFFF) != 0:
+		o.angle &= 0xFFFF
+		o.turns -= 1
+		o.pause = o.pause_reload
+	if o.turns <= 0:
+		offset = Vector3i.ZERO
+		_orbit.clear()
+		return
+	var a: int = o.angle
+	var x := 0
+	var y := 0
+	match o.quadrant:
+		0:
+			x = o.rx - BattleMotion.fx_mul(BattleCamera.sin_fx(a + 0x4000), o.rx)
+			y = -BattleMotion.fx_mul(BattleCamera.cos_fx(a + 0x4000), o.ry)
+		1:
+			x = BattleMotion.fx_mul(BattleCamera.sin_fx(a + 0x4000), o.rx) - o.rx
+			y = BattleMotion.fx_mul(BattleCamera.cos_fx(a + 0x4000), o.ry)
+		2:
+			x = -BattleMotion.fx_mul(BattleCamera.sin_fx(a), o.rx)
+			y = o.ry - BattleMotion.fx_mul(BattleCamera.cos_fx(a), o.ry)
+		_:
+			x = BattleMotion.fx_mul(BattleCamera.sin_fx(a), o.rx)
+			y = BattleMotion.fx_mul(BattleCamera.cos_fx(a), o.ry) - o.ry
+	match o.plane:
+		1:
+			offset = Vector3i(x, 0, y)
+		2:
+			offset = Vector3i(x, y, 0)
+		_:
+			offset = Vector3i(0, y, x)
 
 
 func motion_value(kind: int) -> Vector3i:

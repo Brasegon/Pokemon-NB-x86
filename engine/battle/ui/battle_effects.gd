@@ -52,6 +52,8 @@ const WAIT_SIGNAL := -3
 var host: Object
 ## Commandes rencontrées mais pas encore écrites : numéro -> nombre de fois.
 var missing := {}
+## N° de l'effet lancé en dernier ([+0x258]).
+var effect := -1
 
 var _file := PackedByteArray()
 var _pc := -1
@@ -81,13 +83,22 @@ var _stack: Array[Dictionary] = []
 var _saved_camera := []
 
 
-## Lance l'effet n° `effect` (0x021F9498) ; `attacker` et `target` : places (0 à 7), ou NO_SLOT.
-func play(effect: int, attacker := NO_SLOT, target := NO_SLOT) -> bool:
-	var data := _load(effect)
+## Lance l'effet n° `effect` (0x021F9498) ; `attacker` et `target` : places (0 à 7), ou NO_SLOT ;
+## `values` : variables 9 à 15 de départ (paramètres de l'effet, [+0x248]). La variable 10 choisit
+## la variante du script (bornée au nombre de variantes), dont le jeu prend le premier décalage.
+func play(effect_number: int, attacker := NO_SLOT, target := NO_SLOT, values := {}) -> bool:
+	var data := _load(effect_number)
 	if data.size() < 8:
 		return false
+	var variant: int = values.get(10, 0)
+	if variant < 0 or variant >= data.decode_u32(0):
+		variant = 0
+	# Variables 9 à 15 : recopiées de `values` ou remises à zéro ; 54 et 55 restent.
+	for key in range(9, 16):
+		_vars[key] = values.get(key, 0)
+	effect = effect_number
 	_file = data
-	_pc = data.decode_u32(4)
+	_pc = data.decode_u32(4 + variant * 0x38)
 	_attacker = attacker
 	_target = target
 	_stack.clear()
@@ -105,18 +116,18 @@ func is_running() -> bool:
 
 
 ## Joue un effet jusqu'au bout (à appeler depuis une coroutine ; l'écran fait avancer les images).
-func run(effect: int, attacker := NO_SLOT, target := NO_SLOT) -> void:
-	if not play(effect, attacker, target):
+func run(effect_number: int, attacker := NO_SLOT, target := NO_SLOT) -> void:
+	if not play(effect_number, attacker, target):
 		return
 	await finished
 
 
-static func _load(effect: int) -> PackedByteArray:
+static func _load(effect_number: int) -> PackedByteArray:
 	var rom: Node = Autoloads.rom()
 	if rom == null:
 		return PackedByteArray()
-	var archive: NARC = rom.narc(BWFiles.SYSTEM_EFFECTS if effect >= SYSTEM_FIRST else BWFiles.MOVE_EFFECTS)
-	var index := effect - SYSTEM_FIRST if effect >= SYSTEM_FIRST else effect
+	var archive: NARC = rom.narc(BWFiles.SYSTEM_EFFECTS if effect_number >= SYSTEM_FIRST else BWFiles.MOVE_EFFECTS)
+	var index := effect_number - SYSTEM_FIRST if effect_number >= SYSTEM_FIRST else effect_number
 	if archive == null or index < 0 or index >= archive.count():
 		return PackedByteArray()
 	return archive.get_file(index)
@@ -221,6 +232,12 @@ func _run(op: int, p: Array[int]) -> bool:
 		0x12:
 			for slot in _slots(p[0]):
 				_move_sprite(slot, p[1], Vector3i(p[2], p[3], 0), p[4], p[5], p[6])
+		0x13:
+			if p[7] >> 12 != 0:
+				for slot in _slots(p[0]):
+					var sprite: BattleSprite = host.effect_sprite(slot)
+					if sprite:
+						sprite.start_orbit(p[1], p[2], p[3], p[4], p[5] >> 12, p[6] >> 12, p[7] >> 12, p[8])
 		0x15:
 			for slot in _slots(p[0]):
 				_animate(slot, BattleSprite.Motion.SCALE, p[1], Vector3i(p[2], p[3], ONE), p[4], p[5], p[6])
@@ -230,6 +247,19 @@ func _run(op: int, p: Array[int]) -> bool:
 		0x17:
 			for slot in _slots(p[0]):
 				_animate(slot, BattleSprite.Motion.ALPHA, p[1], Vector3i(p[2] << 12, 0, 0), p[3], p[4], p[5])
+		0x19:
+			# Animation du sprite (0x021FF810) : 2 bégaie, 3 figée, 4 relancée.
+			for slot in _slots(p[0]):
+				var sprite: BattleSprite = host.effect_sprite(slot)
+				if sprite == null:
+					continue
+				match p[1]:
+					2:
+						sprite.stutter_animation(p[2], maxi(p[3], 1))
+					3:
+						sprite.set_animation_state(1)
+					4:
+						sprite.set_animation_state(0)
 		0x1A:
 			for slot in _slots(p[0]):
 				var sprite: BattleSprite = host.effect_sprite(slot)
@@ -260,6 +290,10 @@ func _run(op: int, p: Array[int]) -> bool:
 				if sprite:
 					sprite.no_shadow = (p[1] & 1) == 1
 					sprite.queue_redraw()
+		0x1F:
+			# Le sprite du Pokémon est supprimé (0x021FF098).
+			for slot in _slots(p[0]):
+				host.effect_delete_pokemon(slot)
 		0x20:
 			var kind := _work if p[0] == -1 else p[0]
 			host.effect_create_trainer(kind, _slot_param(p[1]), Vector3i(p[2], p[3], p[4]))
@@ -271,6 +305,8 @@ func _run(op: int, p: Array[int]) -> bool:
 				sprite.act(p[1])
 		0x23:
 			host.effect_delete_trainer(p[0])
+		0x2A:
+			host.stage.start_fade(p[0], p[1] & 0xFF, p[2] & 0xFF, p[3] & 0xFF, _bgr555(p[4]))
 		0x33:
 			host.effect_gauges(p[0], p[1], _attacker)
 		0x34:
@@ -353,8 +389,8 @@ func _branch(value: int, test: int, other: int, jump: int) -> void:
 
 
 ## Appel d'un effet du système (0x021FC1AC) : lanceur 14 et cible 16 gardent les places actuelles.
-func _call(effect: int, attacker: int, target: int) -> void:
-	var data := _load(effect)
+func _call(effect_number: int, attacker: int, target: int) -> void:
+	var data := _load(effect_number)
 	if data.size() < 8:
 		return
 	_stack.append({"file": _file, "pc": _pc, "attacker": _attacker, "target": _target, "work": _work})
@@ -410,6 +446,9 @@ func _wait_done() -> bool:
 	if kind == 0 or kind == 2:
 		if host.effect_particles_busy():
 			return false
+	# Fondus du décor (0x021F82C4) : 6 le fond, 7 les socles, 8 les deux ; 9 les palettes 2D.
+	if (kind in [0, 6, 8] and host.stage.is_fading(0)) or (kind in [0, 7, 8] and host.stage.is_fading(1)):
+		return false
 	if kind == 16:
 		if host.effect_cry_busy():
 			return false

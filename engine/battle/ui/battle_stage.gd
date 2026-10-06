@@ -35,6 +35,35 @@ var stages: Array[G3DModelInstance] = []
 var choice := {}
 ## La caméra du jeu (position, mouvements des effets).
 var ds_camera := BattleCamera.new()
+## Fondus des palettes du fond (0) et des socles (1) : commande 0x2A des effets.
+var fades: Array[PaletteFade] = [PaletteFade.new(), PaletteFade.new()]
+
+
+## Fondu des palettes des textures d'un modèle (0x021F6988 pour le fond, 0x021F6D8C pour les
+## socles ; une image : 0x021F9304) : toutes les `wait` + 1 images, les palettes sont mélangées vers
+## la couleur au cran actuel (0 à 16), puis le cran avance d'un vers le but ; fini au but.
+class PaletteFade:
+	var active := false
+	var current := 0
+	var goal := 0
+	var wait := 0
+	var counter := 0
+	var color := Color.BLACK
+
+	## Une image ; renvoie le cran à appliquer, ou -1 si rien ne change.
+	func step() -> int:
+		if not active:
+			return -1
+		if counter != 0:
+			counter -= 1
+			return -1
+		counter = wait
+		var applied := current
+		if current == goal:
+			active = false
+		else:
+			current += 1 if goal > current else -1
+		return applied
 
 
 func _init() -> void:
@@ -135,10 +164,39 @@ func set_shot(index: int) -> void:
 	apply_camera()
 
 
-## Une image du jeu : la caméra avance puis la vue 3D la suit.
+## Une image du jeu : la caméra avance puis la vue 3D la suit ; fondus des palettes du décor.
 func tick() -> void:
 	ds_camera.update()
 	apply_camera()
+	for i in fades.size():
+		var evy := fades[i].step()
+		if evy >= 0:
+			var models: Array = [background] if i == 0 else stages
+			for model: G3DModelInstance in models:
+				if model:
+					for material: ShaderMaterial in model.materials:
+						if material:
+							var c := fades[i].color
+							material.set_shader_parameter("palette_fade", Color(c.r, c.g, c.b, evy / 16.0))
+
+
+## Commande 0x2A (0x021F8238) : fondu du fond (0), des socles (1) ou des deux (2, 4) de `from` à
+## `to` (0 à 16) vers `color` ; 3 et 4 touchent aussi les palettes 2D (pas encore dans le portage).
+func start_fade(which: int, from: int, to: int, wait: int, color: Color) -> void:
+	for i in 2:
+		if (i == 0 and which in [0, 2, 4]) or (i == 1 and which in [1, 2, 4]):
+			var fade := fades[i]
+			fade.active = true
+			fade.current = from
+			fade.goal = to
+			fade.wait = wait
+			fade.counter = 0
+			fade.color = color
+
+
+## Un fondu est en cours (0x021F82C4 : 0 fond, 1 socles, 2 et 4 les deux).
+func is_fading(which: int) -> bool:
+	return (which in [0, 2, 4] and fades[0].active) or (which in [1, 2, 4] and fades[1].active)
 
 
 func apply_camera() -> void:

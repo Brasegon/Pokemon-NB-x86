@@ -254,6 +254,11 @@ func _place_sprites() -> void:
 		sprite.world_space = not (screen_space and sprite.screen_capable)
 		var at := stage.screen_position(world) * factor
 		sprite.place(at, sprite.pixel_scale(ds_pixel, stage.perspective_pixel(world) * factor.y))
+		# En mode « monde », le sol (y = 0) cache ce qui passe dessous.
+		var ground: Variant = null
+		if sprite.world_space and world.y < 0.0:
+			ground = stage.screen_position(Vector3(world.x, 0.0, world.z)) * factor
+		sprite.set_ground_clip(ground)
 
 
 # --- Déroulement ----------------------------------------------------------------------------------
@@ -327,7 +332,7 @@ func _play(event: Dictionary) -> void:
 			if sprites[event.side]:
 				await _stat_flash(sprites[event.side], event.up)
 		"move":
-			await _move_animation(event.side, event.target)
+			await _move_animation(event)
 		"substitute":
 			if sprites[event.side]:
 				sprites[event.side].alpha = 17 if event.on else BattleSprite.ALPHA_MAX
@@ -690,6 +695,12 @@ func effect_delete_trainer(slot: int) -> void:
 		_put_sprite(slot, null)
 
 
+## Commande 0x1F : le sprite d'un Pokémon est supprimé (K.O.).
+func effect_delete_pokemon(slot: int) -> void:
+	if slot < 8:
+		_put_sprite(slot, null)
+
+
 ## Type de dresseur de chaque client (variables 40 à 43, 0x021F86E0) : le joueur (0 garçon,
 ## 1 fille), puis la classe du dresseur d'en face.
 func effect_trainer_class(client: int) -> int:
@@ -777,13 +788,15 @@ func effect_floats(slot: int) -> bool:
 	return sprite != null and sprite.metadata.get("floats", false)
 
 
-func _move_animation(side: int, target: int) -> void:
-	var sprite := sprites[side]
-	if sprite == null or not sprite.visible or side == target:
-		await _wait(0.15)
-		return
-	var toward := Vector2(1, -0.4) if side == BattleSide.PLAYER else Vector2(-1, 0.4)
-	await sprite.lunge(toward)
+## Animation d'une capacité, comme le client (0x021ED0F8) : la boîte de messages se ferme, puis
+## l'effet n° de la capacité (`a/0/6/6`) est joué avec le lanceur et la cible ; variable 9 = cible
+## de la capacité (+0x14 de ses données, 0x021D1FA0), variable 10 = variante.
+func _move_animation(event: Dictionary) -> void:
+	messages.close()
+	var data := MoveData.of(event.move)
+	var values := {9: data.target if data else 0, 10: event.get("variant", 0)}
+	if effects.play(event.move, _slot_of(event.side), _slot_of(event.target), values):
+		await effects.finished
 
 
 func _stat_flash(sprite: BattleSprite, up: bool) -> void:
