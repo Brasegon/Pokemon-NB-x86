@@ -10,6 +10,9 @@ extends Node3D
 const DEV_MENU := "res://scenes/dev_menu/dev_menu.tscn"
 const FIELD := "res://scenes/field/field.tscn"
 const OPTIONS := "res://scenes/options/options_menu.tscn"
+## Script de l'écran des options : sa variable statique return_scene dit où revenir (la régler sur
+## la scène .tscn n'aurait aucun effet).
+const OPTIONS_SCRIPT := "res://scenes/options/options_menu.gd"
 ## Textes du jeu pour sauvegarder : la question (fichier système 46, message 25), « Sauvegarde en
 ## cours... » et « {nom} a sauvegardé la partie. » (fichier 36, messages 3 et 4).
 const SAVE_QUESTION := [46, 25]
@@ -235,7 +238,7 @@ func _on_pause_action(action: PauseMenu.Action) -> void:
 		PauseMenu.Action.OPTIONS:
 			# Les options sont une scène à part : on y range le lieu du héros pour revenir ici.
 			remember_location()
-			load(OPTIONS).set("return_scene", FIELD)
+			load(OPTIONS_SCRIPT).set("return_scene", FIELD)
 			var viewport := get_viewport()
 			get_tree().change_scene_to_file(OPTIONS)
 			viewport.set_input_as_handled()

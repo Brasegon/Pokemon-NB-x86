@@ -88,6 +88,13 @@ func _initialize() -> void:
 	_press("valider")
 	_press("annuler")
 	_press("menu", 10)
+	# Options depuis le menu du terrain (4e entrée sans Pokédex ni équipe) : on revient au terrain.
+	_press("menu", 10)
+	_press_times("bas", 3)
+	_press("valider")
+	_expect("res://scenes/options/options_menu.tscn")
+	_press("annuler", 30)
+	_expect("res://scenes/field/field.tscn")
 	_quit_field()
 	# Scènes de l'histoire (5e entrée) : la liste, Annuler pour revenir (le curseur reste sur
 	# l'entrée), puis la démonstration de capture (7e scène), qui démarre sur la Route 1.
