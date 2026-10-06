@@ -3,11 +3,16 @@ extends Node3D
 ## Le terrain : premiers pas dans Renouet. La carte 3D de la ROM (morceaux de la matrice d'Unys,
 ## bâtiments, animations), le héros qui se déplace case par case, les portes vers les intérieurs,
 ## la caméra façon N&B élargie au 16:9, la musique de la zone et le panneau du nom du lieu quand on
-## change de zone.
+## change de zone. Les combats (rencontres dans les herbes, dresseurs des scripts) se jouent dans un
+## écran posé par-dessus le terrain, qui reste en place derrière (le script qui a lancé un combat
+## continue ensuite).
 
 const DEV_MENU := "res://scenes/dev_menu/dev_menu.tscn"
 const FIELD := "res://scenes/field/field.tscn"
 const OPTIONS := "res://scenes/options/options_menu.tscn"
+## Script de l'écran des options : sa variable statique return_scene dit où revenir (la régler sur
+## la scène .tscn n'aurait aucun effet).
+const OPTIONS_SCRIPT := "res://scenes/options/options_menu.gd"
 ## Textes du jeu pour sauvegarder : la question (fichier système 46, message 25), « Sauvegarde en
 ## cours... » et « {nom} a sauvegardé la partie. » (fichier 36, messages 3 et 4).
 const SAVE_QUESTION := [46, 25]
@@ -30,6 +35,15 @@ const SKY_COLOR := Color("#90c8f0")
 ## L'éclairage suit l'horloge de l'ordinateur ; on le recalcule régulièrement.
 const LIGHT_REFRESH := 5.0
 const SEASON_NAMES := ["Printemps", "Été", "Automne", "Hiver"]
+## Après une défaite : la maison du héros (rez-de-chaussée), dernier lieu de soin tant qu'aucun
+## Centre Pokémon n'a été visité.
+const HOME_ZONE := 390
+## Calque de l'écran de combat, au-dessus de l'interface du terrain.
+const BATTLE_LAYER := 10
+## Transition vers un combat : flashs blancs (nombre, force, durée de chaque moitié).
+const BATTLE_FLASHES := 2
+const BATTLE_FLASH_ALPHA := 0.85
+const BATTLE_FLASH_TIME := 0.07
 
 var field: FieldMap
 var player: FieldPlayer
@@ -52,6 +66,13 @@ var _warping := false
 var _dialogue: DialogueBox
 var _hud: Control
 var _pause: PauseMenu
+## Rencontres sauvages (compteur de pas du jeu) et table de la zone en cours.
+var encounters := WildEncounters.new()
+var _encounter_table: EncounterTable
+var _encounter_key := ""
+## Écran du combat en cours (null : aucun).
+var _battle: BattleScreen
+var _battle_layer: CanvasLayer
 
 
 func _ready() -> void:
@@ -99,7 +120,13 @@ func _ready() -> void:
 	scripts.screen_fade = _fade
 	scripts.camera = camera
 	scripts.script_finished.connect(_on_script_finished)
+	scripts.battle_host = _play_script_battle
+	scripts.blackout_requested.connect(_black_out)
 	add_child(scripts)
+	_battle_layer = CanvasLayer.new()
+	_battle_layer.name = "Combat"
+	_battle_layer.layer = BATTLE_LAYER
+	add_child(_battle_layer)
 	# Drapeaux de départ avant l'arrivée dans la zone : ils décident des PNJ présents.
 	var story_scene := Game.story_scene
 	Game.story_scene = -1
@@ -129,7 +156,7 @@ func remember_location() -> void:
 
 func _process(delta: float) -> void:
 	var occupied: Array[Vector2i] = [player.tile]
-	field.update_npcs(delta, occupied, not scripts.is_running() and not _warping and _pause == null)
+	field.update_npcs(delta, occupied, not scripts.is_running() and not _warping and _pause == null and _battle == null)
 	_light_timer += delta
 	if _light_timer >= LIGHT_REFRESH:
 		_light_timer = 0.0
@@ -152,6 +179,8 @@ func _refresh_light() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _battle:
+		return
 	var key := event as InputEventKey
 	if key and key.pressed and not key.echo:
 		if key.keycode == KEY_F3:
@@ -209,7 +238,7 @@ func _on_pause_action(action: PauseMenu.Action) -> void:
 		PauseMenu.Action.OPTIONS:
 			# Les options sont une scène à part : on y range le lieu du héros pour revenir ici.
 			remember_location()
-			load(OPTIONS).set("return_scene", FIELD)
+			load(OPTIONS_SCRIPT).set("return_scene", FIELD)
 			var viewport := get_viewport()
 			get_tree().change_scene_to_file(OPTIONS)
 			viewport.set_input_as_handled()
@@ -259,6 +288,7 @@ func _on_player_moved(tile: Vector2i) -> void:
 		if not scripts.is_running():
 			scripts.check_conditions()
 	scripts.check_triggers(tile)
+	_check_encounter(tile)
 
 
 ## Fin d'un script : un script a pu déplacer le héros dans une autre zone (la sortie nord de
@@ -436,3 +466,142 @@ func _show_banner(text: String) -> void:
 	_banner_tween.tween_property(_banner, "position:y", 8.0, 0.25).from(-_banner.size.y - 4)
 	_banner_tween.tween_interval(BANNER_TIME)
 	_banner_tween.tween_property(_banner, "position:y", -_banner.size.y - 4, 0.25)
+
+
+# --- Combats ---------------------------------------------------------------------------------------
+
+## Un pas du héros (à la main, hors scène) : une rencontre sauvage peut-elle avoir lieu ?
+func _check_encounter(tile: Vector2i) -> void:
+	if _battle or _warping or _pause or scripts.is_running() or not player.controllable:
+		return
+	var state: GameState = Game.state
+	if state.able_pokemon().is_empty():
+		return
+	var height := player.position.y
+	var wild := encounters.step(tile, field.behavior(tile, height), field.tile_flags(tile, height), _zone_encounters(), state.party[0])
+	if wild.is_empty():
+		return
+	var pokemon := Pokemon.create(wild.species, wild.level, {"form": wild.form, "item": wild.item, "random": encounters.random})
+	var battle := Battle.wild(state, pokemon, {"random": encounters.random, "dark_grass": wild.group == TileBehaviors.Encounter.DARK_GRASS})
+	var result: Battle.Result = await _play_battle(battle)
+	if result == Battle.Result.LOSE:
+		_black_out()
+
+
+## Rencontres de la zone pour la saison en cours (gardées tant qu'elles ne changent pas).
+func _zone_encounters() -> EncounterTable:
+	var key := "%d/%d" % [zone, field.season]
+	if key != _encounter_key:
+		_encounter_key = key
+		_encounter_table = EncounterTable.for_zone(field.zones.get_zone(zone), field.season)
+	return _encounter_table
+
+
+## Combat d'un script (commande 0x85, démonstration 0x17D) : le script attend sa fin.
+func _play_script_battle(battle: Battle) -> void:
+	var result: Battle.Result = await _play_battle(battle)
+	scripts.end_battle(result)
+
+
+## Joue un combat par-dessus le terrain : transition, écran du combat, puis retour au terrain et à sa
+## musique. Renvoie le résultat.
+func _play_battle(battle: Battle) -> Battle.Result:
+	player.controllable = false
+	var options := _battle_options(battle)
+	# Comme l'événement 0x0216EB28 : la musique du combat d'abord, puis l'effet de rencontre.
+	var archive := Sound.sdat()
+	if archive and battle.music >= 0 and battle.music < archive.sequence_names.size():
+		Sound.play_music(archive.sequence_names[battle.music])
+	await _battle_transition(battle)
+	_battle = BattleScreen.create(battle, options)
+	_battle_layer.add_child(_battle)
+	field.visible = false
+	player.visible = false
+	var result: Battle.Result = await _battle.finished
+	_battle.queue_free()
+	_battle = null
+	field.visible = true
+	player.visible = true
+	_play_zone_music()
+	await _fade_to(0.0)
+	player.controllable = not scripts.is_running()
+	return result
+
+
+## Effet de rencontre (0x021CF428) jusqu'à l'écran noir : la coupure « VS » des rivaux, des champions...
+## (VsCutIn), sinon, en attendant les effets selon le lieu, deux flashs blancs puis le noir.
+func _battle_transition(battle: Battle) -> void:
+	var trainer := battle.enemy().trainer
+	var state: GameState = Game.state
+	var cut_in: VsCutIn = VsCutIn.create(trainer.special_encounter_effect(), state.player_name, state.gender == GameState.Gender.GIRL) if trainer else null
+	if cut_in:
+		_battle_layer.add_child(cut_in)
+		cut_in.play()
+		await cut_in.finished
+		_fade.color = Color.BLACK
+		cut_in.queue_free()
+		return
+	for flash in BATTLE_FLASHES:
+		await _fade.fade_to(BATTLE_FLASH_ALPHA, BATTLE_FLASH_TIME, true)
+		await _fade.fade_to(0.0, BATTLE_FLASH_TIME, true)
+	await _fade_to(1.0)
+
+
+## Décor du combat (BattleBackgrounds) : celui de la zone, le genre de la case du héros (ou celui
+## qu'impose la classe du dresseur), la saison et la lumière du terrain à cette heure. La
+## démonstration de capture impose le décor 0 et le genre 5 (0x0216E9C2).
+func _battle_options(battle: Battle) -> Dictionary:
+	var header := field.zones.get_zone(zone)
+	var background: int = header.get("battle_background", 0)
+	var attribute := BattleBackgrounds.attribute_of(field.behavior(player.tile, player.position.y))
+	var trainer := battle.enemy().trainer
+	if trainer and trainer.background_override() != BattleBackgrounds.KEEP_ATTRIBUTE:
+		attribute = trainer.background_override()
+	if battle.demo:
+		background = 0
+		attribute = 5
+	battle.background = background
+	battle.terrain = attribute
+	var light: Array = field.light.get("colors", [])
+	return {"zone_background": background, "attribute": attribute, "season": field.season,
+		"light_color": light[0] if not light.is_empty() else Color.WHITE}
+
+
+## Défaite (combat sauvage perdu, commande 0x8C) : l'équipe est soignée et le héros se retrouve
+## chez lui (rez-de-chaussée de sa maison), à la position par défaut de la zone.
+func _black_out() -> void:
+	Game.state.heal_party()
+	player.controllable = false
+	await _fade_to(1.0)
+	var header := field.zones.get_zone(HOME_ZONE)
+	if not header.is_empty():
+		_teleport(HOME_ZONE, Vector2i(header.x, header.z), CharacterSprite.Direction.DOWN)
+	await _fade_to(0.0)
+	player.controllable = not scripts.is_running()
+
+
+## Pose le héros dans une zone, sur une case (chargement de sa matrice s'il le faut).
+func _teleport(new_zone: int, tile: Vector2i, facing: CharacterSprite.Direction) -> void:
+	var header := field.zones.get_zone(new_zone)
+	if header.is_empty():
+		return
+	if header.matrix != field.matrix_index:
+		field.load_zone(new_zone)
+	_enter_zone(new_zone)
+	field.set_light_zone(new_zone)
+	_refresh_light()
+	field.update_around(tile)
+	player.place(tile, facing)
+	camera.follow(player.position)
+	encounters.reset(tile)
+	scripts.field_started(true)
+
+
+## Musique de la zone (après un combat), sauf musique d'événement en cours.
+func _play_zone_music() -> void:
+	var archive := Sound.sdat()
+	var music := field.zone_music(zone)
+	if scripts.event_music:
+		return
+	if archive and music >= 0 and music < archive.sequence_names.size():
+		Sound.play_music(archive.sequence_names[music])

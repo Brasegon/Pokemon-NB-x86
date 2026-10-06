@@ -101,6 +101,12 @@ var playing := false
 var tempo := 120
 ## Volume général de 0 à 1 (réglage du joueur).
 var master_volume := 1.0
+## Réglages du lecteur (NNS_SndPlayerSetVolume, SetTrackPan, SetTrackPitch, 0x02006268) : volume 0
+## à 127, panoramique ajouté à celui des pistes (-128 à 127), hauteur ajoutée (64e de demi-ton). Ils
+## agissent aussi sur les notes en cours et restent d'une séquence à l'autre.
+var player_volume := 127
+var player_pan := 0
+var player_pitch := 0
 var sequence_name := ""
 
 var _data := PackedByteArray()
@@ -510,7 +516,9 @@ func _note_on(track_index: int, key: int, velocity: int, duration: int) -> void:
 	voice.track = track_index
 	voice.key = key
 	voice.velocity = velocity
-	voice.length = maxi(duration, 1) if not track.tie else -1
+	# Durée 0 : la note n'est pas relâchée d'elle-même, l'échantillon sonne jusqu'au bout (la note
+	# des cris, « 3C 7F 00 » dans SEQ_PV001, sinon coupée au bout d'un tic).
+	voice.length = duration if duration > 0 and not track.tie else -1
 	voice.type = region.type
 	voice.wave = wave
 	voice.duty = region.wave
@@ -591,15 +599,15 @@ func _update_voice(voice: Voice) -> void:
 		sweep = voice.sweep_pitch * float(voice.sweep_length - voice.sweep_count) / voice.sweep_length
 		voice.sweep_count += 1
 
-	var cb := (voice.amplitude >> 7) + DECIBELS[voice.velocity] + DECIBELS[track.volume] + DECIBELS[track.expression] + _sequence_volume + _master_cb
+	var cb := (voice.amplitude >> 7) + DECIBELS[voice.velocity] + DECIBELS[track.volume] + DECIBELS[track.expression] + _sequence_volume + _master_cb + DECIBELS[clampi(player_volume, 0, 127)]
 	if track.mod_type == 1:
 		cb += int(lfo)
 	var gain := 0.0 if cb <= SILENCE_CB else pow(10.0, cb / 200.0)
-	var pan := clampf(voice.pan + (lfo if track.mod_type == 2 else 0.0), 0.0, 127.0)
+	var pan := clampf(voice.pan + player_pan + (lfo if track.mod_type == 2 else 0.0), 0.0, 127.0)
 	voice.target_l = gain * (127.0 - pan) / 127.0
 	voice.target_r = gain * pan / 127.0
 
-	var semitones := voice.key - voice.base_key + track.bend * track.bend_range / 128.0 + (sweep + (lfo if track.mod_type == 0 else 0.0)) / 64.0
+	var semitones := voice.key - voice.base_key + track.bend * track.bend_range / 128.0 + (sweep + player_pitch + (lfo if track.mod_type == 0 else 0.0)) / 64.0
 	var rate := float(voice.wave.sample_rate) if voice.wave else PSG_RATE
 	voice.step = rate * pow(2.0, semitones / 12.0) / OUTPUT_RATE
 

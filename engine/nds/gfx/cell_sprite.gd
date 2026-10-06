@@ -53,6 +53,47 @@ func set_palette(palette: NCLR) -> void:
 		_palette.load_colors(palette)
 
 
+## Tire toute l'image vers une couleur (force de 0 à 1) : flash blanc, Pokémon qui rentre dans sa Ball.
+func set_flash(color: Color, amount: float) -> void:
+	var shader_material := material as ShaderMaterial
+	if shader_material:
+		shader_material.set_shader_parameter("flash", Color(color.r, color.g, color.b, clampf(amount, 0.0, 1.0)))
+
+
+## Nombre de séquences de la multi-cellule (0 sans multi-cellules).
+func multi_sequence_count() -> int:
+	return _multi_anims.sequences.size() if _multi and _multi_anims else 0
+
+
+## Joue la séquence `index` de la multi-cellule depuis le début (MCSS 0x02016044 : dresseur qui
+## lance sa Ball...).
+func play_multi_sequence(index: int) -> void:
+	if index < 0 or index >= multi_sequence_count():
+		return
+	_multi_cursor = NANR.Cursor.new(_multi_anims.sequences[index])
+	_shown_multi = -1
+	_show_multi(_multi_cursor.current().index)
+	queue_redraw()
+
+
+## Joue la séquence `index` du NANR depuis le début (sprites sans multi-cellules).
+func play_sequence(index: int) -> void:
+	if _multi or _cell_anims == null or index < 0 or index >= _cell_anims.sequences.size():
+		return
+	_cursors = [NANR.Cursor.new(_cell_anims.sequences[index])]
+	queue_redraw()
+
+
+## La séquence jouée est arrivée au bout (séquences sans boucle).
+func is_finished() -> bool:
+	if _multi_cursor:
+		return _multi_cursor.finished
+	for cursor in _cursors:
+		if cursor and not cursor.finished:
+			return false
+	return true
+
+
 func restart() -> void:
 	if _multi_cursor:
 		_multi_cursor = NANR.Cursor.new(_multi_cursor.sequence)

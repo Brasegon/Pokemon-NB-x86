@@ -180,17 +180,24 @@ func _add_glyph(font: FontFile, size: Vector2i, code: int, source: int, rect: Re
 func render_text(text: String, ink := Color("#505058"), shadow := Color("#c0c0c8"), background := Color.WHITE) -> Image:
 	var image := Image.create_empty(maxi(text_width(text), 1) + 2, cell_size.y + 2, false, Image.FORMAT_RGBA8)
 	image.fill(background)
-	var x := 1
+	draw_text(image, Vector2i.ONE, text, ink, shadow)
+	return image
+
+
+## Écrit un texte dans une image existante, coin haut-gauche de la ligne en `at` (le trait et
+## l'ombre ; le reste de l'image ne change pas).
+func draw_text(image: Image, at: Vector2i, text: String, ink: Color, shadow: Color) -> void:
+	var x := at.x
 	for i in text.length():
 		var glyph := glyph_index(text.unicode_at(i))
 		var m := metrics(glyph)
 		var pixels := glyph_pixels(glyph)
 		for p in pixels.size():
 			var px := x + m.x + p % cell_size.x
-			if pixels[p] != 0 and pixels[p] <= PIXEL_SHADOW and px < image.get_width():
-				image.set_pixel(px, 1 + p / cell_size.x, ink if pixels[p] == PIXEL_INK else shadow)
+			var py := at.y + p / cell_size.x
+			if pixels[p] != 0 and pixels[p] <= PIXEL_SHADOW and px >= 0 and px < image.get_width() and py < image.get_height():
+				image.set_pixel(px, py, ink if pixels[p] == PIXEL_INK else shadow)
 		x += m.z
-	return image
 
 
 func _measure_ascent() -> int:

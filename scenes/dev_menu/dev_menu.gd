@@ -8,6 +8,8 @@ const ENTRIES := [
 	["Nouvelle partie (chambre du héros, intro)", "res://scenes/field/field.tscn", "nouvelle partie"],
 	["Continuer la partie sauvegardée", "res://scenes/field/field.tscn", "continuer"],
 	["Scènes de l'histoire (mise au point)", "res://scenes/field/field.tscn", "scènes"],
+	["Combat sauvage (Route 1)", "res://scenes/battle/battle_test.tscn", "combat sauvage"],
+	["Combat contre Bianca", "res://scenes/battle/battle_test.tscn", "combat dresseur"],
 	["Démo des dialogues", "res://scenes/demo/dialogue_demo.tscn"],
 	["Pokémon animés", "res://scenes/demo/pokemon_viewer.tscn"],
 	["Modèles 3D", "res://scenes/demo/model_viewer.tscn"],
@@ -111,6 +113,11 @@ func _on_chosen(index: int) -> void:
 		"scènes":
 			_show_scenes()
 			return
+		"combat sauvage":
+			BattleTestScene.trainer = 0
+		"combat dresseur":
+			# Bianca, premier combat de la chambre du héros (dresseur n° 59).
+			BattleTestScene.trainer = 59
 	get_tree().change_scene_to_file(scene)
 
 

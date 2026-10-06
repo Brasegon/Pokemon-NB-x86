@@ -37,7 +37,7 @@ Ne pas reproposer d'autre approche sans raison sérieuse.
 godot --headless --path . --script res://tests/test_formats.gd
 ```
 
-Autres tests : `test_explorer`, `test_ui`, `test_sound`, `test_navigation`, `test_3d`, `test_world` ; plus long
+Autres tests : `test_explorer`, `test_ui`, `test_sound`, `test_navigation`, `test_3d`, `test_world`, `test_battle` ; plus long
 (2 à 3 minutes) : `test_models`. Captures de référence de la 3D (avec une fenêtre, sans
 `--headless`) : `tests/capture_3d.gd`. Après l'ajout d'une classe
 (`class_name`), lancer d'abord `godot --headless --path . --import`. La ROM vient de la variable
@@ -65,6 +65,11 @@ Autres tests : `test_explorer`, `test_ui`, `test_sound`, `test_navigation`, `tes
 - Captures d'écran : lancer sans `--headless` et enregistrer `root.get_texture().get_image()` après
   quelques images.
 - `user://` = `%APPDATA%\Godot\app_userdata\Pokémon Blanc - Portage Windows`.
+- Un paramètre typé par l'enum d'une autre classe nommée peut être refusé (« should be "Side" but
+  is "BattleStage.Side" ») quand les deux classes se citent : typer le paramètre en `int`.
+- Une coroutine qui attend un signal jamais émis garde ses objets en vie (fuites à la sortie) : un
+  combat dont l'écran se ferme est abandonné (`Battle.abort()`). Avant de quitter un test qui a
+  joué des sons : `Sound.stop_all()` puis quelques images.
 
 ## Outils
 

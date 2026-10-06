@@ -10,6 +10,8 @@ enum Gender { BOY, GIRL }
 const DEFAULT_NAME := "Joueur"
 ## Plafond de l'argent (0x0200C278).
 const MAX_MONEY := 9999999
+## Nombre d'espèces du Pokédex national de N&B.
+const SPECIES_COUNT := 649
 ## Capacité de l'équipe (+0 de sa structure, lu par 0x0201AA30 ; le nombre de Pokémon est en +4).
 const PARTY_SIZE := 6
 ## Nombre maximal d'un même objet dans le sac (0x02007DF8 ; 1 seul dans la poche des CT et CS).
@@ -26,9 +28,17 @@ var work := EventWork.new()
 var pending_script := 0
 ## Argent : la commande 0x0F9 en ajoute (le script de début de partie donne 3000).
 var money := 0
-## L'équipe, un dictionnaire par Pokémon { species, form, level } en attendant la phase 4 (qui
-## donnera les vraies données d'un Pokémon : PV, capacités...).
-var party: Array[Dictionary] = []
+## Numéro de dresseur du héros (u32 : ID en bas, ID secret en haut), tiré au début de la partie ;
+## il décide des Pokémon chromatiques et marque les Pokémon capturés.
+var trainer_id := 0
+## L'équipe (6 au plus).
+var party: Array[Pokemon] = []
+## Pokédex : espèces vues et capturées (la formule de capture et les herbes sombres comptent les
+## capturées : 0x021CBC94).
+var seen := {}
+var caught := {}
+## Badges obtenus (la somme perdue après une défaite en dépend : 0x021D7F98).
+var badges := 0
 ## Le sac : numéro d'objet -> quantité (la poche de chaque objet est dans ItemData).
 var bag := {}
 ## Pokédex reçu (bit 0 du mot +4 des données du Pokédex, mis par la commande 0x1D0).
@@ -42,14 +52,22 @@ var facing := 1
 var started := false
 
 
+func _init() -> void:
+	roll_trainer_id()
+
+
 func to_dict() -> Dictionary:
 	var items := {}
 	for item: int in bag:
 		items[str(item)] = bag[item]
+	var party_list := []
+	for pokemon in party:
+		party_list.append(pokemon.to_dict())
 	return {
 		"name": player_name, "gender": gender, "money": money, "pending_script": pending_script,
 		"has_pokedex": has_pokedex, "zone": zone, "x": tile.x, "z": tile.y, "facing": facing,
-		"started": started, "party": party, "bag": items, "work": work.to_dict(),
+		"started": started, "party": party_list, "bag": items, "work": work.to_dict(),
+		"trainer_id": trainer_id, "seen": seen.keys(), "caught": caught.keys(), "badges": badges,
 	}
 
 
@@ -64,9 +82,19 @@ static func from_dict(data: Dictionary) -> GameState:
 	state.tile = Vector2i(int(data.get("x", -1)), int(data.get("z", -1)))
 	state.facing = int(data.get("facing", 1))
 	state.started = bool(data.get("started", false))
+	state.trainer_id = int(data.get("trainer_id", 0))
 	for pokemon: Variant in data.get("party", []):
-		if pokemon is Dictionary:
-			state.party.append({"species": int(pokemon.get("species", 0)), "form": int(pokemon.get("form", 0)), "level": int(pokemon.get("level", 1))})
+		if pokemon is Dictionary and state.party.size() < PARTY_SIZE:
+			var member := Pokemon.from_dict(pokemon)
+			if member.ot_id == 0 and not (pokemon as Dictionary).has("ot_id"):
+				member.ot_id = state.trainer_id
+				member.ot_name = state.player_name
+			state.party.append(member)
+	for species: Variant in data.get("seen", []):
+		state.seen[int(species)] = true
+	for species: Variant in data.get("caught", []):
+		state.caught[int(species)] = true
+	state.badges = int(data.get("badges", 0))
 	var items: Dictionary = data.get("bag", {})
 	for key: String in items:
 		state.bag[int(key)] = int(items[key])
@@ -103,9 +131,56 @@ func remove_item(item: int, count: int) -> bool:
 	return true
 
 
-## Ajoute un Pokémon à l'équipe, s'il y a de la place (0x0215C4B0). Renvoie vrai s'il est ajouté.
+## Crée un Pokémon dont le héros est le dresseur d'origine et l'ajoute à l'équipe s'il y a de la
+## place (commande 0x10C, 0x0215C4B0). Renvoie vrai s'il est ajouté.
 func add_pokemon(species: int, form: int, level: int) -> bool:
 	if party.size() >= PARTY_SIZE:
 		return false
-	party.append({"species": species, "form": form, "level": level})
+	var pokemon := Pokemon.create(species, level, {"form": form, "ot_id": trainer_id, "ot_name": player_name})
+	party.append(pokemon)
+	register_caught(species)
 	return true
+
+
+## Ajoute un Pokémon déjà créé (capture) ; faux si l'équipe est pleine (il irait au PC).
+func add_to_party(pokemon: Pokemon) -> bool:
+	if party.size() >= PARTY_SIZE:
+		return false
+	party.append(pokemon)
+	return true
+
+
+func register_seen(species: int) -> void:
+	seen[species] = true
+
+
+func register_caught(species: int) -> void:
+	seen[species] = true
+	caught[species] = true
+
+
+## Nombre d'espèces capturées, que comptent la capture et les herbes sombres (0x021B86DC).
+func caught_count() -> int:
+	return caught.size()
+
+
+## Pokémon en état de se battre.
+func able_pokemon() -> Array[Pokemon]:
+	var able: Array[Pokemon] = []
+	for pokemon in party:
+		if not pokemon.is_fainted():
+			able.append(pokemon)
+	return able
+
+
+## Soigne toute l'équipe (commande 0x104, Centre Pokémon).
+func heal_party() -> void:
+	for pokemon in party:
+		pokemon.heal()
+
+
+## Nouveau numéro de dresseur, tiré au hasard (au début d'une partie).
+func roll_trainer_id(random: GameRandom = null) -> void:
+	if random == null:
+		random = GameRandom.from_time()
+	trainer_id = random.next()

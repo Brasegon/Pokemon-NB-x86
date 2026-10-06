@@ -2,7 +2,9 @@ class_name G3DModelInstance
 extends Node3D
 ## Un modèle 3D de la ROM affiché dans Godot : maillage (un `ArrayMesh`, une surface par matériau),
 ## matériaux qui imitent la DS, squelette pour les animations NSBCA, et animations de la ROM :
-## textures qui défilent (NSBTA), changements de texture (NSBTP) et squelette (NSBCA).
+## textures qui défilent (NSBTA), changements de texture (NSBTP), squelette (NSBCA), couleurs et
+## opacité des matériaux (NSBMA) et visibilité des nœuds (NSBVA). Pour la visibilité, le modèle est
+## créé avec toutes ses parties (`all_parts`) : un maillage par nœud de visibilité.
 
 ## Images par seconde des animations (la DS les fait avancer d'une image par image du jeu à 30 i/s).
 const ANIMATION_FPS := 30.0
@@ -12,15 +14,24 @@ var textures: NSBTX
 ## Facteur appliqué aux positions (1/16 sur le terrain : une case de 16 unités DS = 1 unité Godot).
 var unit_scale := 1.0
 var mesh_instance: MeshInstance3D
+## Avec `all_parts` : maillage de chaque nœud de visibilité (nœud -> MeshInstance3D).
+var part_meshes := {}
 var skeleton: Skeleton3D
 ## Matériau Godot de chaque matériau DS (null s'il n'est pas utilisé ou n'affiche rien).
 var materials: Array[ShaderMaterial] = []
 var playing := true
+## Faux : chaque animation s'arrête sur sa dernière image au lieu de recommencer.
+var loop := true
 
 var _builder: G3DMeshBuilder
+var _all_parts := false
+## Surfaces des maillages : [ArrayMesh, n° de surface, n° du matériau DS].
+var _surfaces: Array[Array] = []
 var _srt: Array = []
 var _patterns: Array = []
 var _joints: Array = []
+var _colors: Array[NSBMA.Clip] = []
+var _visibility: Array[NSBVA.Clip] = []
 var _frame := 0.0
 ## Animation de squelette jouée une seule fois (une porte qui s'ouvre), et son image.
 var _once: NSBCA.Clip
@@ -29,27 +40,32 @@ var _once_frame := 0.0
 
 ## Construit l'affichage d'un modèle. `textures` peut être null (modèle sans texture). Les sommets
 ## sont calculés dans la pose de repos : un squelette n'est créé (`with_skeleton`) que pour jouer
-## une animation NSBCA.
-static func create(source: G3DModel, source_textures: NSBTX, scale := 1.0, with_skeleton := false) -> G3DModelInstance:
+## une animation NSBCA. `all_parts` construit aussi les nœuds cachés et les matériaux invisibles
+## (opacité 0), pour les animations de visibilité et d'opacité.
+static func create(source: G3DModel, source_textures: NSBTX, scale := 1.0, with_skeleton := false, all_parts := false) -> G3DModelInstance:
 	var instance := G3DModelInstance.new()
 	instance.name = source.name
 	instance.model = source
 	instance.textures = source_textures
 	instance.unit_scale = scale
+	instance._all_parts = all_parts
 	instance._build(with_skeleton)
 	return instance
 
 
 func _build(with_skeleton: bool) -> void:
-	_builder = G3DMeshBuilder.build(model)
+	_builder = G3DMeshBuilder.build(model, _all_parts)
 	materials.resize(model.materials.size())
-	var mesh := ArrayMesh.new()
+	var meshes := {}
 	for s in _builder.surfaces:
 		if s.positions.is_empty():
 			continue
 		var mat := _material_for(s)
 		if mat == null:
 			continue
+		if not meshes.has(s.visibility_node):
+			meshes[s.visibility_node] = ArrayMesh.new()
+		var mesh: ArrayMesh = meshes[s.visibility_node]
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
 		var positions := s.positions
@@ -67,12 +83,24 @@ func _build(with_skeleton: bool) -> void:
 			arrays[Mesh.ARRAY_WEIGHTS] = s.weights
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		mesh.surface_set_material(mesh.get_surface_count() - 1, mat)
-	mesh_instance = MeshInstance3D.new()
-	mesh_instance.name = "Maillage"
-	mesh_instance.mesh = mesh
+		_surfaces.append([mesh, mesh.get_surface_count() - 1, s.material])
+	if meshes.is_empty():
+		meshes[-1] = ArrayMesh.new()
+	var parts: Array[MeshInstance3D] = []
+	for node: int in meshes:
+		var part := MeshInstance3D.new()
+		part.name = "Maillage" if node < 0 else "Maillage %s" % _bone_name(node)
+		part.mesh = meshes[node]
+		if node >= 0:
+			part.visible = _builder.node_visible[node]
+			part_meshes[node] = part
+		if mesh_instance == null:
+			mesh_instance = part
+		parts.append(part)
 	if with_skeleton:
-		_build_skeleton()
-	add_child(mesh_instance)
+		_build_skeleton(parts)
+	for part in parts:
+		add_child(part)
 
 
 func _material_for(s: G3DMeshBuilder.Surface) -> ShaderMaterial:
@@ -91,20 +119,19 @@ func _material_for(s: G3DMeshBuilder.Surface) -> ShaderMaterial:
 			format = textures.textures[t].format
 			transparent_zero = textures.textures[t].transparent_zero
 	var lit: bool = mat.lights != 0 and s.has_normals
-	materials[s.material] = G3DMaterials.create(mat, lit, texture, format, transparent_zero)
+	materials[s.material] = G3DMaterials.create(mat, lit, texture, format, transparent_zero, _all_parts and mat.alpha == 0)
 	return materials[s.material]
 
 
 ## Un os Godot par nœud DS. La pose de liaison de chaque os est la transformation du nœud
 ## calculée par les commandes de rendu ; les sommets sont déjà dans cette pose.
-func _build_skeleton() -> void:
+func _build_skeleton(parts: Array[MeshInstance3D]) -> void:
 	skeleton = Skeleton3D.new()
 	skeleton.name = "Squelette"
 	var count := model.nodes.size()
 	for i in count:
-		# Godot refuse les noms vides, en double ou contenant « : » ou « / ».
-		var bone_name: String = model.nodes[i].name.replace(":", "_").replace("/", "_")
-		if bone_name.is_empty() or skeleton.find_bone(bone_name) >= 0:
+		var bone_name := _bone_name(i)
+		if skeleton.find_bone(bone_name) >= 0:
 			bone_name = "noeud_%d" % i
 		skeleton.add_bone(bone_name)
 	var skin := Skin.new()
@@ -118,9 +145,16 @@ func _build_skeleton() -> void:
 		skin.add_bind(i, G3DModel.safe_inverse(_scaled(_builder.node_world[i])))
 	skeleton.reset_bone_poses()
 	add_child(skeleton)
-	mesh_instance.skin = skin
-	# Le chemin du squelette est relatif au maillage, qui sera son frère.
-	mesh_instance.skeleton = NodePath("../Squelette")
+	for part in parts:
+		part.skin = skin
+		# Le chemin du squelette est relatif au maillage, qui sera son frère.
+		part.skeleton = NodePath("../Squelette")
+
+
+## Nom Godot d'un nœud : Godot refuse les noms vides ou contenant « : » ou « / ».
+func _bone_name(node: int) -> String:
+	var bone_name: String = model.nodes[node].name.replace(":", "_").replace("/", "_")
+	return "noeud_%d" % node if bone_name.is_empty() else bone_name
 
 
 ## Applique un éclairage du terrain à tous les matériaux (voir G3DMaterials.apply_light()).
@@ -161,6 +195,54 @@ func play_texture_pattern(animation: NSBTP.Clip, source: NSBTX = null) -> void:
 	_apply(_frame)
 
 
+## Joue une animation des couleurs des matériaux (NSBMA). Un matériau dont l'opacité descend sous 31
+## est refait en translucide (le jeu ne dessine pas un matériau d'opacité 0).
+func play_material_colors(animation: NSBMA.Clip) -> void:
+	_colors.append(animation)
+	for i in model.materials.size():
+		var mat: Dictionary = model.materials[i]
+		if materials[i] == null or not animation.has_material(mat.name) or G3DMaterials.is_translucent(materials[i]):
+			continue
+		for frame in animation.frame_count:
+			if animation.alpha(mat.name, frame) < 31:
+				_set_material(i, G3DMaterials.translucent_copy(materials[i], mat))
+				break
+	_apply(_frame)
+
+
+## Joue une animation de visibilité des nœuds (NSBVA) : le modèle doit avoir été créé avec
+## `all_parts`.
+func play_visibility(animation: NSBVA.Clip) -> void:
+	if not _all_parts:
+		push_warning("Animation de visibilité sur un modèle sans ses parties cachées : %s" % model.name)
+		return
+	_visibility.append(animation)
+	_apply(_frame)
+
+
+## Remplace la texture `texture_name` du modèle (portrait, texte écrit par le jeu...) dans tous les
+## matériaux qui l'utilisent.
+func replace_texture(texture_name: String, texture: Texture2D) -> void:
+	for i in model.materials.size():
+		if materials[i] and model.materials[i].texture == texture_name:
+			G3DMaterials.set_texture(materials[i], texture, true)
+
+
+## Place toutes les animations à l'image `frame`, pour les piloter image par image (elles
+## n'avancent plus seules : `playing` passe à faux).
+func show_frame(frame: float) -> void:
+	playing = false
+	_frame = frame
+	_apply(frame)
+
+
+func _set_material(index: int, mat: ShaderMaterial) -> void:
+	materials[index] = mat
+	for entry in _surfaces:
+		if entry[2] == index:
+			(entry[0] as ArrayMesh).surface_set_material(entry[1], mat)
+
+
 ## Joue une animation de squelette (NSBCA). Le modèle doit avoir été créé avec un squelette.
 func play_joints(animation: NSBCA.Clip) -> void:
 	if skeleton == null:
@@ -190,13 +272,15 @@ func stop_animations() -> void:
 	_srt.clear()
 	_patterns.clear()
 	_joints.clear()
+	_colors.clear()
+	_visibility.clear()
 	_once = null
 	if skeleton:
 		skeleton.reset_bone_poses()
 
 
 func has_animations() -> bool:
-	return not (_srt.is_empty() and _patterns.is_empty() and _joints.is_empty())
+	return not (_srt.is_empty() and _patterns.is_empty() and _joints.is_empty() and _colors.is_empty() and _visibility.is_empty())
 
 
 func _process(delta: float) -> void:
@@ -208,9 +292,16 @@ func _process(delta: float) -> void:
 		_apply_joints(_once, _once_frame)
 
 
+## Image d'une animation de `frame_count` images : elle recommence, ou s'arrête sur la dernière.
+func _clip_frame(frame: float, frame_count: int) -> float:
+	if loop:
+		return fmod(frame, maxf(frame_count, 1))
+	return clampf(frame, 0.0, maxf(frame_count - 1, 0))
+
+
 func _apply(frame: float) -> void:
 	for animation: NSBTA.Clip in _srt:
-		var f := fmod(frame, maxf(animation.frame_count, 1))
+		var f := _clip_frame(frame, animation.frame_count)
 		for i in model.materials.size():
 			if materials[i] == null:
 				continue
@@ -223,7 +314,7 @@ func _apply(frame: float) -> void:
 		var source: NSBTX = pair[1]
 		if source == null:
 			continue
-		var f := fmod(frame, maxf(animation.frame_count, 1))
+		var f := _clip_frame(frame, animation.frame_count)
 		for i in model.materials.size():
 			if materials[i] == null:
 				continue
@@ -235,7 +326,19 @@ func _apply(frame: float) -> void:
 				var p := source.find_palette(key.palette)
 				G3DMaterials.set_texture(materials[i], source.texture(t, p), true)
 	for animation: NSBCA.Clip in _joints:
-		_apply_joints(animation, fmod(frame, maxf(animation.frame_count, 1)))
+		_apply_joints(animation, _clip_frame(frame, animation.frame_count))
+	for animation: NSBMA.Clip in _colors:
+		var f := int(_clip_frame(frame, animation.frame_count))
+		for i in model.materials.size():
+			var mat_name: String = model.materials[i].name
+			if materials[i] and animation.has_material(mat_name):
+				G3DMaterials.set_colors(materials[i], animation.alpha(mat_name, f), animation.color(mat_name, NSBMA.Track.DIFFUSE, f),
+					animation.color(mat_name, NSBMA.Track.AMBIENT, f), animation.color(mat_name, NSBMA.Track.SPECULAR, f),
+					animation.color(mat_name, NSBMA.Track.EMISSION, f))
+	for animation: NSBVA.Clip in _visibility:
+		var f := int(_clip_frame(frame, animation.frame_count))
+		for node: int in part_meshes:
+			(part_meshes[node] as MeshInstance3D).visible = animation.is_visible(node, f)
 
 
 func _apply_joints(animation: NSBCA.Clip, f: float) -> void:

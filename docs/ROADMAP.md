@@ -89,7 +89,7 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 - [x] Portes, tapis et escaliers : entrée dans les maisons et changement d'étage, comme le jeu
 - [x] Rebords à sauter (action et courbe de saut du jeu), comportements des cases : herbes, herbes
       sombres, eau ; groupe de rencontres de chaque case, retrouvé dans le test de rencontre du jeu
-      (le tirage lui-même est pour la phase 4)
+      (le tirage est fait en phase 4)
 - [x] Images du terrain à 30 par seconde (durées des mouvements et attentes des scripts)
 - [x] Caméra du jeu : réglages de chaque type de caméra (`a/0/6/0`), rectangles des intérieurs
       (`a/1/0/8`), plans de caméra des scripts (0x13F à 0x147)
@@ -121,13 +121,35 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
       Pokémon, Sac, carte du héros, Sauver, Options) ; les écrans de l'équipe et du sac sont de
       simples fiches en attendant leurs phases. Le C-Gear reste à faire.
 
-## Phase 4 — Les combats
+## Phase 4 — Les combats ✅
 
-- [ ] Données : Pokémon (stats, types, talents), capacités, objets, dresseurs, rencontres
-- [ ] Moteur de combat Gen 5 : formules de dégâts, statuts, priorités, talents, objets tenus
-- [ ] IA des dresseurs
-- [ ] Interface de combat sur l'écran unique : scène 3D, barres de PV, panneau de commandes
-	  (Attaque, Sac, Pokémon, Fuite) en surimpression, choix des capacités
+- [x] Données : Pokémon (stats, types, talents, formes, apprentissage, évolutions, courbes
+      d'expérience), capacités, objets, dresseurs et leurs équipes (PID et IV comme le jeu),
+      rencontres ; création d'un Pokémon comme le jeu (PID, IV, nature, sexe, chromatique)
+- [x] Moteur de combat Gen 5 (combats simples) : générateur du jeu, formules de dégâts, précision,
+      critiques, crans, ordre des actions, statuts, météo, environ 150 talents, objets tenus,
+      capacités à part, capture, fuite, expérience, nouvelles capacités, argent
+- [x] IA des dresseurs : son code n'a pas été trouvé ; elle suit les indicateurs d'IA des fiches
+- [x] Interface de combat sur l'écran unique : décor 3D du jeu (fond, socles, caméra), sprites
+      animés des Pokémon et des dresseurs, jauges de la ROM, panneau de commandes (Attaque, Sac,
+      Pokémon, Fuite) en surimpression, choix des capacités, équipe, sac, Ball lancée, niveau
+      supérieur, bruitages et musiques
+- [x] Combats sur le terrain : rencontres dans les herbes à chaque pas (compteur et taux du jeu),
+      combats des scripts (0x85, résultat 0x8D, défaite 0x8C), démonstration de capture de la
+      professeure (0x17D)
+- [x] Effets du combat joués depuis les scripts de la ROM (machine de l'overlay 94) : caméra,
+      sprites, dresseurs (héros vu de dos qui lance la Ball), particules (fichiers SPA et
+      bibliothèque de l'ARM9) ; intro sauvage, intro de dresseur, envois, K.O., retour dans la Ball
+- [x] Début des combats déroulé comme le client du jeu (messages, jauges, rangées de Balls)
+- [x] Animations des capacités jouées depuis leurs scripts (`a/0/6/6`), sons et cris des effets
+- [x] Transition « VS » des rivaux et des champions sur le terrain : la coupure 3D de la ROM
+      (modèles, animations de squelette, de visibilité et de couleurs, portraits et noms écrits,
+      étincelles, bruitages)
+- [ ] Capture avec les effets du jeu (commandes de la Ball 0x2E-0x32 et 0x45), commandes de fonds
+      0x24-0x29 et 0x2B-0x2D ; transitions des autres dresseurs et des rencontres sauvages (effets
+      de rencontre selon le lieu)
+- [ ] Combats doubles, triples et rotatifs ; évolution après le combat ; « Utiliser un autre
+      Pokémon ? » ; surnom à la capture ; paroles des dresseurs en plein combat
 
 ## Phase 5 — Les systèmes du jeu
 

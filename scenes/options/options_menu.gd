@@ -9,8 +9,11 @@ const VOLUME_STEPS := 10
 enum Row { TEXT_SPEED, MUSIC, EFFECTS, WINDOW, FULLSCREEN, KEYS, BACK }
 const LABELS := ["Vitesse du texte", "Volume de la musique", "Volume des effets", "Taille de la fenêtre", "Plein écran", "Touches…", "Retour"]
 
-## Scène où revenir en quittant les options.
-static var return_scene := "res://scenes/dev_menu/dev_menu.tscn"
+const DEV_MENU := "res://scenes/dev_menu/dev_menu.tscn"
+
+## Scène où revenir en quittant les options (le terrain la règle avant d'ouvrir les options ; elle
+## revient au menu de développement une fois qu'on en est sorti).
+static var return_scene := DEV_MENU
 
 var _menu: ChoiceMenu
 var _preview: DialogueBox
@@ -100,4 +103,6 @@ func _show_preview() -> void:
 
 
 func _back() -> void:
-	get_tree().change_scene_to_file(return_scene)
+	var target := return_scene
+	return_scene = DEV_MENU
+	get_tree().change_scene_to_file(target)

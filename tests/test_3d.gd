@@ -24,6 +24,7 @@ func _initialize() -> void:
 	_test_terrain()
 	_test_textures()
 	_test_animations()
+	_test_cut_in_animations()
 	_test_buildings()
 	_test_lights()
 	_test_zones()
@@ -205,7 +206,7 @@ func _test_compressed_texture() -> void:
 
 ## Toutes les animations 3D de la ROM se lisent, et leurs rotations sont de vraies rotations.
 func _test_animations() -> void:
-	var counts := {"BCA0": 0, "BTA0": 0, "BTP0": 0}
+	var counts := {"BCA0": 0, "BTA0": 0, "BTP0": 0, "BMA0": 0, "BVA0": 0}
 	var clips := 0
 	var failed := PackedStringArray()
 	var rotations := 0
@@ -241,12 +242,47 @@ func _test_animations() -> void:
 				"BTP0":
 					var f := NSBTP.parse(bytes)
 					animations = f.animations if f else []
+				"BMA0":
+					var f := NSBMA.parse(bytes)
+					animations = f.animations if f else []
+				"BVA0":
+					var f := NSBVA.parse(bytes)
+					animations = f.animations if f else []
 			if animations.is_empty():
 				failed.append("%s[%d]" % [path, i])
 			clips += animations.size()
 	print("   Animations : %s, %d séquences" % [counts, clips])
 	_check(failed.is_empty(), "toutes les animations 3D se lisent %s" % ", ".join(failed.slice(0, 8)))
 	_check(rotations > 1000 and orthonormal >= rotations * 0.99, "rotations des squelettes valides (%d/%d)" % [orthonormal, rotations])
+
+
+## Animations de la coupure « VS » (a/1/1/5) : visibilité des nœuds (portrait noir puis vrai portrait
+## à l'image 38), opacité des matériaux (plan blanc des deux flashs, fondu des portraits), et
+## modèle construit avec ses nœuds cachés.
+func _test_cut_in_animations() -> void:
+	var archive: NARC = _rom.narc(BWFiles.CUT_IN_RESOURCES)
+	var vis := NSBVA.parse(archive.get_file(75))
+	if not _check(vis != null and vis.animations[0].frame_count == 111 and vis.animations[0].node_count == 9, "NSBVA de la coupure : 111 images, 9 nœuds"):
+		return
+	var clip := vis.animations[0]
+	_check(clip.is_visible(6, 37) and not clip.is_visible(6, 38) and not clip.is_visible(5, 37) and clip.is_visible(5, 38),
+		"le portrait noir (nœud 6) laisse place au vrai (nœud 5) à l'image 38")
+	_check(not clip.is_visible(8, 89) and clip.is_visible(8, 90) and clip.is_visible(7, 89) and not clip.is_visible(7, 90),
+		"le « VS » plat (nœud 7) laisse place au « VS » en relief (nœud 8) à l'image 90")
+	var white: NSBMA.Clip = NSBMA.parse(archive.get_file(77)).animations[0]
+	_check(white.alpha("white", 10) == 0 and white.alpha("white", 12) == 31 and white.alpha("white", 15) == 0 and white.alpha("white", 38) == 31,
+		"plan blanc : flashs aux images 12 et 38")
+	var faces: NSBMA.Clip = NSBMA.parse(archive.get_file(74)).animations[0]
+	_check(faces.alpha("face_up", 100) == 31 and faces.alpha("face_up", 105) == 15 and faces.alpha("face_up", 110) == 0,
+		"fondu des portraits de l'image 100 à 110")
+	_check(faces.alpha("name_up", 20) == 0 and faces.alpha("name_up", 21) == 31 and faces.color("face_up", NSBMA.Track.DIFFUSE, 0).is_equal_approx(G3DFile.bgr555(0x6739)),
+		"noms visibles dès l'image 21, diffus constant (25, 25, 25)")
+	var model: G3DModel = NSBMD.parse(archive.get_file(71)).models[0]
+	var builder := G3DMeshBuilder.build(model, true)
+	var nodes := {}
+	for surface in builder.surfaces:
+		nodes[surface.visibility_node] = true
+	_check(nodes.size() == 7 and nodes.has(5) and nodes.has(6) and not builder.node_visible[5], "modèle avec ses nœuds cachés : 7 groupes de visibilité")
 
 
 func _test_buildings() -> void:

@@ -11,7 +11,7 @@ la logique du jeu. C'est le même principe qu'OpenMW pour Morrowind.
 
 ## Avancement
 
-**Portage complet : environ 24 %** `█████░░░░░░░░░░░░░░░`
+**Portage complet : environ 35 %** `███████░░░░░░░░░░░░░`
 
 Estimation d'octobre 2026, à refaire à la fin de chaque phase de la [feuille de route](docs/ROADMAP.md) :
 chaque domaine compte pour sa part estimée du travail total, multipliée par ce qui en est fait. Le
@@ -21,10 +21,10 @@ périmètre est toute l'aventure en solo ; les fonctions sans fil du C-Gear n'en
 | --- | ---: | ---: | --- |
 | Lecture de la ROM : 2D, 3D, sons, textes | 10 % | 85 % | Lus et affichés ou joués : 649 morceaux de carte, 5 278 modèles 3D, 179 musiques, 649 Pokémon animés. Restent le brouillard, les contours et les panneaux de la 3D, le cadre de dialogue d'origine |
 | Le monde : cartes, déplacements, PNJ, caméra | 15 % | 40 % | Jouables à Renouet et sur la Route 1 : marche, portes, rebords, PNJ, caméra, éclairage, saisons ; 162 mouvements de personnages sur 378. Restent la météo, les rails, Surf, Force et les autres capacités de terrain, les énigmes des arènes |
-| Moteur de scripts | 15 % | 30 % | 105 commandes écrites sur les 551 qu'emploie le jeu, mais les plus courantes : elles font 94 % des commandes des scripts ; 182 fichiers de scripts sur 472 n'emploient qu'elles |
-| Combats | 25 % | 3 % | Sprites, cris, décors et musiques prêts, groupe de rencontres de chaque case retrouvé. Restent les données, le moteur, l'IA et l'interface (phase 4) |
-| Menus et systèmes : équipe, sac, Pokédex, PC, boutiques | 15 % | 10 % | Menu pause, sauvegarde et reprise, options ; l'équipe et le sac ne sont que des fiches. Le reste en phase 5 |
-| L'aventure : histoire, à-côtés, cinématiques | 15 % | 2 % | De la chambre du héros au bout de la Route 1, avec les scripts du jeu ; les combats y sont simulés |
+| Moteur de scripts | 15 % | 31 % | 111 commandes écrites sur les 551 qu'emploie le jeu, mais les plus courantes : elles font 95 % des commandes des scripts ; 186 fichiers de scripts sur 472 n'emploient qu'elles |
+| Combats | 25 % | 45 % | Combats simples complets : données lues dans la ROM, moteur de la 5e génération (formules, statuts, talents, objets, capture), IA, écran de combat (décor 3D, sprites, jauges, commandes, sac, équipe), rencontres et dresseurs sur le terrain. Restent les combats doubles, triples et rotatifs, les animations des capacités, les évolutions |
+| Menus et systèmes : équipe, sac, Pokédex, PC, boutiques | 15 % | 12 % | Menu pause, sauvegarde et reprise, options ; l'équipe et le sac du combat ; hors combat, ce ne sont que des fiches. Le reste en phase 5 |
+| L'aventure : histoire, à-côtés, cinématiques | 15 % | 3 % | De la chambre du héros au bout de la Route 1, avec les scripts du jeu et de vrais combats : Bianca et Tcheren, la démonstration de capture, les Pokémon sauvages |
 | Adaptation au PC | 5 % | 50 % | Écran unique 16:9 à échelle entière, clavier, manette, souris, touches réassignables. Restent l'exécutable Windows, les filtres, les 60 images par seconde |
 
 Les chiffres des scripts se recalculent avec `python scripts.py --coverage`, dans [tools/re/](tools/re/).
@@ -46,6 +46,8 @@ musique. Valider mène au **menu de développement** :
 - **Scènes de l'histoire (mise au point)** : chaque scène jouée jusqu'ici (l'intro, le starter, la
   mère, le laboratoire, Renouet, la Route 1) lancée directement, la partie posée telle qu'à son
   début ;
+- **Combat sauvage (Route 1)** et **Combat contre Bianca** : un combat lancé directement, avec
+  l'équipe de la partie (un Gruikui si elle est vide) ;
 - **Démo des dialogues** : tous les textes de l'histoire dans la boîte de dialogue du portage ;
 - **Pokémon animés** : les 649 Pokémon animés de face et de dos, version chromatique, cris ;
 - **Modèles 3D** : visionneuse des modèles de la ROM (cartes, bâtiments, objets, effets,
@@ -59,7 +61,9 @@ musique. Valider mène au **menu de développement** :
 
 Un seul écran 16:9 au lieu des deux écrans de la DS : l'interface est dessinée en 480x270 pixels
 logiques et agrandie d'un facteur entier (x2 en 720p, x4 en 1080p, x8 en 4K). Ce qui était sur
-l'écran du bas sera intégré à l'écran unique (voir la [feuille de route](docs/ROADMAP.md)).
+l'écran du bas est intégré à l'écran unique : le menu du terrain, et en combat les commandes
+(Attaque, Sac, Pokémon, Fuite), les capacités, l'équipe et le sac, en panneaux qu'on choisit au
+clavier, à la manette ou à la souris (voir la [feuille de route](docs/ROADMAP.md)).
 
 | Action | Clavier | Manette |
 | --- | --- | --- |
@@ -101,6 +105,14 @@ godot --headless --path . --script res://tests/test_navigation.gd
 ```
 
 ```bash
+godot --headless --path . --script res://tests/test_world.gd
+```
+
+```bash
+godot --headless --path . --script res://tests/test_battle.gd
+```
+
+```bash
 godot --headless --path . --script res://tests/test_3d.gd
 ```
 
@@ -122,6 +134,9 @@ godot --headless --path . --script res://tests/test_models.gd
 ```
 
 `test_sound` enregistre aussi quelques musiques et un cri en WAV pour les écouter.
+`test_world` joue les scripts de l'histoire de la chambre du héros à la Route 1. `test_battle`
+vérifie les données et les formules des combats, joue des combats entiers avec un générateur fixé,
+puis pilote l'écran de combat comme un joueur (victoire, niveau supérieur, capture, défaite, Bianca).
 `test_navigation` joue au clavier et à la souris d'un écran à l'autre, et échoue si le moteur signale
 la moindre erreur en chemin.
 
@@ -140,7 +155,9 @@ Les images de contrôle sont écrites dans `user://tests/` (sous Windows :
 | `engine/field/` | Le monde : morceaux de carte, permissions, matrices, zones, bâtiments, éclairage, héros, caméra |
 | `engine/sound/` | Son : archive SDAT, séquences, instruments, échantillons, synthétiseur |
 | `engine/text/` | Textes chiffrés de la Gen 5, polices NFTR, découpage des textes pour les dialogues |
-| `engine/data/` | Où trouver chaque donnée dans la ROM de N&B, sprites des Pokémon |
+| `engine/data/` | Où trouver chaque donnée dans la ROM de N&B : Pokémon, capacités, objets, dresseurs, rencontres, décors des combats, sprites |
+| `engine/game/` | La partie : état sauvegardé, Pokémon, générateur aléatoire du jeu, scènes de l'histoire |
+| `engine/battle/` | Le moteur de combat (règles et formules de l'overlay 93) et son écran (`ui/`) |
 | `engine/core/` | Autoloads `Settings` (réglages), `Controls` (commandes), `Display` (écran unique), `Rom` (ROM du joueur), `Sound` (musique et bruitages) |
 | `engine/ui/` | Interface du jeu : habillage, boîte de dialogue, menu de choix, textes |
 | `scenes/` | Démarrage, intro, écran titre, terrain, options, menu de développement, démos |
