@@ -125,6 +125,20 @@ func _process(_delta: float) -> void:
 		_fill(channel)
 
 
+## Coupe tous les sons. Le serveur audio ne lâche une lecture qu'à son passage suivant : avant de
+## quitter (tests), il faut le faire puis laisser passer quelques images, sinon elle reste en vie.
+func stop_all() -> void:
+	for channel: Channel in [_music, _effects, _cries]:
+		if channel:
+			channel.sequence.release_all()
+			channel.player.stop()
+			channel.playback = null
+
+
+func _exit_tree() -> void:
+	stop_all()
+
+
 func _fill(channel: Channel) -> void:
 	if channel.playback == null:
 		return

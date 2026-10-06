@@ -86,6 +86,12 @@ func _ready() -> void:
 	_run()
 
 
+## Écran fermé avant la fin (changement de scène) : le combat est abandonné.
+func _exit_tree() -> void:
+	if battle and not battle.is_over():
+		battle.abort()
+
+
 func _build() -> void:
 	_viewport = SubViewport.new()
 	_viewport.name = "Vue 3D"

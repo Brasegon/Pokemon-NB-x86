@@ -3,7 +3,13 @@ extends SceneTree
 ##   godot --headless --path . --script res://tests/test_battle.gd
 ## Données (Pokémon, capacités, objets, dresseurs, rencontres), tables du code (types, natures),
 ## création des Pokémon, formules (statistiques, dégâts, capture, expérience, fuite), moteur de
-## combat joué de bout en bout avec un générateur fixé.
+## combat joué de bout en bout avec un générateur fixé, décor, rencontres à chaque pas,
+## démonstration de capture, puis l'écran de combat piloté comme un joueur (panneaux et menus).
+
+## Accélère les animations de l'écran de combat pendant ses tests.
+const SCREEN_TIME_SCALE := 12.0
+## Images au plus pour un combat joué à l'écran.
+const SCREEN_FRAME_LIMIT := 30000
 
 var _failures := 0
 var _checks := 0
@@ -31,6 +37,16 @@ func _initialize() -> void:
 	_test_capture()
 	_test_escape()
 	_test_learn_move()
+	_test_backgrounds()
+	_test_wild_encounters()
+	_test_capture_demo()
+	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
+	await process_frame
+	await _test_screen()
+	# Les sons des combats joués à l'écran : coupés, et le serveur audio les lâche avant de quitter.
+	root.get_node("Sound").stop_all()
+	for i in 5:
+		await process_frame
 	print("%d vérifications, %d échec(s), %d ms" % [_checks, _failures, Time.get_ticks_msec() - started])
 	quit(1 if _failures > 0 else 0)
 
@@ -332,6 +348,158 @@ func _test_learn_move() -> void:
 	battle.run()
 	battle.learn_move(snivy, 74)
 	_check(snivy.knows(74) and not snivy.knows(33), "nouvelle capacité à la place de la première")
+
+
+## Décor (a/1/5/2) : la Route 1 en herbe, au printemps et en été, et un décor qui change avec les
+## saisons.
+func _test_backgrounds() -> void:
+	_check(BattleBackgrounds.attribute_of(0x04) == 5 and BattleBackgrounds.attribute_of(0x0A) == 10 and BattleBackgrounds.attribute_of(0x01) == 0,
+		"genre de case (table 0x021D8E30) : herbe 0x04 -> 5, 0x0A -> 10, sinon 0")
+	var route := BattleBackgrounds.choose(0, 5, 0)
+	_check(route.background == 34 and route.background_animations == [35] and route.stage == 32 and route.lit_by_time,
+		"Route 1 au printemps : fond batt_bg01 (34, animation 35), socle batt_stage24 (32), lumière de l'heure")
+	var summer := BattleBackgrounds.choose(0, 5, 1)
+	_check(summer.background == 34 and summer.background_animations == [35], "décor 0 sans saisons : le printemps toute l'année")
+	var autumn := BattleBackgrounds.choose(1, 5, 2)
+	_check(autumn.background == 38 and autumn.background_animations == [42], "décor 1 en automne : modèle 38 et animation 42")
+
+
+## Rencontres à chaque pas (0x021A9EE0) : compteur de pas, premier pas à taux 1, modificateurs.
+func _test_wild_encounters() -> void:
+	var zones := ZoneTable.parse(_rom.narc(BWFiles.ZONE_HEADERS).get_file(0))
+	var table := EncounterTable.for_zone(zones.get_zone(317), 0)
+	var lead := Pokemon.create(498, 5, {"random": GameRandom.new(1)})
+	var encounters := WildEncounters.new(GameRandom.new(2))
+	encounters.reset(Vector2i(10, 10))
+	# Grand taux pour tester le compteur : sur la case de référence, rien ne compte.
+	var grass := 0x04
+	var wild_flag := TileBehaviors.WILD_FLAG
+	for i in 20:
+		_check_silent(encounters.step(Vector2i(10, 10), grass, wild_flag, table, lead).is_empty())
+	_check(encounters.counter == 0 and not encounters.moved, "rester sur la case de la dernière rencontre ne compte pas de pas")
+	encounters.step(Vector2i(10, 11), grass, wild_flag, table, lead)
+	_check(encounters.counter == 1 or encounters.counter == 0, "premier pas hors de la case : compteur à 1 (taux 1)")
+	var met := 0
+	for i in 2000:
+		if not encounters.step(Vector2i(10, 12 + (i % 2)), grass, wild_flag, table, lead).is_empty():
+			met += 1
+	# Taux 8 de la Route 1 : tirage 0..99 <= 8, soit 9 % des pas (hors premiers pas après une rencontre).
+	_check(met > 80 and met < 260, "Route 1 : à peu près 9 %% de rencontres par pas dans les herbes (%d sur 2000)" % met)
+	_check(encounters.step(Vector2i(10, 11), 0x00, 0, table, lead).is_empty(), "pas de rencontre hors des herbes")
+	var illuminate := Pokemon.create(498, 5, {"random": GameRandom.new(3)})
+	illuminate.ability = 35
+	var stench := Pokemon.create(498, 5, {"random": GameRandom.new(4)})
+	stench.ability = 1
+	var cleanse := Pokemon.create(498, 5, {"random": GameRandom.new(5)})
+	cleanse.held_item = 224
+	_check(WildEncounters.modified_rate(8, illuminate) == 16 and WildEncounters.modified_rate(8, stench) == 4
+		and WildEncounters.modified_rate(9, cleanse) == 6 and WildEncounters.modified_rate(70, illuminate) == 100,
+		"taux : Lumiattirance x2, Puanteur / 2, Rune Purifiante 2/3, plafond 100")
+
+
+## Démonstration de la professeure : jouée seule, capture réussie, partie du joueur intacte.
+func _test_capture_demo() -> void:
+	var battle := Battle.capture_demo({"random": GameRandom.new(21)})
+	battle.run()
+	var lines := _transcript(battle)
+	print("   Démonstration : ", " | ".join(lines))
+	_check(battle.result == Battle.Result.CAUGHT and battle.player().party[0].species == 572 and battle.enemy().party[0].species == 504,
+		"démonstration : Chinchidou de la professeure contre Ratentif, capturé")
+	_check(lines.has("Le Professeur Keteleeria utilise une Poké Ball!") and lines.has("Chinchidou utilise Écras'Face!"),
+		"démonstration : Écras'Face puis la Poké Ball de la professeure (fichier 20)")
+
+
+## L'écran de combat piloté comme un joueur : victoire avec expérience, capture, défaite.
+func _test_screen() -> void:
+	Engine.time_scale = SCREEN_TIME_SCALE
+	# Victoire : ATTAQUE puis la première capacité à chaque tour.
+	var state := _player(498, 12, 31)
+	var battle := Battle.wild(state, Pokemon.create(504, 3, {"random": GameRandom.new(32)}), {"random": GameRandom.new(33)})
+	var before: int = state.party[0].experience
+	var log := await _play_screen(battle, BattleCommandPanel.Command.FIGHT)
+	_check(battle.result == Battle.Result.WIN and state.party[0].experience > before, "écran : victoire et expérience gagnée")
+	_check(log.panels.has("BattleCommandPanel") and log.panels.has("BattleMovePanel"), "écran : commandes puis capacités")
+	# Niveau supérieur : juste avant le niveau 6, le tableau des statistiques s'ouvre.
+	state = _player(498, 5, 34)
+	var tepig := state.party[0]
+	tepig.experience = Growth.exp_for_level(tepig.growth_rate(), 6) - 1
+	battle = Battle.wild(state, Pokemon.create(504, 4, {"random": GameRandom.new(35)}), {"random": GameRandom.new(36)})
+	log = await _play_screen(battle, BattleCommandPanel.Command.FIGHT)
+	_check(tepig.level >= 6 and log.panels.has("BattleStatsPanel"), "écran : niveau supérieur et tableau des statistiques")
+	# Capture : SAC, BALLS, Poké Ball, jusqu'à la capture.
+	state = _player(498, 10, 37)
+	state.add_item(4, 30)
+	battle = Battle.wild(state, Pokemon.create(504, 2, {"random": GameRandom.new(38)}), {"random": GameRandom.new(39)})
+	log = await _play_screen(battle, BattleCommandPanel.Command.BAG)
+	_check(battle.result == Battle.Result.CAUGHT and state.party.size() == 2, "écran : capture avec le sac (poche BALLS)")
+	# Défaite : un Pokémon bien plus fort.
+	state = _player(498, 2, 40)
+	battle = Battle.wild(state, Pokemon.create(637, 60, {"random": GameRandom.new(41)}), {"random": GameRandom.new(42)})
+	log = await _play_screen(battle, BattleCommandPanel.Command.FIGHT)
+	_check(battle.result == Battle.Result.LOSE, "écran : défaite")
+	# Dresseur : Bianca, avec son sprite et ses messages.
+	state = _player(495, 7, 43)
+	battle = Battle.against_trainer(state, 59, {"random": GameRandom.new(44)})
+	log = await _play_screen(battle, BattleCommandPanel.Command.FIGHT)
+	_check(battle.result in [Battle.Result.WIN, Battle.Result.LOSE] and log.trainer, "écran : combat contre Bianca jusqu'au bout")
+	Engine.time_scale = 1.0
+
+
+## Joue un combat dans l'écran : à chaque image, le panneau ou le menu ouvert reçoit un choix
+## (`command` au panneau des commandes, le premier ailleurs), les messages avancent, le tableau des
+## statistiques se ferme. Renvoie { panels : types de panneaux vus, trainer : sprite de dresseur vu }.
+func _play_screen(battle: Battle, command: int) -> Dictionary:
+	var screen := BattleScreen.create(battle, {"season": 0})
+	var done := [false]
+	screen.finished.connect(func(_result: Battle.Result) -> void: done[0] = true)
+	root.add_child(screen)
+	var seen := {}
+	var trainer := false
+	for frame in SCREEN_FRAME_LIMIT:
+		await process_frame
+		if done[0]:
+			break
+		trainer = trainer or screen.trainer_sprites.any(func(sprite: BattleSprite) -> bool: return sprite != null)
+		if frame % 4 != 0:
+			continue
+		if screen.messages.visible and screen.messages.accepts_input and not screen.messages.is_closed():
+			screen.messages.advance()
+		for node in screen.find_children("*", "", true, false):
+			var kind: String = node.get_script().get_global_name() if node.get_script() else ""
+			if kind.is_empty() or not node.is_inside_tree() or node.is_queued_for_deletion():
+				continue
+			match kind:
+				"BattleCommandPanel":
+					seen[kind] = true
+					(node as BattleCommandPanel).chosen.emit(node.buttons.find_custom(func(b: Dictionary) -> bool: return b.data == command))
+				"BattleMovePanel", "BattleButtonPanel":
+					seen[kind] = true
+					# Poches du sac : BALLS (troisième) ; capacités : la première.
+					(node as BattleButtonPanel).chosen.emit(2 if kind == "BattleButtonPanel" else 0)
+				"BattlePartyPanel":
+					seen[kind] = true
+					var party := node as BattlePartyPanel
+					for i in party.buttons.size():
+						if party.buttons[i].get("enabled", true) and i < battle.player().party.size() and not battle.player().party[i].is_fainted():
+							party.chosen.emit(i)
+							break
+				"ChoiceMenu":
+					seen[kind] = true
+					(node as ChoiceMenu).chosen.emit(0)
+				"BattleStatsPanel":
+					seen[kind] = true
+					(node as BattleStatsPanel)._advance()
+	if not done[0]:
+		_check(false, "écran : le combat finit (%s)" % Battle.Result.keys()[battle.result])
+	screen.queue_free()
+	await process_frame
+	return {"panels": seen.keys(), "trainer": trainer}
+
+
+## Vérification qui ne s'affiche qu'en cas d'échec (boucles).
+func _check_silent(condition: bool) -> void:
+	if not condition:
+		_check(false, "vérification dans une boucle")
 
 
 func _check(condition: bool, label: String) -> bool:

@@ -60,6 +60,9 @@ var events: Array[Dictionary] = []
 var auto_answer := Callable()
 ## Demande en attente de réponse ({} : aucune).
 var pending := {}
+## Combat abandonné (son écran a été fermé) : les demandes ne reçoivent plus de réponse et run() se
+## termine sans rien jouer de plus.
+var aborted := false
 var escape_attempts := 0
 var money_won := 0
 ## Pièces ramassées après Jackpot (niveau x 5 à chaque emploi), gagnées si le joueur gagne.
@@ -223,7 +226,21 @@ func answer(value: Variant) -> void:
 	answered.emit(value)
 
 
+## Arrête un combat abandonné : la demande en attente reçoit une réponse vide et la coroutine run()
+## va jusqu'au bout sans rien jouer (sinon elle attendrait pour toujours, et le combat ne serait
+## jamais libéré).
+func abort() -> void:
+	aborted = true
+	if result == Result.NONE:
+		result = Result.RUN
+	if not pending.is_empty():
+		pending = {}
+		answered.emit(null)
+
+
 func _ask(request: Dictionary) -> Variant:
+	if aborted:
+		return null
 	if auto_answer.is_valid():
 		return auto_answer.call(self, request)
 	pending = request
@@ -335,7 +352,7 @@ func _choose_player_action(mon: BattleMon) -> Dictionary:
 	var forced := moves.forced_action(mon)
 	if not forced.is_empty():
 		return forced
-	while true:
+	while not aborted:
 		var choice: Variant = await _ask({"kind": "action", "mon": mon})
 		if not choice is Dictionary:
 			continue
@@ -662,7 +679,7 @@ func learn_move(pokemon: Pokemon, move: int) -> void:
 		push({"type": "sound", "name": "SEQ_ME_LVUP", "fanfare": true})
 		say(3, {0: pokemon.name(), 1: move_name}, LEARN_TEXT)
 		return
-	while true:
+	while not aborted:
 		say(4, {0: pokemon.name(), 1: move_name}, LEARN_TEXT)
 		var slot: Variant = await _ask({"kind": "forget_move", "pokemon": pokemon, "move": move})
 		if slot is int and slot >= 0 and slot < Pokemon.MAX_MOVES:
@@ -700,7 +717,7 @@ func ask_switch(forced: bool) -> int:
 
 
 func _ask_switch(forced: bool) -> int:
-	while true:
+	while not aborted:
 		var choice: Variant = await _ask({"kind": "switch", "forced": forced})
 		if not forced and (choice == null or (choice is int and choice < 0)):
 			return -1

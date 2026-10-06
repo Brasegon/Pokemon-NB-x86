@@ -25,6 +25,7 @@ var _failures := 0
 ## File d'étapes : [action à exécuter, images à attendre ensuite].
 var _steps: Array = []
 var _wait := 0
+var _stopping := false
 
 
 func _initialize() -> void:
@@ -179,6 +180,12 @@ func _process(_delta: float) -> bool:
 		_wait -= 1
 		return false
 	if _steps.is_empty():
+		if not _stopping:
+			# Sons coupés, puis quelques images pour que le serveur audio les lâche.
+			_stopping = true
+			root.get_node("Sound").stop_all()
+			_wait = 5
+			return false
 		_finish()
 		return true
 	var step: Array = _steps.pop_front()
