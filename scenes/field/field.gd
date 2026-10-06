@@ -37,6 +37,10 @@ const SEASON_NAMES := ["Printemps", "Été", "Automne", "Hiver"]
 const HOME_ZONE := 390
 ## Calque de l'écran de combat, au-dessus de l'interface du terrain.
 const BATTLE_LAYER := 10
+## Transition vers un combat : flashs blancs (nombre, force, durée de chaque moitié).
+const BATTLE_FLASHES := 2
+const BATTLE_FLASH_ALPHA := 0.85
+const BATTLE_FLASH_TIME := 0.07
 
 var field: FieldMap
 var player: FieldPlayer
@@ -501,6 +505,14 @@ func _play_script_battle(battle: Battle) -> void:
 func _play_battle(battle: Battle) -> Battle.Result:
 	player.controllable = false
 	var options := _battle_options(battle)
+	# Transition : la musique du combat part tout de suite, l'écran flashe deux fois en blanc puis
+	# passe au noir.
+	var archive := Sound.sdat()
+	if archive and battle.music >= 0 and battle.music < archive.sequence_names.size():
+		Sound.play_music(archive.sequence_names[battle.music])
+	for flash in BATTLE_FLASHES:
+		await _fade.fade_to(BATTLE_FLASH_ALPHA, BATTLE_FLASH_TIME, true)
+		await _fade.fade_to(0.0, BATTLE_FLASH_TIME, true)
 	await _fade_to(1.0)
 	_battle = BattleScreen.create(battle, options)
 	_battle_layer.add_child(_battle)

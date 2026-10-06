@@ -27,9 +27,9 @@ from scriptcmds import commands
 MARKER = 0xFD13
 RANGES_TABLE, RANGES_COUNT = 0x02170138, 46
 VM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "engine", "script", "script_vm.gd")
-# Commandes que script_vm.gd simule en attendant leur phase (combats, surnom, Vokit) : elles ne
-# comptent pas comme écrites. À retirer d'ici quand elles le seront.
-PLACEHOLDERS = {0x85, 0x8D, 0x8E, 0x105, 0x155, 0x179, 0x17D}
+# Commandes que script_vm.gd simule en attendant leur phase (surnom, Vokit) : elles ne comptent pas
+# comme écrites. À retirer d'ici quand elles le seront.
+PLACEHOLDERS = {0x105, 0x155}
 
 
 def entries(data):
