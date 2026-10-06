@@ -202,8 +202,17 @@ N&B : 2076 séquences (dont 179 musiques `SEQ_BGM_*` et 726 bruitages `SEQ_SE_*`
 | Banque | 00 fichier, 04 à 0B jusqu'à 4 archives d'ondes (`FFFF` = vide) |
 | Archive d'ondes | 00 fichier |
 
-FAT : 16 octets par fichier (position absolue, taille). **Cris** : une seule séquence, `SEQ_PV001`,
-jouée avec la banque de l'espèce (`BANK_PV025` pour Pikachu).
+FAT : 16 octets par fichier (position absolue, taille). **Cris** : une seule séquence, `SEQ_PV001`
+(« 3C 7F 00 » : une note de durée 0, qui sonne jusqu'au bout de l'échantillon), jouée avec la banque
+n° de l'espèce : `BANK_PV001` à `BANK_PV493` (indices 1 à 493), puis les cris de la 5e génération,
+`BANK_PMWB_xxx` (numéros de développement, indices 494 à 649), puis `BANK_PV492_SKY` (650). Le jeu
+joue en fait l'onde directement (0x02006984, vitesse de départ 0x64E1 en 0x020067AA ; 0x02006AEC
+ajoute à la vitesse, 0x02006A8C au volume).
+
+**Lecteurs** : chaque séquence a son lecteur (octet 09) ; le jeu garde une poignée par lecteur
+(table 0x020AA234, 8 octets) : 0x020061A4 joue un bruitage sur le lecteur de sa séquence
+(0x02006148), 0x0200616C sur le canal n (lecteur n + 1), et 0x02006268 règle la hauteur (64e de
+demi-ton) et le panoramique (-128 à 127) de toutes ses pistes.
 
 ### SSEQ (séquence)
 
@@ -1317,9 +1326,36 @@ code (lecteur u32 0x0201134C) ; `tools/re/effscripts.py` désassemble les script
   continuer dans un autre effet, 0x4D fin. 0x4C ne change que l'ordre de dessin en combat double ou
   triple (bit 30 des sprites, 0x022004FC).
 - **Commandes écrites** : caméra 0x00-0x05 ; particules 0x06, 0x07, 0x09-0x0D, 0x0F, 0x44 ;
-  sprites 0x12, 0x15-0x17, 0x1A-0x1D ; dresseurs 0x20-0x23 ; jauges 0x33 ; sons 0x34, 0x35, 0x43.
-  Les autres (fonds 0x24-0x32, sprites 0x13, 0x14, 0x18, 0x19, 0x1E, 0x1F...) sont comptées par le
-  portage et restent à écrire.
+  sprites 0x12, 0x13, 0x15-0x17, 0x19-0x1D, 0x1F ; dresseurs 0x20-0x23 ; décor 0x2A ; jauges 0x33 ;
+  sons 0x34-0x37, 0x43. Les autres (fonds 0x24-0x29, 0x2B-0x2D, Ball de capture 0x2E-0x32 et 0x45,
+  sprites 0x14, 0x18, 0x1E...) sont comptées par le portage et restent à écrire.
+- **0x13** (ellipse, 0x021FF9B8, tâche 0x02200DBC) : cible, sorte (bit 0 sens, bits 1-2 plan : y-z,
+  x-z, x-y), quart de départ (centre de l'ellipse à +rx, -rx, +ry ou -ry), rayons, pas par tour,
+  images sautées, tours, pause ; le décalage ([MCSS+0x11C], 0x02015C94) s'ajoute à la position et
+  revient à zéro à la fin ; en face, le quart est inversé (sauf 2 et 3 dans les plans y-z et x-y).
+  Le déplacement 0x12, l'ellipse et 0x14 partagent un compteur ([vue+0x542]) : l'un arrête l'autre.
+- **0x19** (0x021FF810) : animation du sprite figée (3), relancée (4) ou qui bégaie (2, tâche
+  0x02200C70) : bit 8 de [MCSS+0x140] (0x02015DCC, 0x02015DDC) ; **0x1F** supprime le sprite
+  (0x021FF098).
+- **0x2A** (0x021F8238) : fondu des palettes des textures du fond (0), des socles (1), des deux (2),
+  des palettes 2D (3) ou de tout (4) : de, à (0 à 16), attente, couleur ; une image (0x021F9304) :
+  mélange au cran courant, puis un cran de plus toutes les attente + 1 images. Attentes 6 (fond),
+  7 (socles), 8 (les deux), 9 (palettes 2D) (0x021F82C4).
+- **Sons** : 0x34 (0x021F97F8, 0x021FDAE0) : son, canal (1 à 4, 5 : celui de la séquence),
+  panoramique (0 gauche, 1 droite, 2 milieu, sinon le côté d'une place : gauche pour le joueur),
+  délai, hauteur, volume ; 0x35 arrête ; 0x36 (panoramique d'un côté à l'autre) et 0x37 (hauteur,
+  volume ou panoramique de-à) font glisser un réglage (0x021F98E8, tâche 0x021FE534 : délai, puis un
+  pas toutes les attente + 1 images, borné, fin ou aller-retour) ; 0x43 joue le cri (vitesse et
+  volume ajoutés, panoramique 20 ou 107 selon la place, table 0x02209F60). Attentes 10 à 15 :
+  sons des lecteurs, et tant qu'un son attend ou glisse.
+
+**Capacités** : le serveur envoie la commande 0x31 (client 0x021D1FD0, table des commandes du client
+0x021F0080 : 92 paires gestionnaire, n°) ; le client ferme la boîte de messages puis joue l'effet
+n° de la capacité (0x021ED0B8, 0x021ED0F8, 0x021F7ACC) avec le lanceur et la cible (aucune : 0xFF) ;
+variable 9 = cible de la capacité (champ 0x1B de 0x0201BD44 = octet +0x14 de ses données),
+variable 10 = variante, choisie par le serveur (bornée au nombre de variantes du fichier). Le jeu
+commence le script au premier décalage de la variante (0x021F9498). Le serveur n'envoie
+l'animation que si la capacité part (pas d'échec, pas d'esquive), une par coup.
 
 Effets du système joués par l'écran : 561 intro d'un Pokémon sauvage, 562 arrivée du héros (la
 caméra recule), 564 le joueur envoie son Pokémon, 566 retour à la vue par défaut, 567 intro du
@@ -1438,6 +1474,20 @@ pixels par image. Création avec `SEQ_SE_TB_START` ; la rangée disparaît d'un 
 Le portage la pose par rapport au centre de la jauge du même côté (sur DS (216, 120) et (44, 40),
 table 0x0220AA78) : la DS coupe 20 pixels de la jauge d'en face et 24 de celle du joueur, l'écran
 large les montre en entier.
+
+### Transitions vers un combat (terrain, overlay 21)
+
+Le combat d'un dresseur (commande 0x85, événement 0x0216EB28) commence par la musique, puis un
+**effet de rencontre** (0x021CF428) : n° choisi par 0x021CF6D8 (classes « à part » : table
+0x021DB786 de l'overlay 21, une entrée par ligne de la table 0x0209FE6C ; autres dresseurs : 5, 6, 7
+ou 8 selon le lieu), table 0x021DB48C (37 effets, 0x14 octets : fonction de création, fonction de
+fin, overlay à charger, mémoire demandée ; repli sur l'effet 7 si elle manque). Les effets 10 à 30
+(rivaux, champions...) sont les coupures « VS » : overlay 73 (0x021F5318 : deux flashs blancs, puis
+0x021C1D58) ; l'overlay 74 donne pour chaque genre (table 0x021F5470, 0x14 octets) l'effet de
+terrain (13 pour les rivaux et champions), l'image du portrait et sa palette dans `a/1/8/0` (22
+images compressées et leurs palettes ; Bianca : genre 1, image 3, palette 25). La coupure est un
+modèle 3D dont le jeu remplace les textures « trwb_face01 » (portrait) et « name_wu »,
+« name_dwn » (noms écrits) ; reste à la refaire.
 
 ### Démonstration de capture (commande 0x17D, 0x0216E8EC)
 
