@@ -13,9 +13,12 @@ zone, textes = champ 0A) ; à partir de 2000, des plages de scripts communs (tab
     python scripts.py 389 5          le script n° 5 de Renouet
     python scripts.py --file 854     un fichier de scripts
     python scripts.py --check        toute la ROM : fichiers qui se désassemblent sans erreur
+    python scripts.py --coverage     commandes écrites dans le moteur, part des scripts du jeu couverte
 """
 import argparse
 import collections
+import os
+import re
 import struct
 
 from nds import Rom, s32, u16
@@ -23,6 +26,10 @@ from scriptcmds import commands
 
 MARKER = 0xFD13
 RANGES_TABLE, RANGES_COUNT = 0x02170138, 46
+VM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "engine", "script", "script_vm.gd")
+# Commandes que script_vm.gd simule en attendant leur phase (combats, surnom, Vokit) : elles ne
+# comptent pas comme écrites. À retirer d'ici quand elles le seront.
+PLACEHOLDERS = {0x85, 0x8D, 0x8E, 0x105, 0x155, 0x179, 0x17D}
 
 
 def entries(data):
@@ -105,9 +112,14 @@ def show(data, table, only=None):
         print("  ERREUR en %04X : %s" % (p, message))
 
 
+def script_files(rom):
+    """Fichiers de scripts de la ROM : ceux des zones et ceux des plages communes."""
+    return sorted({f for _, f in zone_files(rom)} | {r[2] for r in common_ranges(rom)})
+
+
 def check(rom, table):
     archive = rom.narc("a/0/5/7")
-    files = sorted({f for _, f in zone_files(rom)} | {r[2] for r in common_ranges(rom)})
+    files = script_files(rom)
     clean = 0
     blame = collections.Counter()
     for f in files:
@@ -122,17 +134,59 @@ def check(rom, table):
         print("  %4d x %s" % (n, message))
 
 
+def written_commands():
+    """Commandes écrites dans le moteur : étiquettes du match de ScriptVM._step(), sans les
+    commandes simulées."""
+    lines = open(VM, encoding="utf-8").read().splitlines()
+    ops = set()
+    for line in lines[lines.index("\tmatch op:") + 1:]:
+        if line.startswith("\t\t_:"):
+            break
+        labels = re.match(r"\t\t(0x[0-9A-Fa-f]+(?:, 0x[0-9A-Fa-f]+)*):", line)
+        if labels:
+            ops.update(int(label, 16) for label in labels.group(1).split(", "))
+    return ops - PLACEHOLDERS
+
+
+def coverage(rom, table):
+    """Avancement du moteur de scripts : commandes écrites, comparées à celles des scripts du jeu."""
+    archive = rom.narc("a/0/5/7")
+    written = written_commands()
+    uses = collections.Counter()
+    files = script_files(rom)
+    complete = 0
+    for f in files:
+        data = archive[f]
+        code, _ = disassemble(data, entries(data), table)
+        ops = {op for op, _, _ in code.values()}
+        uses.update(op for op, _, _ in code.values())
+        if ops and ops <= written:
+            complete += 1
+    total = sum(uses.values())
+    covered = sum(n for op, n in uses.items() if op in written)
+    print("%d commandes écrites sur les %d qu'emploient les scripts du jeu" % (len(written & set(uses)), len(uses)))
+    print("elles font %.1f %% des commandes des scripts (%d sur %d)" % (100 * covered / total, covered, total))
+    print("%d fichiers de scripts sur %d n'emploient que des commandes écrites" % (complete, len(files)))
+    print("les plus employées de celles qui restent :")
+    for op, n in collections.Counter({op: n for op, n in uses.items() if op not in written}).most_common(15):
+        print("  0x%03X  %4d fois" % (op, n))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Désassembleur des scripts du terrain.")
     parser.add_argument("zone", type=int, nargs="?", help="numéro de zone")
     parser.add_argument("script", type=int, nargs="?", help="numéro du script dans la zone")
     parser.add_argument("--file", type=int, help="numéro de fichier dans a/0/5/7")
     parser.add_argument("--check", action="store_true", help="vérifier toute la ROM")
+    parser.add_argument("--coverage", action="store_true", help="commandes écrites dans le moteur")
     args = parser.parse_args()
     rom = Rom()
     table = commands(rom)
     if args.check:
         check(rom, table)
+        return
+    if args.coverage:
+        coverage(rom, table)
         return
     if args.file is not None:
         show(rom.narc("a/0/5/7")[args.file], table)

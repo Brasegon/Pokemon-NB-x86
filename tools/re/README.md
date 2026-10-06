@@ -22,7 +22,7 @@ git ignore. Ne jamais le versionner ni le partager.
 | `scriptcmds.py` | Paramètres des 609 commandes de script, retrouvés dans le code de chacune (u8, u16, u32, valeur, variable écrite, saut). |
 | `cmd.py` | Fiche d'une commande de script : paramètres, désassemblage de sa fonction, de sa fonction d'attente et de ses renvois. |
 | `texts.gd` | Script Godot : messages d'un fichier de textes (d'une zone, de l'histoire ou du système), avec leur numéro. |
-| `scripts.py` | Désassembleur des scripts du terrain ; `--check` : les 472 fichiers de la ROM. |
+| `scripts.py` | Désassembleur des scripts du terrain ; `--check` : les 472 fichiers de la ROM ; `--coverage` : commandes écrites dans le moteur, part des scripts du jeu qu'elles couvrent et celles qui restent, les plus employées d'abord. |
 | `movements.py` | Actions de mouvement des personnages (378), classées d'après leur code ; `--gdscript` pour le moteur. |
 | `terrain.py` | Hauteurs du terrain : tables des plans, grille d'un morceau, vérifications sur toute la ROM. |
 | `compare_heights.gd` | Script Godot : compare les hauteurs calculées au modèle 3D des cartes. |
