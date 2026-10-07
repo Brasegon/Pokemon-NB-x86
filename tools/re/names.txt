@@ -72,6 +72,8 @@
 # Pokémon (ARM9)
 0x020056EC        rand_range                      tirage dans [0, n) du générateur 64 bits du jeu
 0x020076D0        pc_store_pokemon                range un Pokémon dans le PC : boîte courante, sinon la suivante qui a de la place
+0x020113F0        day_period                      période de la journée selon la saison et l'heure (table 0x0209DEBC)
+0x02011410        is_night                        nuit des évolutions : périodes 3 et 4
 0x02017638        pokemon_create                  crée un Pokémon (PID, IV, nature, sexe, talent...)
 0x02017E38        pokemon_get_param               lit un paramètre d'un Pokémon (structure de 0xDC octets)
 0x02017EF4        pokemon_is_shiny                chromatique : ID ^ ID secret ^ moitiés du PID < 8
@@ -97,6 +99,7 @@
 0x0201ADEC        learnset_load                   ouvre la liste des capacités apprises (a/0/1/8)
 0x0201AE38        personal_get_param              champ d'une fiche d'espèce (switch de 44 cas)
 0x0201AFF0        personal_form_entry             fiche d'une forme : +0x1C + forme - 1
+0x0201B2CC        evolution_check                 évolution : cas 0 niveau (méthodes 1 à 4, 9 à 28), 1 échange ; Pierre Stase
 0x0201B780        evolutions_load                 évolutions d'une espèce (a/0/1/9)
 0x0201BA50        party_heal                      soigne l'équipe
 
@@ -542,6 +545,7 @@ ov94:0x02209008   tray_hide                       la rangée disparaît d'un cou
 ov94:0x02209054   tray_update                     une image de la rangée de Balls
 
 # Après le combat (overlays 92 et 207)
+ov92:0x021B99B4   battle_levelup_mask             masque des membres de l'équipe dont le niveau a monté pendant le combat
 ov92:0x021B95B4   battle_results_apply            après le combat : équipe, argent, capture (PC si l'équipe est pleine : fichier 234, 176 ou 177)
 ov207:0x0220B4FC  capture_nickname_prompt         « Donner un surnom au Pokémon X capturé ? » (fichier 234, 175)
 
@@ -586,6 +590,7 @@ ov95:0x0689CD40   target_list_initial             nombre de cibles de départ d'
 [données]
 
 # ARM9
+0x0209DEBC        day_periods                     périodes de la journée : 24 heures par saison (0 matin à 4 fin de nuit)
 0x0209DF48        text_speed_table                vitesse du texte : lente 3, moyenne 1, rapide -2
 0x0209E220        hidden_power_types              types de la Puissance Cachée
 0x0209E2BC        nature_table                    5 s8 par nature (Attaque, Défense, Attaque Spéciale, Défense Spéciale, Vitesse)

@@ -1544,6 +1544,16 @@ des objets) ; un Pokémon sauvage ne vole plus l'objet du joueur.
   surnom (« Donner un surnom au Pokémon X capturé ? », fichier 234, 175, overlay 207) attend l'écran
   du surnom.
 
+- **Évolution après le combat** (0x021B95B4, étape 4) : après une victoire ou une capture, chaque
+  membre de l'équipe dont le niveau a monté (masque de 0x021B99B4) passe par 0x0201B2CC (cas 0 :
+  lieu du combat, période de la journée) ; une évolution trouvée joue la séquence (`EvolutionScreen`) :
+  fichier 172 (0 « Quoi ? X évolue ! », 1 « Hein ? X n'évolue plus ! » si Annuler l'arrête,
+  2 « Félicitations ! Votre X évolue en Y ! »), musique SEQ_BGM_SHINKA, fanfare SEQ_ME_SHINKAOME,
+  puis les capacités de la nouvelle espèce à ce niveau (fichier 204, comme en combat). Le talent garde
+  sa place (PID, ou le talent caché) ; Munja naît avec Ninjask s'il reste une place et une Poké Ball
+  (prise). Périodes de la journée : table 0x0209DEBC (0x020113F0), 24 heures par saison, 0 matin,
+  1 jour, 2 soir, 3 nuit, 4 fin de nuit ; la nuit des évolutions (0x02011410) : 3 et 4.
+
 ### Formules du combat (`battle_calc.gd`)
 
 Les nombres « fx » ont 12 bits après la virgule (0x1000 = 1,0). Arrondi des multiplicateurs

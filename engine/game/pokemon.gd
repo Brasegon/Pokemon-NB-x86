@@ -159,6 +159,21 @@ func knows(id: int) -> bool:
 ## Statistiques (0x02018A98) : PV = (2 x base + IV + EV/4) x niveau / 100 + niveau + 10 ; autres =
 ## (2 x base + IV + EV/4) x niveau / 100 + 5, corrigées par la nature. Les PV actuels suivent la
 ## variation des PV max (un Pokémon K.O. le reste).
+## Évolue (fin de la séquence d'évolution) : l'espèce change, le talent reste à la même place (le
+## talent caché aussi), les statistiques suivent (PV perdus gardés).
+func evolve_into(new_species: int) -> void:
+	var old_data := personal()
+	var hidden := old_data != null and ability != 0 and ability == old_data.abilities[2] and ability != old_data.abilities[0] and ability != old_data.abilities[1]
+	species = new_species
+	var data := personal()
+	if data:
+		if hidden and data.abilities[2] != 0:
+			ability = data.abilities[2]
+		else:
+			ability = data.abilities[1] if data.ability_count() == 2 and pid & 0x10000 else data.abilities[0]
+	calc_stats()
+
+
 func calc_stats() -> void:
 	var data := personal()
 	if data == null:

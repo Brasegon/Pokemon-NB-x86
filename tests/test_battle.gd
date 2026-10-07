@@ -55,6 +55,7 @@ func _initialize() -> void:
 	_test_last_items()
 	_test_bag_items()
 	_test_around_battle()
+	_test_evolution_rules()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -842,6 +843,16 @@ func _test_capture_demo() -> void:
 ## L'écran de combat piloté comme un joueur : victoire avec expérience, capture, défaite.
 func _test_screen() -> void:
 	Engine.time_scale = SCREEN_TIME_SCALE
+	# Séquence d'évolution (réponses automatiques) : Gruikui niveau 17 devient Grotichon.
+	var evolving := _player(498, 17, 244)
+	var pig := evolving.party[0]
+	var evolution := EvolutionScreen.create(pig, Evolutions.check_level_up(pig, evolving.party, 0, false), evolving)
+	evolution.auto = true
+	root.add_child(evolution)
+	var evolved: bool = await evolution.play()
+	_check(evolved and pig.species == 499 and evolving.caught.has(499), "écran d'évolution : Gruikui évolue en Grotichon")
+	evolution.queue_free()
+	await process_frame
 	# Victoire : ATTAQUE puis la première capacité à chaque tour.
 	var state := _player(498, 12, 31)
 	var battle := Battle.wild(state, Pokemon.create(504, 3, {"random": GameRandom.new(32)}), {"random": GameRandom.new(33)})
@@ -1404,6 +1415,35 @@ func _test_around_battle() -> void:
 		_check(battle.mon_at(BattleSide.PLAYER, 0).party_index == 1 and _said(battle, BWFiles.TEXT_BATTLE, Battle.SHIFT_PROMPT),
 			"style « CHOIX » : changer de Pokémon avant que le dresseur envoie le sien (fichier 15, 20)")
 	battle._finish()
+
+
+## Règles d'évolution en montant de niveau (0x0201B2CC, cas 0).
+func _test_evolution_rules() -> void:
+	var party: Array[Pokemon] = []
+	var tepig := Pokemon.create(498, 17, {"random": GameRandom.new(240)})
+	_check(Evolutions.check_level_up(tepig, party, 0, false).get("species", 0) == 499, "Gruikui évolue au niveau 17 (méthode 4)")
+	tepig.held_item = 229
+	_check(Evolutions.check_level_up(tepig, party, 0, false).is_empty(), "Pierre Stase : pas d'évolution")
+	var eevee := Pokemon.create(133, 20, {"random": GameRandom.new(241)})
+	eevee.friendship = 220
+	_check(Evolutions.check_level_up(eevee, party, 0, false).get("species", 0) == 196
+		and Evolutions.check_level_up(eevee, party, 0, true).get("species", 0) == 197, "Évoli : Mentali de jour, Noctali de nuit (bonheur 220)")
+	eevee.friendship = 0
+	_check(Evolutions.check_level_up(eevee, party, 155, false).get("species", 0) == 470
+		and Evolutions.check_level_up(eevee, party, 203, false).get("species", 0) == 471, "Évoli : Phyllali près de la Pierre Mousse, Givrali près de la Pierre Glacée")
+	var nincada := Pokemon.create(290, 20, {"random": GameRandom.new(242)})
+	var ninjask := Evolutions.check_level_up(nincada, party, 0, false)
+	_check(ninjask.get("species", 0) == 291 and ninjask.get("shedinja", 0) == 292, "Ningale : Ninjask, et Munja avec lui (méthodes 14 et 15)")
+	var wurmple := Pokemon.create(265, 7, {"random": GameRandom.new(243), "pid": 3 << 16})
+	_check(Evolutions.check_level_up(wurmple, party, 0, false).get("species", 0) == 266, "Chenipotte : Armulys si (PID >> 16) % 10 < 5")
+	wurmple.pid = 7 << 16
+	_check(Evolutions.check_level_up(wurmple, party, 0, false).get("species", 0) == 268, "Chenipotte : Blindalys sinon")
+	_check(Evolutions.day_period(0, 22) == 3 and Evolutions.day_period(3, 6) == 4 and Evolutions.day_period(1, 4) == 0,
+		"périodes de la journée par saison (table 0x0209DEBC)")
+	var old_hp := tepig.max_hp() - tepig.hp
+	tepig.held_item = 0
+	tepig.evolve_into(499)
+	_check(tepig.species == 499 and tepig.max_hp() - tepig.hp == old_hp, "évolution : les PV perdus restent perdus")
 
 
 ## Vérification qui ne s'affiche qu'en cas d'échec (boucles).

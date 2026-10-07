@@ -528,12 +528,36 @@ func _play_battle(battle: Battle) -> Battle.Result:
 	var result: Battle.Result = await _battle.finished
 	_battle.queue_free()
 	_battle = null
+	await _evolve_after_battle(battle, result)
 	field.visible = true
 	player.visible = true
 	_play_zone_music()
 	await _fade_to(0.0)
 	player.controllable = not scripts.is_running()
 	return result
+
+
+## Après une victoire ou une capture (0x021B95B4 de l'overlay 92) : chaque Pokémon de l'équipe qui a
+## monté de niveau pendant le combat et qu'une règle d'évolution accepte (0x0201B2CC : lieu, heure de
+## la saison) joue sa séquence d'évolution, dans l'ordre de l'équipe.
+func _evolve_after_battle(battle: Battle, result: Battle.Result) -> void:
+	if result != Battle.Result.WIN and result != Battle.Result.CAUGHT:
+		return
+	var state: GameState = Game.state
+	var night := Evolutions.is_night(field.season, Time.get_datetime_dict_from_system().hour)
+	for member in state.party.duplicate():
+		if member not in battle.leveled_up:
+			continue
+		var evolution := Evolutions.check_level_up(member, state.party, zone, night)
+		if evolution.is_empty():
+			continue
+		var screen := EvolutionScreen.create(member, evolution, state)
+		_battle_layer.add_child(screen)
+		await _fade_to(0.0)
+		await screen.play()
+		await _fade_to(1.0)
+		screen.queue_free()
+		Sound.stop_music()
 
 
 ## Effet de rencontre (0x021CF428) jusqu'à l'écran noir : la coupure « VS » des rivaux, des champions...
