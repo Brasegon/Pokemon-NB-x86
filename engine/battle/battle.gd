@@ -51,6 +51,8 @@ const STRUGGLE := 165
 const TOXIC_MAX := 15
 ## Garde-fou : un combat ne dure jamais autant (le moteur s'arrête plutôt que de boucler).
 const TURN_LIMIT := 1000
+## Mélangé à la graine du combat pour le générateur des natures des dresseurs.
+const NATURE_SEED := 0x6E617475
 
 var kind := Kind.WILD
 var format := Format.SINGLE
@@ -153,15 +155,18 @@ static func against_trainer(game: GameState, trainer_id: int, options := {}) -> 
 	battle.kind = Kind.TRAINER
 	var enemy := battle.sides[BattleSide.ENEMY]
 	enemy.trainer = trainer
+	# Natures des Pokémon des dresseurs : un générateur tiré de la graine du combat, sans toucher
+	# celui du combat.
+	var natures := GameRandom.new(battle.random.lo ^ NATURE_SEED, battle.random.hi)
 	if trainer:
-		enemy.party = trainer.create_party()
+		enemy.party = trainer.create_party(natures)
 		enemy.items = trainer.items.duplicate()
 		battle.music = trainer.battle_music()
 		battle.victory_music = trainer.victory_music()
 	if partner:
 		enemy.partner = partner
 		enemy.partner_first = enemy.party.size()
-		enemy.party.append_array(partner.create_party())
+		enemy.party.append_array(partner.create_party(natures))
 		enemy.partner_items = partner.items.duplicate()
 	return battle
 
