@@ -93,6 +93,12 @@ var demo := false
 var leveled_up: Array[Pokemon] = []
 ## Membres de l'équipe déjà choisis ce tour pour remplacer un Pokémon du joueur (combat à plusieurs).
 var _chosen_switches: Array[int] = []
+## Actions du tour qui restent à jouer, dans l'ordre (voir _play_turn()).
+var queue: Array[Dictionary] = []
+## Capacités parties ce tour, dans l'ordre : { mon, move } (Chant Canon, Flamme Croix...).
+var moves_this_turn: Array[Dictionary] = []
+## Écho : dernier tour où il a été utilisé et nombre de tours de suite (0x021E7184).
+var echoed_voice := {"turn": -1, "count": 0}
 
 var moves: BattleMoves
 var abilities: BattleAbilities
@@ -505,14 +511,21 @@ func _play_turn() -> void:
 	for mon in all_active():
 		mon.acted = false
 		mon.hit_this_turn = false
-	for action in _order(actions):
+	# File des actions du tour : certaines capacités la réordonnent (Poursuite, Chant Canon, Après
+	# Vous, À la Queue).
+	queue = _order(actions)
+	moves_this_turn.clear()
+	moves.announce_focus(queue)
+	while not queue.is_empty():
 		if result != Result.NONE:
 			break
+		var action: Dictionary = queue.pop_front()
 		var mon: BattleMon = action.mon
 		if not is_on_field(mon):
 			continue
 		await _execute(action)
 		await _check_faints()
+	queue.clear()
 	if result == Result.NONE:
 		await _end_of_turn()
 	if result == Result.NONE:
@@ -760,6 +773,10 @@ func _recenter_triple() -> void:
 ## Retire un Pokémon et en envoie un autre (choix du joueur, Demi-Tour, Relais...).
 func switch_mon(mon: BattleMon, index: int, keep := {}) -> void:
 	var side := sides[mon.side]
+	# Poursuite (0x021E1CC0) : un adversaire qui l'a choisie frappe avant le changement, puissance x 2.
+	await moves.pursue(mon)
+	if mon.is_fainted() or result != Result.NONE:
+		return
 	abilities.on_switch_out(mon)
 	if side.is_player():
 		say(BattleText.COME_BACK, {0: mon.name()})
@@ -830,6 +847,11 @@ func heal(mon: BattleMon, amount: int) -> int:
 	return mon.hp() - before
 
 
+## Les K.O. à traiter tout de suite (après une capacité jouée hors de la file : Poursuite).
+func check_faints() -> void:
+	await _check_faints()
+
+
 ## Les Pokémon tombés K.O. : message, expérience pour le joueur, fin du combat si un camp n'a plus
 ## personne.
 func _check_faints() -> void:
@@ -837,6 +859,7 @@ func _check_faints() -> void:
 		if mon == null or not mon.is_fainted() or mon.has("fainted"):
 			continue
 		mon.set_effect("fainted")
+		sides[mon.side].last_faint_turn = turn
 		push({"type": "faint", "side": mon.side, "slot": mon.slot})
 		push({"type": "cry", "species": mon.pokemon.species, "faint": true})
 		say_mon(BattleText.FAINTED, mon)

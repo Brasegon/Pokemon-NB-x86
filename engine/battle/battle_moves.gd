@@ -38,17 +38,29 @@ const PRESSURE_MOVES: Array[int] = [289, 286, 191, 390, 446]
 const SPREAD_RATIO := 0xC00
 ## Lance-Boue et Tourniquet : puissance de l'Électrik et du Feu x 0x548 (environ 1/3, overlay 95).
 const SPORT_RATIO := 0x548
+## Plaques (Jugement) : objets 298 à 313, dans l'ordre de BattleItems.PLATE_TYPES.
+const PLATE_FIRST := 298
+## Modules (TechnoBuster) : objets 116 à 119.
+const DRIVE_FIRST := 116
+const DRIVE_TYPES: Array[int] = [Stats.Type.WATER, Stats.Type.ELECTRIC, Stats.Type.FIRE, Stats.Type.ICE]
+## Force Cachée (0x021E10CC) : effet selon le terrain (0x021C8114) : [sorte, valeur] ; sorte 0 un
+## statut, 1 un cran de moins, 2 l'apeurement.
+const SECRET_POWER := {0: [0, 2], 5: [0, 2], 1: [1, 6], 2: [1, 6], 3: [1, 6], 8: [1, 6], 15: [1, 6],
+	6: [1, 1], 11: [1, 1], 12: [1, 1], 7: [0, 3], 13: [0, 3], 9: [1, 5], 10: [2, 0]}
 ## Capacités à part (table 0x021F2FD0 du jeu) entièrement écrites dans ce fichier, pour le décompte
 ## de tools/re/battle_coverage.gd ; les autres se comportent selon leurs seules données.
-const HANDLED: Array[int] = [6, 13, 16, 19, 20, 26, 35, 37, 49, 50, 54, 57, 59, 67, 68, 69, 73, 74, 76, 80, 82, 83, 86, 87, 89, 91,
-	100, 101, 107, 111, 113, 114, 115, 116, 128, 130, 136, 138, 143, 149, 150, 156, 160, 161, 162, 165,
-	168, 169, 170, 171, 174, 175, 176, 179, 180, 182, 187, 191, 193, 194, 195, 197, 199, 200, 203, 205,
-	210, 212, 213, 215, 216, 218, 219, 220, 222, 227, 229, 234, 235, 236, 237, 239, 243, 244, 250, 252,
-	259, 262, 263, 268, 269, 272, 273, 279, 282, 283, 284, 287, 288, 291, 293, 300, 301, 311, 312, 316,
-	323, 327, 328, 335, 340, 343, 346, 355, 356, 357, 360, 362, 366, 367, 368, 369, 371, 372, 376, 378,
-	379, 380, 381, 384, 385, 386, 388, 389, 390, 391, 392, 393, 432, 433, 445, 446, 447, 462, 463, 470,
-	471, 473, 474, 475, 477, 484, 486, 487, 492, 493, 494, 498, 500, 504, 506, 512, 513, 515, 521, 535,
-	540, 542, 553, 554]
+const HANDLED: Array[int] = [
+	6, 13, 16, 18, 19, 20, 23, 26, 35, 37, 49, 50, 54, 57, 59, 67, 68, 69, 73, 74, 76, 80, 82, 83, 86,
+	87, 89, 91, 99, 100, 101, 107, 111, 113, 114, 115, 116, 117, 120, 128, 130, 136, 138, 143, 149,
+	150, 153, 156, 160, 161, 162, 165, 167, 168, 169, 170, 171, 173, 174, 175, 176, 179, 180, 182, 187,
+	191, 193, 194, 195, 197, 199, 200, 203, 205, 206, 210, 212, 213, 215, 216, 217, 218, 219, 220, 222,
+	227, 228, 229, 234, 235, 236, 237, 239, 243, 244, 250, 251, 252, 259, 262, 263, 264, 265, 268, 269,
+	272, 273, 279, 280, 282, 283, 284, 287, 288, 290, 291, 293, 300, 301, 311, 312, 316, 323, 327, 328,
+	335, 340, 343, 346, 355, 356, 357, 358, 360, 362, 364, 366, 367, 368, 369, 371, 372, 376, 378, 379,
+	380, 381, 384, 385, 386, 387, 388, 389, 390, 391, 392, 393, 419, 432, 433, 445, 446, 447, 448, 449,
+	462, 463, 467, 470, 471, 473, 474, 475, 477, 479, 481, 484, 485, 486, 487, 492, 493, 494, 496, 497,
+	498, 499, 500, 504, 506, 509, 512, 513, 514, 515, 521, 525, 533, 535, 537, 540, 542, 546, 547, 548,
+	553, 554, 558, 559]
 
 ## Le combat, gardé par une référence faible : il possède ce module (pas de cycle de références).
 var battle: Battle:
@@ -174,6 +186,10 @@ func use_move(mon: BattleMon, action: Dictionary) -> void:
 			return
 		mon.pokemon.moves[slot].pp = maxi(mon.pp(slot) - pp_cost(mon, data, targets), 0)
 	mon.last_move = move
+	mon.used_moves[move] = true
+	battle.moves_this_turn.append({"mon": mon, "move": move})
+	if move != 99:
+		mon.clear_effect("rage")
 	if battle.items.locks_choice(mon) and not mon.has("choice_lock"):
 		mon.set_effect("choice_lock", move)
 	if not await _charge_turn(mon, data, forced, action.get("target", -1)):
@@ -196,16 +212,30 @@ func use_move(mon: BattleMon, action: Dictionary) -> void:
 		await _status_move(mon, target, data)
 		return
 	if data.is_damaging():
+		# Cadeau (0x021E2BEC) : 20 % de chances de soigner la cible au lieu de l'attaquer.
+		if data.id == 217 and _random().range_of(100) < 20:
+			push_anim(mon, target, data.id)
+			if target.hp() >= target.max_hp() or target.has("heal_block"):
+				battle.say_mon(BattleText.NO_EFFECT_ON, target)
+			else:
+				battle.heal(target, maxi(target.max_hp() / 4, 1))
+				battle.say_mon(387, target)
+			return
 		if targets.size() == 1:
-			if not _passes_protection(mon, target, data):
-				return
-			if not _can_reach(mon, target, data):
-				battle.say_mon(BattleText.AVOIDED, target)
-				_after_failed(mon, data)
-				return
-			await _damaging_move(mon, target, data)
+			if _passes_protection(mon, target, data):
+				if not _can_reach(mon, target, data):
+					battle.say_mon(BattleText.AVOIDED, target)
+					_after_failed(mon, data)
+				else:
+					await _damaging_move(mon, target, data)
 		else:
 			await _spread_damaging_move(mon, targets, data)
+		# Explosion, Destruction : le lanceur est K.O., touché ou non.
+		if data.id in [120, 153] and not mon.is_fainted():
+			battle.damage(mon, mon.hp(), "explosion")
+		# Chant Canon (0x021E7CF4) : les alliés qui l'ont choisi agissent tout de suite après.
+		if data.id == 496:
+			_round_followers(mon)
 		if mon.has("pivot"):
 			mon.clear_effect("pivot")
 			await _pivot_switch(mon)
@@ -444,6 +474,15 @@ func _charge_turn(mon: BattleMon, data: MoveData, forced: String, chosen := -1) 
 
 ## Abri, Détection... : la capacité ne passe pas si la cible se protège.
 func _passes_protection(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
+	# Ruse (0x021E41D8) et Revenant : la protection de la cible tombe (« succombe à la Ruse », 526 ;
+	# « Ça transperce la protection », 520), ainsi que Garde Large et Prévention de son côté.
+	if data.id in [364, 467] and target != mon:
+		if target.has("protect"):
+			target.clear_effect("protect")
+			battle.say_mon(526 if data.id == 364 else 520, target)
+		for guard in ["wide_guard", "quick_guard"]:
+			battle.sides[target.side].conditions.erase(guard)
+		return true
 	if target.has("protect") and data.has_flag(MoveData.Flag.PROTECT) and target != mon:
 		battle.say_mon(BattleText.PROTECTED_SELF, target)
 		_after_failed(mon, data)
@@ -517,6 +556,9 @@ func hits(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 func _damaging_move(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 	var move_type := move_type_of(mon, data)
 	var effectiveness := effectiveness_against(mon, target, data, move_type)
+	if data.id == 485 and not _shares_type(mon, target):
+		# Synchropeine (0x021E7AE0) : seulement les Pokémon qui partagent un type avec le lanceur.
+		effectiveness = Stats.Effectiveness.IMMUNE
 	if effectiveness == Stats.Effectiveness.IMMUNE and not _fixed_damage_ignores_types(data):
 		battle.say_mon(BattleText.NO_EFFECT_ON, target)
 		_after_failed(mon, data)
@@ -537,17 +579,27 @@ func _damaging_move(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 		battle.damage(target, target.hp(), "ohko")
 		battle.say(BattleText.ONE_HIT_KO)
 		return
+	# Casse-Brique (0x021E07F0) : Protection et Mur Lumière de la cible tombent avant les dégâts.
+	if data.id == 280:
+		for screen in ["reflect", "light_screen"]:
+			battle.sides[target.side].conditions.erase(screen)
 	var hit_count := 1
 	if data.max_hits > 1:
 		hit_count = data.max_hits if data.min_hits == data.max_hits else BattleCalc.roll_hits(data.max_hits, _random())
 		if battle.abilities.has_ability(mon, BattleAbilities.SKILL_LINK):
 			hit_count = data.max_hits
+	if data.id == 251:
+		hit_count = maxi(beat_up_members(mon).size(), 1)
 	var total := 0
 	var hits_done := 0
 	var critical_any := false
 	for i in hit_count:
 		if target.is_fainted() or mon.is_fainted():
 			break
+		# Triple Pied (0x021E272C) : chaque coup après le premier vérifie la précision.
+		if data.id == 167 and i > 0 and not hits(mon, target, data):
+			break
+		mon.set_effect("hit_index", i)
 		# Une animation par coup (Double Pied...).
 		push_anim(mon, target, data.id)
 		var critical := _critical(mon, target, data)
@@ -671,9 +723,11 @@ func _deal_damage(mon: BattleMon, target: BattleMon, data: MoveData, amount: int
 			target.set_effect("substitute", substitute - taken)
 		target.set_effect("substitute_hit")
 		return 0
-	# Ténacité (Abri), Fermeté (talent), Ceinture Force, Bandeau : il reste 1 PV.
+	# Ténacité (Abri), Fermeté (talent), Ceinture Force, Bandeau, Faux-Chage : il reste 1 PV.
 	if amount >= target.hp():
-		if target.has("endure"):
+		if data.id == 206:
+			amount = target.hp() - 1
+		elif target.has("endure"):
 			amount = target.hp() - 1
 			battle.say_mon(514, target)
 		elif battle.abilities.survives(target, amount) or battle.items.survives(target, amount):
@@ -695,6 +749,10 @@ func _deal_damage(mon: BattleMon, target: BattleMon, data: MoveData, amount: int
 		bide.attacker = mon
 	if lost > 0:
 		battle.items.on_damaged(target, mon, data, lost)
+		# Frénésie (0x021E2080) : touché pendant qu'il enrage, l'Attaque monte (532).
+		if target.has("rage") and not target.is_fainted() and target.add_stage(Stats.Stat.ATTACK, 1) != 0:
+			battle.push({"type": "stat", "side": target.side, "slot": target.slot, "up": true})
+			battle.say_mon(532, target)
 	return lost
 
 
@@ -800,6 +858,16 @@ func move_type_of(mon: BattleMon, data: MoveData) -> int:
 	match data.id:
 		237:
 			return _hidden_power_type(mon.pokemon)
+		449:
+			# Jugement (0x021E3130) : le type de la Plaque tenue (298 Feu à 313 Acier).
+			var plate := mon.pokemon.held_item - PLATE_FIRST
+			if plate >= 0 and plate < BattleItems.PLATE_TYPES.size() and not battle.items.suppressed(mon):
+				return BattleItems.PLATE_TYPES[plate]
+		546:
+			# TechnoBuster : le type du Module tenu (116 Eau, 117 Électrik, 118 Feu, 119 Glace).
+			var drive := mon.pokemon.held_item - DRIVE_FIRST
+			if drive >= 0 and drive < DRIVE_TYPES.size():
+				return DRIVE_TYPES[drive]
 		311:
 			match battle.weather:
 				Battle.Weather.SUN: return Stats.Type.FIRE
@@ -848,7 +916,7 @@ func _type_vs(move_type: int, defense_type: int, target: BattleMon) -> Stats.Eff
 			return Stats.Effectiveness.NORMAL
 		if defense_type == Stats.Type.DARK and move_type == Stats.Type.PSYCHIC and target.has("miracle_eye"):
 			return Stats.Effectiveness.NORMAL
-		if defense_type == Stats.Type.FLYING and move_type == Stats.Type.GROUND and (battle.field.has("gravity") or target.has("ingrain") or battle.items.grounds(target)):
+		if defense_type == Stats.Type.FLYING and move_type == Stats.Type.GROUND and (battle.field.has("gravity") or target.has("ingrain") or target.has("smack_down") or battle.items.grounds(target)):
 			return Stats.Effectiveness.NORMAL
 	return value
 
@@ -898,6 +966,8 @@ func calc_damage(mon: BattleMon, target: BattleMon, data: MoveData, critical: bo
 			ratio = BattleCalc.fx_mul(ratio, screen)
 		elif not physical and battle.sides[target.side].has("light_screen"):
 			ratio = BattleCalc.fx_mul(ratio, screen)
+	if data.id in [23, 537] and target.has("minimize"):
+		ratio = BattleCalc.fx_mul(ratio, 0x2000)
 	ratio = battle.abilities.final_ratio(mon, target, data, effectiveness, critical, ratio)
 	ratio = battle.items.final_ratio(mon, target, data, effectiveness, move_type, ratio)
 	if ratio != BattleCalc.FX_ONE:
@@ -956,6 +1026,54 @@ func move_power(mon: BattleMon, target: BattleMon, data: MoveData, move_type: in
 func special_power(mon: BattleMon, target: BattleMon, data: MoveData) -> int:
 	var power := data.power
 	match data.id:
+		167:
+			# Triple Pied (0x021E2708) : 10, 20 puis 30.
+			return 10 * (int(mon.get_effect("hit_index", 0)) + 1)
+		251:
+			# Baston (0x021E5FF4) : Attaque de base du membre de l'équipe / 10 + 5.
+			var members := beat_up_members(mon)
+			var index: int = mon.get_effect("hit_index", 0)
+			var member: Pokemon = members[index] if index < members.size() else mon.pokemon
+			var personal := member.personal()
+			return (personal.base_stat(Stats.Stat.ATTACK) if personal else 50) / 10 + 5
+		265:
+			# Stimulant (0x021E2B54) : x 2 contre un Pokémon paralysé (sauf derrière un clone).
+			return power * 2 if target.status() == Pokemon.Status.PARALYSIS and not target.has("substitute") else power
+		358:
+			# Réveil Forcé (0x021E2AB8) : x 2 contre un Pokémon endormi.
+			return power * 2 if target.status() == Pokemon.Status.SLEEP and not target.has("substitute") else power
+		419:
+			# Avalanche (0x021E27BC) : x 2 si la cible a déjà blessé le lanceur ce tour.
+			return power * 2 if mon.hit_this_turn and mon.last_attacker == target else power
+		497:
+			# Écho (0x021E7184) : 40, 80, 120, 160 puis 200 selon les tours de suite où il a servi.
+			var echo: Dictionary = battle.echoed_voice
+			if echo.turn != battle.turn:
+				echo.count = echo.count + 1 if echo.turn == battle.turn - 1 else 0
+				echo.turn = battle.turn
+			return [40, 80, 120, 160, 200][mini(echo.count, 4)]
+		496:
+			# Chant Canon (0x021E7D50) : x 2 si un autre Chant Canon est parti avant ce tour.
+			var rounds := 0
+			for used: Dictionary in battle.moves_this_turn:
+				rounds += 1 if used.move == 496 else 0
+			return power * 2 if rounds > 1 else power
+		514:
+			# Vengeance (0x021E721C) : x 2 si un allié a été mis K.O. au tour précédent.
+			return power * 2 if battle.sides[mon.side].last_faint_turn == battle.turn - 1 else power
+		558, 559:
+			# Flamme Croix, Éclair Croix : x 2 juste après l'autre capacité du même tour.
+			var count := battle.moves_this_turn.size()
+			if count >= 2 and battle.moves_this_turn[count - 2].move == (559 if data.id == 558 else 558):
+				return power * 2
+			return power
+		228:
+			# Poursuite (0x021E1D3C) : x 2 contre un Pokémon qui se retire.
+			return power * 2 if mon.has("pursuing") else power
+		217:
+			# Cadeau (0x021E2CC0) : 40 (40 chances sur 80), 80 ou 120 (10 sur 80).
+			var roll := _random().range_of(80)
+			return 40 if roll < 40 else (120 if roll > 69 else 80)
 		237:
 			return _hidden_power_power(mon.pokemon)
 		311:
@@ -1073,11 +1191,12 @@ func _attack_stat(mon: BattleMon, target: BattleMon, data: MoveData, critical: b
 
 func _defense_stat(mon: BattleMon, target: BattleMon, data: MoveData, critical: bool, physical: bool) -> int:
 	# Choc Psy et Frappe Psy visent la Défense.
-	var stat := Stats.Stat.DEFENSE if physical or data.id in [473, 540] else Stats.Stat.SP_DEFENSE
+	var stat := Stats.Stat.DEFENSE if physical or data.id in [473, 540, 548] else Stats.Stat.SP_DEFENSE
 	var stage := target.stage(stat)
 	if critical and stage > 0:
 		stage = 0
-	if battle.abilities.ignores_stages(mon) or data.id == 498:
+	# Attrition, Lame Sainte (0x021E78FC) : les crans de défense de la cible ne comptent pas.
+	if battle.abilities.ignores_stages(mon) or data.id in [498, 533]:
 		stage = 0
 	var value := BattleMon.apply_stage(target.raw_stat(stat), stage)
 	var ratio := battle.abilities.defense_ratio(target, mon, stat, BattleCalc.FX_ONE)
@@ -1461,6 +1580,23 @@ func _force_switch(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 ## Faux si la capacité échoue (le message est déjà donné).
 func _before_move(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 	match data.id:
+		387:
+			# Dernierecour (0x021E1AEC) : il faut connaître au moins deux capacités et avoir utilisé
+			# toutes les autres.
+			var others := 0
+			var used := 0
+			for move in mon.pokemon.moves:
+				if move.id != 387:
+					others += 1
+					used += 1 if mon.used_moves.has(move.id) else 0
+			if others == 0 or used < others:
+				battle.say(BattleText.BUT_IT_FAILED)
+				return false
+		173:
+			# Ronflement (0x021E1B98) : seulement endormi.
+			if mon.status() != Pokemon.Status.SLEEP:
+				battle.say(BattleText.BUT_IT_FAILED)
+				return false
 		252:
 			if mon.turns_active > 0:
 				battle.say(BattleText.BUT_IT_FAILED)
@@ -1848,6 +1984,8 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 			change_stat(mon, mon, Stats.Stat.ATTACK, 2, false)
 			change_stat(mon, mon, Stats.Stat.SP_ATTACK, 2, false)
 			change_stat(mon, mon, Stats.Stat.SPEED, 2, false)
+		117:
+			_bide(mon)
 		144, 102, 118, 119, 166, 214, 274, 383, 382:
 			battle.say(BattleText.BUT_IT_FAILED)
 		_:
@@ -1865,6 +2003,57 @@ func set_types(mon: BattleMon, type: int) -> void:
 ## Effets à part des capacités qui infligent des dégâts, après les dégâts.
 func _special_after(mon: BattleMon, target: BattleMon, data: MoveData, total: int) -> void:
 	match data.id:
+		265:
+			if total > 0 and target.status() == Pokemon.Status.PARALYSIS and not target.is_fainted():
+				_cure_status(target, BattleText.PARALYSIS_CURED)
+		358:
+			if total > 0 and target.status() == Pokemon.Status.SLEEP and not target.is_fainted():
+				_cure_status(target, BattleText.WOKE_UP)
+		479:
+			# Anti-Air (0x021E75D4) : la cible tombe au sol (état 0x1F, message 1128).
+			if total > 0 and not target.is_fainted() and not target.has("smack_down"):
+				var airborne := is_floating(target) or target.has("flying")
+				target.set_effect("smack_down")
+				for effect in ["magnet_rise", "telekinesis", "flying", "charging"]:
+					target.clear_effect(effect)
+				if airborne:
+					battle.say_mon(1128, target)
+		481:
+			# Rebondifeu (0x021E7A18) : les alliés voisins de la cible perdent 1/16 de leurs PV (1105).
+			for splashed in battle.allies_of(target):
+				if not battle.abilities.has_ability(splashed, BattleAbilities.MAGIC_GUARD):
+					battle.damage(splashed, maxi(splashed.max_hp() / 16, 1), "flame_burst")
+					battle.say_mon(1105, splashed)
+		499:
+			# Bain de Smog (0x021E7484) : les crans de la cible reviennent à 0 (195).
+			if total > 0 and not target.is_fainted():
+				target.stages = [0, 0, 0, 0, 0, 0, 0, 0]
+				battle.say_mon(BattleText.STATS_RESET, target)
+		509, 525:
+			# Projection, Draco-Queue (0x021E7580) : la cible est renvoyée (commande 0x2E).
+			if total > 0 and not target.is_fainted() and not target.has("ingrain") and not battle.abilities.has_ability(target, BattleAbilities.SUCTION_CUPS):
+				_drag_out(mon, target)
+		290:
+			# Force Cachée (0x021E117C) : 30 % de chances d'un effet selon le terrain.
+			if total > 0 and not target.is_fainted() and not battle.abilities.has_ability(mon, BattleAbilities.SHEER_FORCE) and _roll(30):
+				var effect: Array = SECRET_POWER.get(battle.terrain, [0, 1])
+				match effect[0]:
+					0: inflict(target, mon, effect[1], data, true)
+					1: change_stat(target, mon, effect[1], -1, true)
+					2:
+						if not target.acted and not battle.abilities.prevents_flinch(target):
+							target.set_effect("flinch")
+		547:
+			# ChantAntique (0x021E8130) : Meloetta change de forme (Chant ou Danse) ; « se transforme »
+			# (222).
+			if mon.pokemon.species == MELOETTA and not mon.has("transformed"):
+				mon.pokemon.form = 1 - mon.pokemon.form
+				mon.pokemon.calc_stats()
+				mon.types = mon.pokemon.types().duplicate()
+				battle.say_mon(222, mon)
+		99:
+			# Frénésie (0x021E2038) : le lanceur enrage jusqu'à sa prochaine autre capacité.
+			mon.set_effect("rage")
 		6:
 			battle.pay_day += mon.level() * 5
 			battle.say(BattleText.PAY_DAY_COINS)
@@ -1904,6 +2093,111 @@ func _special_after(mon: BattleMon, target: BattleMon, data: MoveData, total: in
 				battle.say_pair(1050, mon, target, {2: Autoloads.rom().text(BWFiles.TEXT_ITEM_NAMES, item)})
 	if data.id != 210:
 		mon.clear_effect("fury_cutter")
+
+
+const MELOETTA := 648
+
+
+## Le lanceur et la cible ont au moins un type en commun (Synchropeine).
+func _shares_type(mon: BattleMon, target: BattleMon) -> bool:
+	for type in mon.types:
+		if target.has_type(type):
+			return true
+	return false
+
+
+## Baston : les membres de l'équipe qui frappent (en forme et sans statut ; 0x021E6048).
+func beat_up_members(mon: BattleMon) -> Array[Pokemon]:
+	var members: Array[Pokemon] = []
+	for member in battle.sides[mon.side].party:
+		if not member.is_fainted() and (member.status == Pokemon.Status.NONE or member == mon.pokemon):
+			members.append(member)
+	return members
+
+
+## Chant Canon : les alliés qui l'ont choisi passent juste après dans la file du tour.
+func _round_followers(mon: BattleMon) -> void:
+	var followers: Array[Dictionary] = []
+	for action in battle.queue.duplicate():
+		var other: BattleMon = action.mon
+		if other.side == mon.side and action.action == Battle.Action.FIGHT and _action_move(other, action) == 496:
+			battle.queue.erase(action)
+			followers.append(action)
+	for i in range(followers.size() - 1, -1, -1):
+		battle.queue.push_front(followers[i])
+
+
+## Poursuite (0x021E1CC0) : un adversaire qui l'a choisie contre ce Pokémon frappe avant qu'il se
+## retire, avec une puissance doublée.
+func pursue(leaving: BattleMon) -> void:
+	for action in battle.queue.duplicate():
+		var hunter: BattleMon = action.mon
+		if hunter.side == leaving.side or action.action != Battle.Action.FIGHT or _action_move(hunter, action) != 228:
+			continue
+		if not battle.is_on_field(hunter) or leaving.is_fainted():
+			continue
+		battle.queue.erase(action)
+		var chase: Dictionary = action.duplicate()
+		chase.target = leaving.position()
+		hunter.set_effect("pursuing")
+		await use_move(hunter, chase)
+		hunter.clear_effect("pursuing")
+		hunter.acted = true
+		await battle.check_faints()
+
+
+## Début du tour : Mitra-Poing annonce « X se concentre davantage ! » (0x021E6988, message 616).
+func announce_focus(queue: Array[Dictionary]) -> void:
+	for action in queue:
+		var mon: BattleMon = action.mon
+		if action.action == Battle.Action.FIGHT and _action_move(mon, action) == 264 and not action.get("forced", ""):
+			battle.say_mon(616, mon)
+
+
+## Patience (0x021E3C44) : deux tours à encaisser (« se concentre », 745), puis le double des dégâts
+## reçus est rendu au dernier attaquant (« envoie la sauce », 748) ; rien reçu : échec.
+func _bide(mon: BattleMon) -> void:
+	if not mon.has("bide"):
+		mon.set_effect("bide", {"move": 117, "turns": 2, "damage": 0, "attacker": null})
+		battle.say_mon(745, mon)
+		return
+	var bide: Dictionary = mon.get_effect("bide")
+	bide.turns -= 1
+	if bide.turns > 0:
+		battle.say_mon(745, mon)
+		return
+	mon.clear_effect("bide")
+	battle.say_mon(748, mon)
+	var attacker: BattleMon = bide.attacker
+	if bide.damage <= 0 or attacker == null or not battle.is_on_field(attacker):
+		battle.say(BattleText.BUT_IT_FAILED)
+		return
+	push_anim(mon, attacker, 117)
+	battle.push({"type": "hit", "side": attacker.side, "slot": attacker.slot, "effectiveness": Stats.Effectiveness.NORMAL})
+	battle.damage(attacker, bide.damage * 2, "bide")
+
+
+## Projection, Draco-Queue : la cible est renvoyée et un autre Pokémon est tiré au sort (combat
+## sauvage : il prend fin).
+func _drag_out(mon: BattleMon, target: BattleMon) -> void:
+	if battle.is_wild():
+		if target.side == BattleSide.ENEMY and mon.level() >= target.level():
+			battle.say_mon(767, target)
+			battle.result = Battle.Result.ENEMY_FLED
+		return
+	var side := battle.sides[target.side]
+	var reserves := side.reserves(target.slot)
+	if reserves.is_empty():
+		return
+	var index := reserves[_random().range_of(reserves.size())]
+	battle.push({"type": "withdraw", "side": side.id, "slot": target.slot})
+	var incoming := BattleMon.create(side.party[index], side.id, index, target.slot)
+	side.active[target.slot] = incoming
+	battle.push({"type": "send_out", "side": side.id, "slot": target.slot, "mon": incoming, "intro": false, "hp": incoming.hp(),
+		"max": incoming.max_hp(), "level": incoming.level(), "status": incoming.status()})
+	battle.say_mon(845, incoming)
+	apply_entry_hazards(incoming)
+	battle.abilities.on_switch_in(incoming)
 
 
 ## Demi-Tour, Change Éclair : le lanceur revient et le joueur choisit qui le remplace.
@@ -1951,7 +2245,7 @@ func _type_allows_status(mon: BattleMon, target: BattleMon, data: MoveData) -> b
 ## Le Pokémon flotte au-dessus du sol : Ballon, Vol Magnétik, Lévikinésie (et, avec `with_type`, le
 ## type Vol et Lévitation) ; Gravité, Racines et la Balle Fer le ramènent au sol.
 func is_floating(mon: BattleMon, with_type := true) -> bool:
-	if battle.field.has("gravity") or mon.has("ingrain") or battle.items.grounds(mon):
+	if battle.field.has("gravity") or mon.has("ingrain") or mon.has("smack_down") or battle.items.grounds(mon):
 		return false
 	if battle.items.floats(mon) or mon.has("magnet_rise") or mon.has("telekinesis"):
 		return true

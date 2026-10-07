@@ -154,9 +154,14 @@ func _init(owner: Battle) -> void:
 
 
 func _item_of(mon: BattleMon) -> int:
-	if mon == null or mon.has("embargo") or battle.abilities.has_ability(mon, BattleAbilities.KLUTZ):
+	if mon == null or suppressed(mon):
 		return 0
 	return mon.pokemon.held_item
+
+
+## L'objet tenu ne fait rien : Embargo, Maladresse, Zone Magique.
+func suppressed(mon: BattleMon) -> bool:
+	return mon.has("embargo") or battle.abilities.has_ability(mon, BattleAbilities.KLUTZ) or battle.field.has("magic_room")
 
 
 func _effect(mon: BattleMon) -> int:

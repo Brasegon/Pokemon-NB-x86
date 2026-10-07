@@ -21,6 +21,8 @@ var partner_first := -1
 var conditions := {}
 ## Objets que le dresseur adverse peut encore utiliser.
 var items: Array[int] = []
+## Dernier tour où un Pokémon de ce camp a été mis K.O. (Vengeance).
+var last_faint_turn := -2
 
 
 func is_player() -> bool:

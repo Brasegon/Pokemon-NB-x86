@@ -1347,6 +1347,36 @@ ceux du fichier 14 (variante selon le camp) ; « état » : condition passagère
 | Anti-Brume | 0x021E06CC | Esquive de la cible -1 ; son côté perd Protection, Mur Lumière, Rune Protect, Brume et les pièges |
 | Exuviation | 0x021E7700 | Défense et Défense Spéciale -1 ; Attaque, Attaque Spéciale et Vitesse +2 |
 | Lance-Boue, Tourniquet | 0x021E067C, 0x021E062C | effets de terrain 5 et 4 tant que le lanceur est là : Électrik ou Feu x 0x548 (overlay 95) ; messages 115 et 114 du fichier 15 |
+| Triple Pied | 0x021E2708, 0x021E272C | puissance 10, 20 puis 30 ; chaque coup vérifie la précision |
+| Faux-Chage | 0x021E39E8 | la cible garde au moins 1 PV |
+| Poursuite | 0x021E1CC0... | frappe avant qu'un adversaire qui l'a choisie se retire, puissance x 2 |
+| Écrasement, Bulldoboule | 0x021E39A4 | x 2 en fin de calcul contre un Pokémon sous Lilliput (état 8) |
+| Casse-Brique | 0x021E07F0 | Protection et Mur Lumière de la cible tombent avant les dégâts (sans message) |
+| Stimulant, Réveil Forcé | 0x021E2B54, 0x021E2AB8 | x 2 contre un Pokémon paralysé ou endormi, qui est ensuite soigné ou réveillé |
+| Avalanche | 0x021E27BC | x 2 si la cible a déjà blessé le lanceur ce tour |
+| Ruse, Revenant | 0x021E41D8 | passent la protection et la font tomber (526, 520), ainsi que Garde Large et Prévention |
+| Dernierecour | 0x021E1AEC | échoue tant que les autres capacités du lanceur n'ont pas toutes servi |
+| Synchropeine | 0x021E7AE0 | sans effet sur un Pokémon sans type commun avec le lanceur |
+| Écho | 0x021E7184 | 40, 80, 120, 160 puis 200 selon les tours de suite où il a servi |
+| Chant Canon | 0x021E7CF4, 0x021E7D50 | les alliés qui l'ont choisi agissent juste après ; x 2 pour les suivants |
+| Vengeance | 0x021E721C | x 2 si un allié a été mis K.O. au tour précédent |
+| Anti-Air | 0x021E75D4 | la cible tombe au sol (état 0x1F ; Vol Magnétik, Lévikinésie et vol annulés ; 1128) |
+| Rebondifeu | 0x021E7A18 | les alliés voisins de la cible perdent 1/16 de leurs PV (1105) |
+| Lame Sainte, Lame Ointe | 0x021E78FC, 0x021E78C4 | les crans de défense de la cible ne comptent pas ; attaque spéciale contre la Défense |
+| Jugement, TechnoBuster | 0x021E3130... | type de la Plaque tenue (objets 298 à 313) ou du Module (116 à 119) |
+| ChantAntique | 0x021E8130 | Meloetta (648) change de forme (222) |
+| Flamme Croix, Éclair Croix | 0x021E82A4 | x 2 juste après l'autre capacité dans le même tour |
+| Bain de Smog | 0x021E7484 | les crans de la cible reviennent à 0 (195) |
+| Projection, Draco-Queue | 0x021E7580 | la cible est renvoyée (commande 0x2E) ; un combat sauvage prend fin |
+| Force Cachée | 0x021E117C, 0x021E10CC | 30 % (sauf Sans Limite) : selon le terrain, sommeil (0, 5), Précision -1 (1-3, 8, 15), Attaque -1 (6, 11, 12), gel (7, 13), Vitesse -1 (9), apeurement (10), sinon paralysie |
+| Explosion, Destruction | 0x021E1D60 | le lanceur est K.O. après l'attaque, même s'il ne touche personne |
+| Frénésie | 0x021E2080 | le lanceur enrage jusqu'à une autre capacité : touché, Attaque +1 (532) |
+| Patience | 0x021E3C44... | deux tours à encaisser (745), puis le double des dégâts reçus au dernier attaquant (748) |
+| Baston | 0x021E5FB0, 0x021E5FF4 | un coup par membre de l'équipe en forme et sans statut, puissance Attaque de base / 10 + 5 |
+| Ronflement | 0x021E1B98 | seulement endormi |
+| Cadeau | 0x021E2BEC, 0x021E2CC0 | 20 % : soigne 1/4 des PV de la cible (387) ; sinon puissance 40, 80 ou 120 (40, 30, 10 chances sur 80) |
+| Mitra-Poing | 0x021E6988 | début du tour : « se concentre davantage » (616) |
+| Cyclone, Babil | 0x021E59C8, 0x021E1244 | Cyclone partage la réaction de Tour Rapide, qui ne joue qu'après des dégâts : renvoi ordinaire ; Babil ne rend confus que si Pijako a un cri enregistré (aucun dans le portage) |
 
 Corrigés en passant : messages du premier tour de Rebond (544), Piqué (550), Coud'Krâne (556) et
 Revenant (541), qui étaient ceux d'un Pokémon sauvage ; Prélèvement Destin et Rancune s'arrêtent à

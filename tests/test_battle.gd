@@ -46,6 +46,7 @@ func _initialize() -> void:
 	_test_spread_and_screens()
 	_test_rotation()
 	_test_special_moves()
+	_test_attack_moves()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -517,10 +518,10 @@ func _test_rotation() -> void:
 
 ## Un contre un préparé pour essayer des capacités : un Gruikui N.50 (capacités données) contre un
 ## Ponchiot N.50 sauvage, tous deux au combat.
-func _duel(moves: Array[int], seed: int) -> Battle:
+func _duel(moves: Array[int], seed: int, foe_species := 506) -> Battle:
 	var state := _player(498, 50, seed)
 	state.party[0].set_moves(moves)
-	var foe := Pokemon.create(506, 50, {"random": GameRandom.new(seed + 1)})
+	var foe := Pokemon.create(foe_species, 50, {"random": GameRandom.new(seed + 1)})
 	var battle := Battle.wild(state, foe, {"random": GameRandom.new(seed + 2)})
 	battle._send_out(battle.player(), 0, 0)
 	battle._send_out(battle.enemy(), 0, 0)
@@ -596,6 +597,64 @@ func _test_special_moves() -> void:
 	_check(me.types[0] == me.types[1] and me.types[0] in [Stats.Type.DARK, Stats.Type.GROUND, Stats.Type.ELECTRIC], "Adaptation : le type d'une autre capacité du lanceur")
 	_use(battle, me, 0)
 	_check(me.is_fainted() and foe.stage(Stats.Stat.ATTACK) == -2 and foe.stage(Stats.Stat.SP_ATTACK) == -2, "Souvenir : -2 en Attaque et Attaque Spéciale, puis K.O.")
+
+
+## Attaques à part : Faux-Chage, Casse-Brique, Stimulant, Écho, Dernierecour, Ronflement,
+## Synchropeine, Anti-Air, Bain de Smog, Explosion, Triple Pied, Frénésie.
+func _test_attack_moves() -> void:
+	var battle := _duel([206, 280, 265, 497], 96)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.hp = 3
+	_use(battle, me, 0)
+	_check(foe.hp() == 1, "Faux-Chage : la cible garde 1 PV")
+	foe.pokemon.hp = foe.max_hp()
+	battle.enemy().conditions["reflect"] = 5
+	battle.enemy().conditions["light_screen"] = 5
+	_use(battle, me, 1)
+	_check(not battle.enemy().has("reflect") and not battle.enemy().has("light_screen"), "Casse-Brique : Protection et Mur Lumière tombent")
+	foe.pokemon.status = Pokemon.Status.PARALYSIS
+	_check(battle.moves.special_power(me, foe, MoveData.of(265)) == MoveData.of(265).power * 2, "Stimulant : x 2 contre un Pokémon paralysé")
+	foe.pokemon.hp = foe.max_hp()
+	_use(battle, me, 2)
+	_check(foe.status() == Pokemon.Status.NONE, "Stimulant : la paralysie est soignée")
+	battle.turn = 5
+	var first := battle.moves.special_power(me, foe, MoveData.of(497))
+	battle.turn = 6
+	var second := battle.moves.special_power(me, foe, MoveData.of(497))
+	_check(first == 40 and second == 80, "Écho : 40 puis 80 au tour suivant (0x021E7184)")
+
+	battle = _duel([387, 33, 173, 485], 100)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	var full := foe.hp()
+	_use(battle, me, 0)
+	_check(foe.hp() == full, "Dernierecour échoue tant que les autres capacités n'ont pas servi")
+	_use(battle, me, 2)
+	_check(foe.hp() == full, "Ronflement échoue si le lanceur est éveillé")
+	_use(battle, me, 3)
+	_check(foe.hp() == full, "Synchropeine : pas d'effet sans type commun")
+
+	battle = _duel([479, 499, 153, 167], 104, 519)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.hp = foe.max_hp() * 5
+	_use(battle, me, 0)
+	_check(foe.has("smack_down") and battle.moves.effectiveness_against(me, foe, MoveData.of(89), Stats.Type.GROUND) != Stats.Effectiveness.IMMUNE,
+		"Anti-Air : le Pokémon Vol touché tombe au sol, le Sol le touche")
+	foe.stages[Stats.Stat.ATTACK] = 3
+	_use(battle, me, 1)
+	_check(foe.stage(Stats.Stat.ATTACK) == 0, "Bain de Smog : les crans de la cible reviennent à 0")
+	var powers := []
+	for i in 3:
+		me.set_effect("hit_index", i)
+		powers.append(battle.moves.special_power(me, foe, MoveData.of(167)))
+	_check(powers == [10, 20, 30], "Triple Pied : 10, 20 puis 30")
+	me.set_effect("rage")
+	battle.moves._deal_damage(foe, me, MoveData.of(33), 1, false)
+	_check(me.stage(Stats.Stat.ATTACK) == 1, "Frénésie : touché, le lanceur gagne un cran d'Attaque")
+	_use(battle, me, 2)
+	_check(me.is_fainted(), "Explosion : le lanceur est K.O.")
 
 
 ## Décor (a/1/5/2) : la Route 1 en herbe, au printemps et en été, et un décor qui change avec les

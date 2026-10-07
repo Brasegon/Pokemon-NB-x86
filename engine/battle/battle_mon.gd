@@ -44,6 +44,8 @@ var opponents_faced := {}
 var stat_overrides := {}
 ## Poids perdu (Allègement : 100 kg par emploi), en hectogrammes.
 var weight_lost := 0
+## Capacités déjà utilisées depuis l'entrée au combat (Dernierecour).
+var used_moves := {}
 
 
 static func create(member: Pokemon, side_id: int, index: int, slot_index := 0) -> BattleMon:
@@ -78,6 +80,7 @@ func reset_on_entry() -> void:
 	protect_streak = 0
 	stat_overrides.clear()
 	weight_lost = 0
+	used_moves.clear()
 
 
 ## Poids au combat en hectogrammes (Allègement en retire, 0,1 kg au moins).
