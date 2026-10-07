@@ -1156,6 +1156,7 @@ func _deal_damage(mon: BattleMon, target: BattleMon, data: MoveData, amount: int
 	target.last_damage_class = data.damage_class
 	target.last_attacker = mon
 	target.last_hit_by_move = data.id
+	target.hits_this_turn.push_front(move_type_of(mon, data))
 	if target.has("bide"):
 		var bide: Dictionary = target.get_effect("bide")
 		bide.damage += lost

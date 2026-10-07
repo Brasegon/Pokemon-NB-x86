@@ -58,6 +58,7 @@ func _initialize() -> void:
 	_test_evolution_rules()
 	_test_trainer_speech()
 	_test_field_weather()
+	_test_trainer_ai()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -390,7 +391,7 @@ func _test_double_wild() -> void:
 	state.party.append(second)
 	var first := Pokemon.create(519, 5, {"random": GameRandom.new(52)})
 	var partner := Pokemon.create(554, 5, {"random": GameRandom.new(53)})
-	var battle := Battle.wild(state, first, {"random": GameRandom.new(54), "partner": partner})
+	var battle := Battle.wild(state, first, {"random": GameRandom.new(55), "partner": partner})
 	battle.auto_answer = _auto
 	battle.run()
 	var lines := _transcript(battle)
@@ -1486,6 +1487,139 @@ func _test_field_weather() -> void:
 	_check(battle.weather == Battle.Weather.SAND and battle.weather_turns == 0 and _said(battle, BWFiles.TEXT_BATTLE, BattleText.SAND_STARTED),
 		"le combat commence sous le temps du terrain, sans fin")
 	battle._finish()
+
+
+## Commandes des scripts d'IA dont le dernier paramètre est un saut (tools/re/aiscripts.py).
+const AI_JUMPS: Array[int] = [0x00, 0x01, 0x02, 0x03, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
+	0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E,
+	0x24, 0x25, 0x26, 0x2C, 0x2D, 0x2E, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A,
+	0x3B, 0x4C, 0x4E, 0x4F, 0x50, 0x51, 0x54, 0x55, 0x56, 0x58, 0x59, 0x5C, 0x61, 0x62, 0x63, 0x6A, 0x6B,
+	0x6D, 0x6F, 0x70, 0x71, 0x72, 0x74, 0x75, 0x76, 0x77]
+
+
+## Parcours d'un script d'IA en suivant les sauts : chaque commande atteinte est connue, chaque saut
+## et chaque case de switch restent dans le fichier.
+func _ai_script_ok(code: PackedByteArray) -> bool:
+	if code.is_empty():
+		return false
+	var seen := {}
+	var todo: Array[int] = [0]
+	while not todo.is_empty():
+		var pc: int = todo.pop_back()
+		while not seen.has(pc):
+			if pc < 0 or pc + 2 > code.size():
+				return false
+			seen[pc] = true
+			var op := code.decode_u16(pc)
+			if op >= BattleAIScript.PARAM_COUNTS.size():
+				return false
+			var next := pc + 2 + 4 * BattleAIScript.PARAM_COUNTS[op]
+			if next > code.size():
+				return false
+			if op == 0x73:
+				var table := next + BattleAIScript._s32(code.decode_u32(next - 4))
+				for i in code.decode_u32(pc + 6) + 1:
+					todo.append(table + BattleAIScript._s32(code.decode_u32(table + 4 * i)))
+				break
+			if op in AI_JUMPS:
+				todo.append(next + BattleAIScript._s32(code.decode_u32(next - 4)))
+			if op == 0x4C or op == 0x4D:
+				break
+			pc = next
+	return true
+
+
+## IA des dresseurs : scripts de l'overlay 96 (a/1/7/1), objets du sac, changements, remplaçant.
+func _test_trainer_ai() -> void:
+	var readable := true
+	for bit in 14:
+		# Le fichier 12 n'est pas un script de cette machine (aucun dresseur n'a ce bit).
+		if bit != 12:
+			readable = readable and _ai_script_ok(BattleAIScript.script_of(bit))
+	_check(readable, "scripts d'IA (a/1/7/1) : les 13 fichiers utiles se lisent avec la table des 120 commandes")
+
+	# Script de base (bit 0) : Cage-Éclair, Séisme, Abîme, Charge du Ponchiot contre Gruikui.
+	var battle := _duel([33], 300)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.set_moves([86, 89, 90, 33])
+	me.pokemon.status = Pokemon.Status.PARALYSIS
+	me.pokemon.level = 60
+	me.pokemon.calc_stats()
+	var base: Array[int] = [100, 100, 100, 100]
+	var ctx := battle.ai.evaluate(foe, me.position(), 1, base, 0)
+	_check(ctx.scores == [90, 100, 90, 100], "IA de base : statut sur une cible déjà paralysée -10, Abîme contre plus haut niveau -10")
+	me.ability = BattleAbilities.LEVITATE
+	battle.abilities.announce(me)
+	ctx = battle.ai.evaluate(foe, me.position(), 1, base, 0)
+	_check(ctx.scores[1] == 90 and me.revealed_ability == BattleAbilities.LEVITATE, "IA de base : Séisme contre Lévitation (talent montré) -10")
+	_check(battle.ai.choose_move(foe, 1, [true, true, true, true] as Array[bool]).slot == 3,
+		"la meilleure note l'emporte (Charge, seule à 100)")
+
+	# Évaluation des attaques (bit 1) : Charge met K.O. : +4 ; sinon -1 si une autre frappe plus fort.
+	me.ability = 66
+	me.revealed_ability = 0
+	me.pokemon.status = Pokemon.Status.NONE
+	ctx = battle.ai.evaluate(foe, me.position(), 2, base, 0)
+	_check(ctx.scores[3] == 99 and ctx.scores[1] == 100, "évaluation : une attaque moins forte qu'une autre -1")
+	me.pokemon.hp = 1
+	me.last_move = 89
+	ctx = battle.ai.evaluate(foe, me.position(), 2, base, 0)
+	_check(ctx.scores[3] == 104, "évaluation : une attaque qui met K.O. +4")
+	_check(battle.ai.knows_move(ctx, 0, 89) and not battle.ai.knows_move(ctx, 0, 33), "mémoire des capacités vues de la cible (+0x4C)")
+	_check(battle.ai.flags_of(foe) == 0, "Pokémon sauvage en combat simple : aucun indicateur, capacité au hasard")
+
+	# Objets du sac (0x021D3D64) : Potion au quart des PV, case vidée ; cases selon la taille de l'équipe.
+	battle = _duel([33], 310)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	battle.kind = Battle.Kind.TRAINER
+	var trainer := TrainerData.new()
+	trainer.ai_flags = 1
+	battle.enemy().trainer = trainer
+	battle.enemy().items = [17, 0, 0, 0] as Array[int]
+	foe.pokemon.hp = foe.max_hp() / 4 + 1
+	_check(battle.ai.choose_action(foe).action == Battle.Action.FIGHT, "objet : pas de Potion au-dessus du quart des PV")
+	foe.pokemon.hp = foe.max_hp() / 4
+	var action := battle.ai.choose_action(foe)
+	_check(action.action == Battle.Action.BAG and action.item == 17 and battle.enemy().items[0] == 0,
+		"objet : Potion au quart des PV, sa case est vidée")
+	foe.pokemon.hp = foe.max_hp()
+	foe.pokemon.status = Pokemon.Status.PARALYSIS
+	for i in 2:
+		var member := Pokemon.create(504, 50, {"random": GameRandom.new(311 + i)})
+		member.set_moves([33])
+		battle.enemy().party.append(member)
+	battle.enemy().items = [0, 0, 22, 0] as Array[int]
+	_check(battle.ai.choose_action(foe).action == Battle.Action.FIGHT, "objet : la case 3 ne sert qu'à 2 Pokémon au plus (table 0x021EFF14)")
+	battle.enemy().items = [0, 22, 0, 0] as Array[int]
+	action = battle.ai.choose_action(foe)
+	_check(action.action == Battle.Action.BAG and action.item == 22, "objet : Anti-Para sur un Pokémon paralysé")
+	foe.pokemon.status = Pokemon.Status.NONE
+	battle.enemy().items = [57, 0, 0, 0] as Array[int]
+	foe.stages[Stats.Stat.ATTACK] = BattleMon.MAX_STAGE
+	_check(battle.ai.choose_action(foe).action != Battle.Action.BAG, "objet : pas d'Attaque + quand l'Attaque est au plus haut")
+	foe.stages[Stats.Stat.ATTACK] = 0
+	battle.turn += 1
+	_check(battle.ai.choose_action(foe).action == Battle.Action.BAG, "objet : Attaque + quand l'Attaque peut monter")
+
+	# Changements (0x021CFB90) : Requiem au dernier tour, vers le remplaçant qui frappe le plus fort.
+	battle.enemy().items = [0, 0, 0, 0] as Array[int]
+	var panpour := Pokemon.create(515, 50, {"random": GameRandom.new(313)})
+	panpour.set_moves([55])
+	battle.enemy().party.append(panpour)
+	foe.set_effect("perish", 1)
+	battle.turn += 1
+	action = battle.ai.choose_action(foe)
+	_check(action.action == Battle.Action.SWITCH and action.party == 3, "changement : Requiem au dernier tour, vers Flotajou (Pistolet à O contre un Feu)")
+	foe.clear_effect("perish")
+	battle.turn += 1
+	_check(battle.ai.choose_action(foe).action != Battle.Action.SWITCH, "changement : rien ne pousse à partir")
+	_check(battle.ai.choose_replacement(battle.enemy(), 0) == 3, "remplaçant après un K.O. : le plus fort contre l'adversaire (0x021D0980)")
+	foe.set_effect("trapped", me)
+	foe.set_effect("perish", 1)
+	battle.turn += 1
+	_check(battle.ai.choose_action(foe).action != Battle.Action.SWITCH, "changement : impossible quand il est piégé")
 
 
 ## Vérification qui ne s'affiche qu'en cas d'échec (boucles).

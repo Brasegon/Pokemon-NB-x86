@@ -62,6 +62,14 @@ var original_form := 0
 ## Illusion (0x021B9CB0) : le Pokémon dont il prend l'apparence et le nom (le dernier de l'équipe
 ## en état de se battre), jusqu'à ce qu'un coup la brise ; null sinon.
 var illusion: Pokemon
+## A déjà attaqué ou pris un objet depuis son entrée (drapeau 0 du jeu, posé par 0x021BCC80).
+var has_acted := false
+## Talent montré par sa fenêtre depuis son entrée (l'IA le connaît alors : 0x021F8A9C), 0 sinon.
+var revealed_ability := 0
+## Types des coups reçus ce tour et au tour d'avant, le plus récent d'abord (relevé des dégâts du
+## jeu, +0x15C, que lisent les changements de l'IA : 0x021D68E0).
+var hits_this_turn: Array[int] = []
+var hits_last_turn: Array[int] = []
 
 
 static func create(member: Pokemon, side_id: int, index: int, slot_index := 0) -> BattleMon:
@@ -99,6 +107,10 @@ func reset_on_entry() -> void:
 	stat_overrides.clear()
 	weight_lost = 0
 	used_moves.clear()
+	has_acted = false
+	revealed_ability = 0
+	hits_this_turn.clear()
+	hits_last_turn.clear()
 
 
 ## Poids au combat en hectogrammes (Allègement en retire, 0,1 kg au moins ; Morphing donne celui de

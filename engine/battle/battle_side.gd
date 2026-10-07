@@ -19,8 +19,13 @@ var partner: TrainerData
 var partner_first := -1
 ## Effets du côté : nom -> tours restants ou couches.
 var conditions := {}
-## Objets que le dresseur adverse peut encore utiliser.
+## Objets du sac du dresseur adverse, à leur case (une case utilisée vaut 0 : l'IA lit les cases par
+## leur numéro, 0x021D3D64) ; ceux du second dresseur d'un combat à deux dresseurs.
 var items: Array[int] = []
+var partner_items: Array[int] = []
+## Ordre de l'équipe au combat (places dans `party`) : le jeu range les Pokémon au combat en tête et
+## échange deux places à chaque envoi ; l'IA parcourt les membres en retrait dans cet ordre.
+var order: Array[int] = []
 ## Dernier tour où un Pokémon de ce camp a été mis K.O. (Vengeance).
 var last_faint_turn := -2
 ## Objet consommé par chaque membre de l'équipe (place dans l'équipe -> objet), que Recyclage
@@ -88,3 +93,25 @@ func all_fainted() -> bool:
 
 func has(condition: String) -> bool:
 	return conditions.has(condition)
+
+
+## Ordre de l'équipe au combat (voir `order`), celui de l'équipe tant que personne n'a été envoyé.
+func battle_order() -> Array[int]:
+	if order.size() != party.size():
+		order.clear()
+		for i in party.size():
+			order.append(i)
+	return order
+
+
+## Le membre n° index arrive à la place `slot` : il échange sa place dans l'ordre avec celle de tête
+## qui correspond à cette place (avec deux dresseurs, chacun a sa propre équipe et l'ordre ne change
+## pas).
+func note_sent_out(index: int, slot: int) -> void:
+	var list := battle_order()
+	if partner:
+		return
+	var from := list.find(index)
+	if from >= 0 and slot < list.size() and from != slot:
+		list[from] = list[slot]
+		list[slot] = index

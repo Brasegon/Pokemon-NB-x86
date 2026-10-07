@@ -499,6 +499,63 @@ ov93:0x021EF16C   set_message_default             message du fichier 14 : 7 vari
 ov93:0x021EF1A4   set_message_variant3            3 variantes selon le camp du premier Pokémon
 ov93:0x021EF220   set_message_variant7            7 variantes selon les camps des deux premiers Pokémon
 
+# IA des dresseurs (overlays 93 et 96)
+ov93:0x021B931C   illusion_apparent               le membre de l'équipe qu'imite un Pokémon sous Illusion (vu par l'IA)
+ov93:0x021B9F5C   ai_flags_of                     indicateurs d'IA d'un client : fiche du dresseur ; sauvage : 0x800 (drapeau 8), 0x80 en double
+ov93:0x021C6DDC   type_affinity                   efficacité d'un type sur une cible (événement 0x3E ; Sol sans effet sur un Pokémon qui flotte)
+ov93:0x021C6EAC   mon_floating                    le Pokémon flotte (sauf sous Gravité)
+ov93:0x021C7D4C   ai_effectiveness                efficacité d'une capacité pour l'IA (cible vue sous son Illusion)
+ov93:0x021C7DB4   ai_damage_estimate              dégâts estimés pour l'IA : sans critique, tirage 85 (ou un vrai tirage)
+ov93:0x021C80D8   server_turn                     tour du serveur (0 pendant les choix du premier tour)
+ov93:0x021C8170   battle_speed_rank               nombre de Pokémon au combat plus rapides
+ov93:0x021CD690   client_create                   crée un client du combat (l'IA de l'overlay 96 pour un client tenu par la console)
+ov93:0x021CF410   ai_forced_action                action imposée : K.O., rechargement (drapeau 12), capacité bloquée (0x19), second tour (0x1A)
+ov93:0x021CF4C4   ai_struggle_check               aucune capacité utilisable : Lutte
+ov93:0x021CF550   move_unusable                   la capacité ne peut pas être choisie (Entrave, Provoc, Tourmente, objet de choix...)
+ov93:0x021CF7BC   ai_usable_moves                 capacités utilisables : PP et rien ne l'empêche
+ov93:0x021CF874   ai_can_switch                   peut partir : Carapace Mue, sinon pas piégé (0x021CF954)
+ov93:0x021CF954   switch_trap_check               piégé : Marque Ombre, Piège, Magnépiège en face, étreinte, Regard Noir, Racines
+ov93:0x021CFB90   ai_choose_switch                changement de l'IA : les raisons dans l'ordre, puis le remplaçant (0x021D0980)
+ov93:0x021CFCF0   ai_random_foe                   adversaire tiré au sort (générateur du client, +0xF4)
+ov93:0x021CFD6C   ai_switch_perish                changement : Requiem au dernier tour
+ov93:0x021CFDA8   ai_switch_wonder_guard          changement : Garde Mystik en face (combat simple), 2 fois sur 3
+ov93:0x021CFE38   ai_switch_useless_moves         changement : au moins deux attaques, toutes sans effet
+ov93:0x021CFF4C   ai_switch_choice_lock           changement : objet de choix bloqué sur une capacité sans effet ou de statut
+ov93:0x021D00A0   ai_switch_absorb                changement : un remplaçant absorbe le type reçu au tour d'avant (table 0x021EFF62)
+ov93:0x021D01E8   ai_switch_natural_cure          changement : Médic Nature endormi ou gelé, PV à 50 % ou plus
+ov93:0x021D02A4   ai_switch_stages                changement : crans (somme des crans bruts à 3 au plus)
+ov93:0x021D04FC   ai_reserve_has_effective        un remplaçant a une attaque d'au moins cette efficacité
+ov93:0x021D05E4   ai_has_effective_move           une attaque utilisable d'au moins cette efficacité (table des types)
+ov93:0x021D0668   ai_choose_rotation              rotation au hasard parmi les Pokémon en état de se battre
+ov93:0x021D0710   ai_client_select                client de l'IA : objet, changement, rotation, puis la capacité (overlay 96)
+ov93:0x021D0980   ai_sort_reserves                classe les remplaçants : puissance (60 sous 10) x efficacité contre la cible
+ov93:0x021D0CF0   ai_choose_replacement           remplaçant après un K.O. : classement contre un adversaire tiré au sort
+ov93:0x021D3D64   ai_choose_item                  objet du sac de l'IA : cases selon la taille de l'équipe, PV au quart, crans, soins
+ov93:0x021D5954   mon_get_value                   valeur d'un Pokémon au combat (1-7 crans, 8-12 statistiques, 0xD PV, 0xF niveau, 0x10 talent)
+ov93:0x021D5B7C   mon_check_flag                  drapeau d'un Pokémon au combat (+0x155 ; 0 a agi, 9 Puissance, 13 Torche)
+ov93:0x021D5BE4   mon_hp_percent                  PV en pourcentage (virgule fixe 20.12, arrondi)
+ov93:0x021D5EB4   mon_critical_stage              cran de critique (Puissance : +2, 4 au plus)
+ov93:0x021D5F84   mon_set_flag                    pose un drapeau (+0x155)
+ov93:0x021D6248   mon_status                      statut : 1 paralysie à 5 poison, 0 aucun
+ov93:0x021D6264   mon_has_condition               altération n (+0x1C + 4 x n)
+ov93:0x021D6568   baton_pass_copy                 Relais : copie les 36 altérations, Astuce Force et Puissance
+ov93:0x021D68E0   mon_damage_record               coups reçus d'un tour passé (+0x15C : type...)
+ov93:0x021E5204   lock_on_handler                 Verrouillage, Lire-Esprit : altération 0x1D sur le lanceur, 2 tours
+ov93:0x021E8A18   condition_is_toxic              l'altération poison est grave
+ov96:0x02187EA0   ai_create                       crée l'IA d'un client : structure de 0xD8 octets, archive a/1/7/1, machine des scripts
+ov96:0x02187F50   ai_select_move                  capacité et cible : simple, double et triple (0x02188224), rotatif
+ov96:0x0218805C   ai_prepare                      prépare un Pokémon : notes de départ 100 ou 0 (+0x14), tirage du tour (+0xCC)
+ov96:0x021880EC   ai_evaluate_target              notes contre une cible, puis la meilleure capacité (égalités au sort)
+ov96:0x02188224   ai_select_multi                 double et triple : chaque place essayée comme cible, un allié gardé à 100 ou plus
+ov96:0x0218855C   ai_run_scripts                  fait tourner le script d'un bit sur chaque capacité
+ov96:0x0218A044   ai_cmd_attack_compare           commandes 0x75-0x77 : compare la place à l'Attaque Spéciale (bug du jeu)
+ov96:0x0218A094   ai_compare_jump                 comparaison (< > == != & !& <= >=) et saut
+ov96:0x0218A100   ai_who_position                 place désignée par « qui » (cible, lanceur, leurs alliés)
+ov96:0x0218A1C0   ai_ability_seen                 talent vu par l'IA : montré, piège, sinon deviné parmi ceux de l'espèce
+ov96:0x0218A2C4   ai_remember_move                note la dernière capacité de la cible (+0x4C)
+ov96:0x0218A330   ai_best_damage                  plus gros dégâts estimés des capacités d'un Pokémon
+ov96:0x0218A434   ai_load_script                  script d'un bit (cache de 4 fichiers)
+
 # Affichage du combat (overlay 94)
 ov94:0x021F6500   battle_platforms                socles (fichier 2 de a/1/5/2)
 ov94:0x021F6AA4   battle_backgrounds              fonds (fichier 1 de a/1/5/2)
@@ -656,7 +713,11 @@ ov223:0x021BC6B0  starter_species                 les trois starters (495, 498, 
 
 # Overlay 93
 ov93:0x021EFD84   bag_item_effects                23 effets des objets du sac en combat : paramètre, gestionnaire
+ov93:0x021EFF14   ai_item_thresholds              cases des objets du sac : équipe d'au plus 6, 4, 2, 1 Pokémon
 ov93:0x021EFF18   trainer_speech_order            genres des paroles en combat (18, 17, 19, 20)
+ov93:0x021EFF34   ai_item_stat_boosts             objets de combat : paramètre (0x1E à 0x23) et statistique
+ov93:0x021EFF40   ai_item_cures                   soins : paramètre (0x12 à 0x18) et altération
+ov93:0x021EFF62   ai_absorb_abilities             types et talents qui les absorbent (Plante : Engrais)
 ov93:0x021F0080   client_commands                 commandes du client : 92 paires gestionnaire, numéro
 ov93:0x021F03BC   critical_table                  coups critiques : 1 chance sur 16, 8, 4, 3, 2
 ov93:0x021F03C1   hit_count_table                 coups multiples : seuils 35, 70, 85, 100
@@ -708,6 +769,11 @@ ov95:0x0689E3AC   copycat_excluded                capacités que Photocopie n'ap
 ov95:0x0689E3D4   assist_excluded                 capacités qu'Assistance n'appelle pas (copie de 0x0689E3AC)
 ov95:0x0689E3FC   metronome_excluded              41 capacités que Métronome n'appelle pas
 ov95:0x0689E450   breakable_abilities             55 talents qu'un Brise Moule fait taire
+
+# Overlay 96
+ov96:0x0218A520   ai_level_tests                  comparaisons des niveaux de la commande 0x4E (plus haut, plus bas, égal)
+ov96:0x0218A52C   ai_boost_stats                  statistiques 1 à 7 de la commande 0x64
+ov96:0x0218A548   ai_commands                     table des 120 commandes des scripts d'IA
 
 [commandes de script]
 
@@ -881,3 +947,124 @@ ov95:0x0689E450   breakable_abilities             55 talents qu'un Brise Moule f
 4A                goto_effect                     continue dans un autre effet (charge son fichier, a/0/6/6 ou a/0/6/7)
 4C                draw_order                      ordre de dessin en combat double ou triple
 4D                end                             fin
+
+[commandes d'IA]
+
+00                if_random_lt                    tirage rand() >> 24 inférieur : saut
+01                if_random_gt                    tirage supérieur : saut
+02                if_random_eq                    tirage égal : saut
+03                if_random_ne                    tirage différent : saut
+04                add_score                       ajoute à la note (au moins 0)
+05                if_hp_lt                        PV en % inférieurs : saut
+06                if_hp_gt                        PV en % supérieurs : saut
+07                if_hp_eq                        PV en % égaux : saut
+08                if_hp_ne                        PV en % différents : saut
+09                if_status                       a un statut : saut
+0A                if_no_status                    n'a pas de statut : saut
+0B                if_condition                    a l'altération : saut
+0C                if_no_condition                 n'a pas l'altération : saut
+0D                if_toxic                        gravement empoisonné : saut
+0E                if_not_toxic                    pas gravement empoisonné : saut
+0F                if_mon_flag                     drapeau du Pokémon : saut
+10                if_not_mon_flag                 sans le drapeau : saut
+11                if_side_condition               effet de côté : saut
+12                if_no_side_condition            sans l'effet de côté : saut
+13                if_lt                           registre inférieur : saut
+14                if_gt                           registre supérieur : saut
+15                if_eq                           registre égal : saut (aussi 0x24)
+16                if_ne                           registre différent : saut (aussi 0x25)
+17                if_bits                         registre avec des bits communs : saut
+18                if_not_bits                     registre sans bit commun : saut
+19                if_move                         capacité égale : saut
+1A                if_not_move                     capacité différente : saut
+1B                if_in_list                      registre dans la liste : saut
+1C                if_not_in_list                  registre hors de la liste : saut
+1D                if_has_attack                   le lanceur a une attaque : saut
+1E                if_no_attack                    le lanceur n'a pas d'attaque : saut
+1F                get_turn                        tour du serveur
+20                get_type                        un type (cible, lanceur, capacité, alliés)
+21                get_move_power                  puissance de la capacité
+22                get_damage_rank                 dégâts estimés : 0, 1 (une autre fait plus) ou 2
+23                get_last_move                   dernière capacité lancée
+26                if_speed                        vitesse comparée : saut
+27                count_reserves                  membres en retrait en état de se battre
+28                get_move                        numéro de la capacité
+29                get_move_effect                 effet de la capacité
+2A                get_ability                     talent vu
+2B                nop_2b                          rien
+2C                if_effectiveness                efficacité égale : saut
+2D                if_party_healthy                un membre en retrait sans statut : saut
+2E                if_party_status                 un membre en retrait avec un statut : saut
+2F                get_weather                     temps
+30                if_effect                       effet égal : saut
+31                if_not_effect                   effet différent : saut
+32                if_stage_lt                     cran inférieur : saut
+33                if_stage_gt                     cran supérieur : saut
+34                if_stage_eq                     cran égal : saut
+35                if_stage_ne                     cran différent : saut
+36                if_can_ko                       la capacité met K.O. : saut
+37                if_cannot_ko                    la capacité ne met pas K.O. : saut
+38                if_knows_move                   capacité connue : saut
+39                if_not_knows_move               capacité pas connue : saut
+3A                if_knows_effect                 effet connu : saut
+3B                if_not_knows_effect             effet pas connu : saut
+3C                nop_3c                          rien
+3D                flee                            fuite
+3E                nop_3e                          rien
+3F                nop_3f                          rien
+40                get_item                        objet tenu
+41                get_hold_effect                 effet de l'objet tenu
+42                get_gender                      sexe
+43                get_first_turn                  pas encore agi depuis son entrée
+44                get_stockpile                   Stockage
+45                get_battle_rule                 type de combat
+46                get_battle_kind                 adversaire (sauvage, dresseur)
+47                get_consumed_item               objet consommé
+48                nop_48                          rien
+49                get_power_of                    puissance de la capacité du registre
+4A                get_effect_of                   effet de la capacité du registre
+4B                get_protect_count               emplois de suite d'Abri, Détection, Ténacité
+4C                jump                            saut
+4D                end                             fin
+4E                if_level                        niveaux comparés : saut
+4F                if_taunted                      la cible est sous Provoc : saut
+50                if_not_taunted                  la cible n'est pas sous Provoc : saut
+51                if_ally_target                  la cible est un allié : saut
+52                has_type                        a ce type
+53                has_ability                     a ce talent (vu)
+54                if_flash_fire                   Torche active : saut
+55                if_item                         objet tenu égal : saut
+56                if_field_effect                 effet de terrain : saut
+57                get_side_condition              couches d'un effet de côté
+58                if_party_hurt                   membre en retrait et PV perdus : saut
+59                if_party_pp_up                  membre en retrait et PP dépensés : saut
+5A                get_fling_power                 puissance de Dégommage de l'objet
+5B                get_pp                          PP de la capacité
+5C                if_used_all_moves               toutes ses capacités ont servi : saut
+5D                get_category                    classe de la capacité
+5E                get_last_category               classe de la dernière capacité de la cible
+5F                get_speed_rank                  Pokémon plus rapides
+60                get_turns_on_field              tours depuis son entrée
+61                if_reserve_stronger             un membre en retrait frapperait plus fort : saut
+62                if_has_super_effective          a une attaque super efficace : saut
+63                if_last_move_stronger           la dernière capacité de « qui » frapperait plus fort : saut
+64                get_boosts                      somme des crans au-dessus du neutre
+65                get_stage_diff                  écart de crans avec le lanceur
+66                nop_66                          rien
+67                nop_67                          rien
+68                nop_68                          rien
+69                get_damage_rank_ally            dégâts estimés avec ceux des alliés
+6A                if_fainted                      K.O. : saut
+6B                if_not_fainted                  pas K.O. : saut
+6C                get_active_ability              talent (0 sous Suc Digestif)
+6D                if_mon_d1c                      a un clone : saut
+6E                get_species                     espèce
+6F                if_turn_random_lt               tirage du tour inférieur : saut
+70                if_turn_random_gt               tirage du tour supérieur : saut
+71                if_turn_random_eq               tirage du tour égal : saut
+72                if_turn_random_ne               tirage du tour différent : saut
+73                switch_effect                   switch sur l'effet de la capacité
+74                if_future_attack                attaque différée prévue sur sa place : saut
+75                if_attack_lt_spatk              place inférieure à l'Attaque Spéciale : saut (bug)
+76                if_attack_gt_spatk              place supérieure à l'Attaque Spéciale : saut (bug)
+77                if_attack_eq_spatk              place égale à l'Attaque Spéciale : saut (bug)

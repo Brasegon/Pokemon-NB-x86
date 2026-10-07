@@ -1,6 +1,6 @@
 """Donne au projet Ghidra (ghidra_project.py) les noms des fonctions et des données du jeu rangés
 dans names.txt, tirés de docs/FORMATS.md, et nomme les fonctions des tables de commandes d'après
-leur numéro (609 commandes de script, 78 commandes d'effets) :
+leur numéro (609 commandes de script, 78 commandes d'effets, 120 commandes d'IA) :
 
     python ghidra_names.py      à relancer après avoir modifié names.txt
 
@@ -19,6 +19,7 @@ from collections import Counter, namedtuple
 
 import pyghidra
 
+import aiscripts
 import effectcmds
 import scriptcmds
 from decomp import IDENTIFIER, add_function, create_function, locate, name, open_decompiler, open_project, parse
@@ -27,8 +28,8 @@ from nds import Rom, u32
 
 NAMES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "names.txt")
 FUNCTIONS, ARM_FUNCTIONS, DATA = "fonctions", "fonctions en ARM", "données"
-SCRIPT_COMMANDS, EFFECT_COMMANDS = "commandes de script", "commandes d'effets"
-SECTIONS = (FUNCTIONS, ARM_FUNCTIONS, DATA, SCRIPT_COMMANDS, EFFECT_COMMANDS)
+SCRIPT_COMMANDS, EFFECT_COMMANDS, AI_COMMANDS = "commandes de script", "commandes d'effets", "commandes d'IA"
+SECTIONS = (FUNCTIONS, ARM_FUNCTIONS, DATA, SCRIPT_COMMANDS, EFFECT_COMMANDS, AI_COMMANDS)
 # Tables de commandes : section de names.txt, préfixe des noms, genre, adresse et taille de la
 # table, overlay de la table, overlays où sont ses fonctions, chiffres du numéro dans les noms.
 COMMAND_TABLES = [
@@ -36,6 +37,8 @@ COMMAND_TABLES = [
      scriptcmds.FIELD_OVERLAYS, 3),
     (EFFECT_COMMANDS, "effect_cmd", "commande d'effet", effectcmds.TABLE, effectcmds.COUNT, 94,
      effectcmds.BATTLE_OVERLAYS, 2),
+    (AI_COMMANDS, "ai_cmd", "commande d'IA", aiscripts.TABLE, aiscripts.COUNT, aiscripts.OVERLAY,
+     [aiscripts.OVERLAY], 2),
 ]
 
 # Un nom à donner. line : ligne de names.txt (None pour une commande sans ligne) ; overlay : None
@@ -102,6 +105,7 @@ def plan(rom, entries):
                 except ValueError:
                     raise ValueError("names.txt, ligne %d : numéro de commande illisible « %s »." % (number, key))
         ram, data = rom.overlay(table_overlay)
+        seen = set()
         for n in range(count):
             line, identifier, description = named.pop(n, (None, None, None))
             pointer = u32(data, table - ram + 4 * n)
@@ -109,6 +113,12 @@ def plan(rom, entries):
                 if line:
                     raise ValueError("names.txt, ligne %d : la %s 0x%X n'a pas de fonction." % (line, kind, n))
                 continue
+            # Deux numéros pour une même fonction (commandes d'IA 0x24 et 0x25) : le premier la nomme.
+            if pointer in seen:
+                if line:
+                    raise ValueError("names.txt, ligne %d : la %s 0x%X reprend la fonction d'une autre." % (line, kind, n))
+                continue
+            seen.add(pointer)
             overlay = overlay_containing(rom, pointer & ~1, overlays)
             if overlay is None:
                 raise ValueError("%s 0x%X : 0x%08X n'est dans aucun des overlays %s." % (kind, n, pointer, overlays))

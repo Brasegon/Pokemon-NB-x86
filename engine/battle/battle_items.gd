@@ -923,7 +923,11 @@ func use_from_bag(mon: BattleMon, action: Dictionary) -> void:
 		battle.state.remove_item(item, 1)
 		battle.say(BattleText.PLAYER_USED_ITEM, {0: battle.state.player_name, 1: _name(item)})
 	else:
-		side.items.erase(item)
+		# L'IA vide la case de l'objet en le choisissant (0x021D3D64) ; sinon, la première case qui
+		# le porte.
+		var items := side.partner_items if side.partner and mon.slot == 1 else side.items
+		if not action.has("item_slot") and items.has(item):
+			items[items.find(item)] = 0
 		var owner := side.trainer_of_slot(mon.slot)
 		battle.say(BattleText.TRAINER_USED_ITEM, {0: owner.class_name_text(), 1: owner.name(), 2: _name(item)})
 	if data and data.is_ball():

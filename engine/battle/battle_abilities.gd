@@ -232,8 +232,9 @@ func _target_ability(target: BattleMon, attacker: BattleMon) -> int:
 	return ability
 
 
-## Montre le nom du talent (fenêtre du jeu).
+## Montre le nom du talent (fenêtre du jeu) ; l'IA le connaît désormais (0x021F8A9C).
 func announce(mon: BattleMon) -> void:
+	mon.revealed_ability = mon.ability
 	battle.push({"type": "ability", "side": mon.side, "slot": mon.slot, "ability": mon.ability, "name": mon.name()})
 
 

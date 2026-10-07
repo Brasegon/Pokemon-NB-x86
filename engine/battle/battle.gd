@@ -162,6 +162,7 @@ static func against_trainer(game: GameState, trainer_id: int, options := {}) -> 
 		enemy.partner = partner
 		enemy.partner_first = enemy.party.size()
 		enemy.party.append_array(partner.create_party())
+		enemy.partner_items = partner.items.duplicate()
 	return battle
 
 
@@ -492,6 +493,7 @@ func send_out(side: BattleSide, index: int, slot := 0) -> BattleMon:
 	elif side.active[slot]:
 		side.active[slot].leave_field()
 	side.active[slot] = mon
+	side.note_sent_out(index, slot)
 	abilities.set_illusion(mon)
 	return mon
 
@@ -537,6 +539,10 @@ func _play_turn() -> void:
 	turn += 1
 	var actions: Array[Dictionary] = []
 	_chosen_switches.clear()
+	# Relevé des coups reçus : celui du tour fini devient celui « du tour d'avant ».
+	for mon in all_active():
+		mon.hits_last_turn = mon.hits_this_turn
+		mon.hits_this_turn = []
 	_trainer_speech()
 	for mon in fighters(BattleSide.PLAYER):
 		var action: Dictionary = await _choose_player_action(mon)
@@ -759,6 +765,9 @@ func _execute(action: Dictionary) -> void:
 			rotate(sides[mon.side], action.incoming)
 			return
 	mon.acted = true
+	# Drapeau 0 du jeu (0x021BCC80) : posé après une attaque ou un objet, pas après un rechargement.
+	if action.action == Action.BAG or (action.action == Action.FIGHT and not action.get("recharge", false)):
+		mon.has_acted = true
 
 
 ## Combat rotatif (0x021BC3B8, places tournées par 0x021B9BF0) : le Pokémon de la place `incoming`
