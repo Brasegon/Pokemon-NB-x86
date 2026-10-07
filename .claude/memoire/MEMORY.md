@@ -1,5 +1,7 @@
-- [Projet portage Pokémon Blanc](projet-portage-pokemon-blanc.md) — moteur natif Godot 4.7 lisant la ROM IRAF, écran unique PC ; phases 0-3 fusionnées ; phase 4 (combats) fusionnée (PR #13) : moteur, écran, effets des capacités, sons, coupure « VS » ; vidéo de référence de l'utilisateur ; restent capture, effets de rencontre du lieu, combats doubles ; le dépôt ne parle plus du cadre d'origine du projet
-- [Outils Godot locaux](godot-outils-locaux.md) — Godot Steam 4.7.2 sur ce PC (E:), ROM à la racine, capstone ok ; lancer tests/captures en CLI
+- [Projet portage Pokémon Blanc](projet-portage-pokemon-blanc.md) — moteur natif Godot 4.7 lisant la ROM IRAF, écran unique PC ; phases 0-4 fusionnées ; finalisation des combats (multi, capacités/talents/objets complets, IA du jeu overlay 96, sans fuite mémoire) poussée sur `phase-4-finalisation` sans PR ; reprise sur le PC fixe et points repoussés notés ; histoire à la toute fin ; le dépôt ne parle plus du cadre d'origine du projet
+- [Outils locaux](godot-outils-locaux.md) — deux PC (C:\Dev\Projet et E:\Perso) : chemins de Godot, Ghidra 12 et du JDK 25 (JAVA_HOME système = JDK 17, à remplacer) ; lancer tests/captures en CLI
 - [Un seul agent](un-seul-agent.md) — pas d'agents parallèles, avancer tâche par tâche
+- [Deux PC synchronisés](deux-pc-synchro.md) — il fait déjà commit/push, pull et réexport de la mémoire à chaque changement de PC : ne pas le lui rappeler
 - [Recherche phase 3 scripts](recherche-phase3-scripts.md) — format des scripts N&B vérifié sur la ROM, sources, à reporter dans docs/ après la phase 2
-- [Méthode de rétro-ingénierie](methode-retro-ingenierie.md) — outils dans tools/re/ (BLZ, capstone Thumb, motifs regex, switch.py) ; repères overlays 10/21/93/94 et table des archives
+- [Méthode de rétro-ingénierie](methode-retro-ingenierie.md) — outils dans tools/re/ (BLZ, capstone Thumb, motifs regex, switch.py, Ghidra) ; repères overlays 10/21/93/94/95/96 (IA), table des archives ; comparer le moteur avant/après sur des combats de la ROM
+- [Fins de ligne Python](python-fins-de-ligne.md) — scripts Python sous Windows : newline="" sinon CRLF (casse les tests de transcription)
