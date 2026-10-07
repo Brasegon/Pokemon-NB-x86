@@ -44,7 +44,8 @@ static func create(battle: Battle, mon: BattleMon, data: MoveData) -> BattleTarg
 
 ## Vrai si la capacité doit faire choisir sa cible (une seule cible, plusieurs possibles).
 static func needs_choice(battle: Battle, data: MoveData) -> bool:
-	if data == null or not battle.is_multi():
+	# En combat rotatif, seuls les deux Pokémon de devant combattent : pas de choix.
+	if data == null or not battle.is_multi() or battle.format == Battle.Format.ROTATION:
 		return false
 	return data.target in [MoveData.Target.OTHER, MoveData.Target.ALLY_OR_USER, MoveData.Target.ALLY,
 		MoveData.Target.ENEMY]

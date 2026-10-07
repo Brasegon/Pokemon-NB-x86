@@ -44,6 +44,7 @@ func _initialize() -> void:
 	_test_double_trainer()
 	_test_triple_adjacency()
 	_test_spread_and_screens()
+	_test_rotation()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -434,6 +435,24 @@ func _test_triple_adjacency() -> void:
 	_check(targets.size() == 2 and battle.mon_at(BattleSide.ENEMY, 0) not in targets, "Éboulement depuis un bord : les deux adversaires voisins")
 	var earthquake := MoveData.of(89)
 	_check(battle.moves.resolve_targets(center, earthquake).size() == 5, "Séisme depuis le milieu : tous les autres (alliés compris)")
+	# Déplacement (0x021BD388) : le bord gauche passe au milieu, le milieu au bord.
+	battle.shift_to_center(left)
+	_check(left.slot == 1 and center.slot == 0 and battle.mon_at(BattleSide.PLAYER, 1) == left, "DÉPLACER : le Pokémon du bord échange avec celui du milieu")
+	# Rapprochement (0x021C45B4) : un seul Pokémon de chaque côté, aux deux coins opposés.
+	for side in [BattleSide.PLAYER, BattleSide.ENEMY]:
+		for slot in [1, 2]:
+			battle.mon_at(side, slot).pokemon.hp = 0
+	battle._recenter_triple()
+	_check(battle.mon_at(BattleSide.PLAYER, 1) == center and battle.mon_at(BattleSide.ENEMY, 1) != null and battle.mon_at(BattleSide.ENEMY, 1).slot == 1,
+		"un contre un aux coins opposés : les deux glissent au milieu")
+	# Un combat triple joué jusqu'au bout.
+	var full := _player(497, 70, 67)
+	for i in 2:
+		full.party.append(Pokemon.create(500 + i, 70, {"random": GameRandom.new(68 + i), "ot_id": full.trainer_id}))
+	var triple := Battle.against_trainer(full, 506, {"random": GameRandom.new(70)})
+	triple.auto_answer = _auto
+	triple.run()
+	_check(triple.result in [Battle.Result.WIN, Battle.Result.LOSE], "combat triple joué jusqu'au bout (%s)" % Battle.Result.keys()[triple.result])
 
 
 ## Capacité qui visait plusieurs Pokémon : x 0,75 après les dégâts de base (0x021C1E14) ; Protection :
@@ -457,6 +476,42 @@ func _test_spread_and_screens() -> void:
 	battle.enemy().conditions["reflect"] = 5
 	var screened := battle.moves.calc_damage(attacker, target, move, false, move_type, effectiveness, true)
 	_check(absi(screened - single * 0xA8F / 0x1000) <= 1, "Protection en double : 0xA8F (%d -> %d)" % [single, screened])
+
+
+## Combat rotatif (fiche 513) : trois Pokémon de chaque côté, seul celui de devant combat ; la
+## rotation fait passer devant un Pokémon en retrait (0x021B9BF0) et garde les crans.
+func _test_rotation() -> void:
+	var state := _player(497, 60, 71)
+	for i in 2:
+		state.party.append(Pokemon.create(500 + i, 60, {"random": GameRandom.new(72 + i), "ot_id": state.trainer_id}))
+	var battle := Battle.against_trainer(state, 513, {"random": GameRandom.new(74)})
+	_check(battle.format == Battle.Format.ROTATION, "la fiche 513 est un combat rotatif")
+	for slot in 3:
+		battle._send_out(battle.player(), slot, slot)
+		battle._send_out(battle.enemy(), slot, slot)
+	_check(battle.fighters(BattleSide.PLAYER).size() == 1 and battle.all_active().size() == 2, "seul le Pokémon de devant combat")
+	var front := battle.mon_at(BattleSide.PLAYER, 0)
+	var left := battle.mon_at(BattleSide.PLAYER, 1)
+	var right := battle.mon_at(BattleSide.PLAYER, 2)
+	front.stages[Stats.Stat.ATTACK] = 2
+	battle.rotate(battle.player(), 1)
+	_check(battle.mon_at(BattleSide.PLAYER, 0) == left and battle.mon_at(BattleSide.PLAYER, 1) == right and battle.mon_at(BattleSide.PLAYER, 2) == front,
+		"rotation : la place 1 passe devant, la 2 prend sa place, l'ancien de devant va à l'arrière")
+	_check(front.stage(Stats.Stat.ATTACK) == 2 and not battle.is_on_field(front) and battle.is_on_field(left), "le Pokémon en retrait garde ses crans et ne combat plus")
+	var full := _player(497, 70, 75)
+	for i in 2:
+		full.party.append(Pokemon.create(500 + i, 70, {"random": GameRandom.new(76 + i), "ot_id": full.trainer_id}))
+	var rotation := Battle.against_trainer(full, 513, {"random": GameRandom.new(78)})
+	rotation.auto_answer = func(b: Battle, request: Dictionary) -> Variant:
+		# Le joueur fait tourner au deuxième tour.
+		if request.kind == "action" and b.turn == 2:
+			return {"action": Battle.Action.FIGHT, "move": 0, "rotate": 1}
+		return _auto(b, request)
+	rotation.run()
+	var rotated := false
+	for event in rotation.events:
+		rotated = rotated or event.type == "rotate"
+	_check(rotated and rotation.result in [Battle.Result.WIN, Battle.Result.LOSE], "combat rotatif joué jusqu'au bout, avec une rotation (%s)" % Battle.Result.keys()[rotation.result])
 
 
 ## Décor (a/1/5/2) : la Route 1 en herbe, au printemps et en été, et un décor qui change avec les

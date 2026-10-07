@@ -1221,10 +1221,17 @@ talent renvoie la liste de ses réactions (événement, fonction) : Pression, pa
 en 0x021F0A58. Les capacités ordinaires sont décrites par leurs données (catégorie d'effet +0x01) ;
 les autres sont écrites une à une.
 
-- **Ordre des actions** (0x021BC814) : clé = rang de l'action (bits 22-24 : attaque 0, sac et
-  changement 1, fuite 2), priorité + 7 (bits 16-21), priorité spéciale (bits 13-15 : Vive Griffe,
-  Chaîne...), vitesse (bits 0-12) ; tri par sélection du plus grand au plus petit, égalités à pile
-  ou face.
+- **Actions** (0x021BCC80) : le jeu les code sur 4 bits : 1 attaque, 2 objet, 3 changement, 4
+  fuite, 5 déplacement au milieu (combat triple), 6 rotation (combat rotatif), 7 rechargement
+  (« Le contrecoup empêche X de bouger ! », message 848), 8 fin.
+- **Ordre des actions** (clés posées par 0x021BC5B0, tri 0x021BC814) : clé = rang de l'action
+  (bits 22-24 : fuite 4, changement 3, objet 2, rotation 1, attaque, déplacement et rechargement 0 ;
+  un Pokémon sauvage qui fuit prend le rang 0 et la priorité la plus basse, donc après toutes les
+  capacités), priorité + 7 (bits 16-21 ; 7 pour le déplacement et le rechargement), priorité
+  spéciale (bits 13-15 : Vive Griffe, Chaîne... ; 1 par défaut, recalculée pour les attaques et les
+  déplacements quand personne ne fait de rotation), vitesse (bits 0-12) ; tri par sélection du
+  plus grand au plus petit, égalités à pile ou face. Après les rotations, l'ordre des actions
+  restantes est recalculé (0x021BBF48).
 - **Vitesse** (0x021BC8E8) : cran, talents et objets (multiplicateurs bornés de 0x29 à 0x20000,
   0x021D7614), Vent Arrière, paralysie / 4, plafond 10000 ; sous Distorsion, 10000 - vitesse.
 - **Précision** (0x021BFA00) : 101 = jamais ratée ; sinon précision x crans (précision du lanceur
@@ -1286,6 +1293,20 @@ camp + 2 x place (0, 2, 4 côté joueur ; 1, 3, 5 en face).
   sont envoyés par... » 15, trois 16 ; deux dresseurs 9 (défi) et 45 (défaite). Fichier 18, 103 :
   « X est déjà sélectionné. » (le même remplaçant choisi deux fois dans un tour). Fichier 17, 44 :
   pas de Ball face à deux Pokémon sauvages ; 47 : quand aucun n'est visible.
+- **Combat triple** : un Pokémon d'un bord peut se déplacer au milieu (action 5, 0x021BD388) : il
+  échange sa place avec celui du milieu, « X s'est déplacé au milieu ! » (fichier 14, 231) ; bouton
+  DÉPLACER de l'écran tactile (aide du jeu, fichier 62, 96 ; libellé du fichier 9, 81). En fin de tour
+  (0x021C45B4), s'il ne reste qu'un Pokémon de chaque côté, à la même place d'un bord (deux coins
+  opposés, qui ne se touchent pas), tous deux glissent au milieu, sans message (commande 0x50 de
+  l'écran). Interversion échange deux alliés (0x021CA370).
+- **Combat rotatif** : trois Pokémon par camp ; seul celui de devant (place 0) agit et peut être
+  visé (aide, fichier 62, 97-98 : « un seul Pokémon peut agir par tour »). La rotation (action 6,
+  0x021BC3B8 ; places tournées par 0x021B9BF0) fait passer devant le Pokémon d'une place en retrait,
+  l'autre retrait prend sa place et celui de devant va à l'arrière. Celui qui part passe par la
+  sortie ordinaire (0x021C50A8 : événement 0xA3, d'où Médic Nature et Régé-Force), sans effacer ses
+  crans ; celui qui arrive réinscrit son talent et son objet (0x021D84E8, 0x021DCF54) sans les
+  talents d'entrée. Le portage fait passer devant un Pokémon en retrait quand celui de devant est
+  K.O. et que l'équipe n'a plus personne à envoyer (règle supposée, non vérifiée dans le code).
 - **Talents qui regardent les adversaires** (d'après le comportement du jeu, à vérifier dans leurs
   gestionnaires) : Intimidation baisse l'Attaque de chaque adversaire voisin, Télécharge compare la
   somme des Défenses et Défenses Spéciales d'en face, Fouille et Calque en prennent un au hasard,

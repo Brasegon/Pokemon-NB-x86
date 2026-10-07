@@ -378,13 +378,20 @@ ov74:0x021F5460   cutin_kind                      fiche d'un genre de coupure (t
 
 # Moteur du combat (overlay 93)
 ov93:0x021B857C   battle_text_speed               vitesse d'écriture des messages (options)
+ov93:0x021BBF48   battle_run_actions              exécute les actions dans l'ordre (ordre recalculé après les rotations)
+ov93:0x021BC3B8   battle_rotate                   rotation : un Pokémon en retrait passe devant (combat rotatif)
+ov93:0x021BC5B0   battle_action_keys              clés de l'ordre des actions : rang, priorité, priorité spéciale, vitesse
 ov93:0x021BC814   battle_action_order             ordre des actions
 ov93:0x021BC8E8   battle_speed                    vitesse d'un Pokémon
+ov93:0x021BCC80   battle_run_action               exécute une action (1 attaque, 2 objet, 3 changement, 4 fuite, 5 déplacement, 6 rotation, 7 rechargement)
+ov93:0x021BD388   battle_shift_center             combat triple : le Pokémon d'un bord passe au milieu (message 231)
 ov93:0x021BD5AC   battle_escape                   la fuite réussit-elle
 ov93:0x021BFA00   battle_accuracy                 précision : la capacité touche-t-elle
 ov93:0x021C0D30   battle_damage_targets           dégâts sur la liste des cibles : x 0,75 si la capacité en visait plusieurs, adversaires puis alliés
 ov93:0x021C154C   effectiveness_message           efficacité d'une seule cible : « C'est super efficace ! » ou « pas très efficace »
 ov93:0x021C1E14   battle_damage                   dégâts d'une capacité
+ov93:0x021C45B4   battle_recenter_triple          combat triple : un contre un aux coins opposés, les deux glissent au milieu
+ov93:0x021C50A8   battle_switch_out               sortie d'un Pokémon (changement, rotation) : événement 0xA3
 ov93:0x021C57E0   effectiveness_messages          efficacité d'un groupe de cibles : sans noms, ou une, deux, trois cibles nommées (fichier 14)
 ov93:0x021C6370   battle_confusion_damage         dégâts de la confusion (puissance 40)
 ov93:0x021C80FC   battle_rule                     type de combat : 0 simple, 1 double, 2 triple, 3 rotatif

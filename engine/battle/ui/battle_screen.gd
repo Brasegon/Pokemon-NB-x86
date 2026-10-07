@@ -143,7 +143,8 @@ func _build() -> void:
 	add_child(particles)
 
 	if battle:
-		for slot in battle.slot_count():
+		# En combat rotatif, seul le Pokémon de devant a une jauge.
+		for slot in (1 if battle.format == Battle.Format.ROTATION else battle.slot_count()):
 			for side in [BattleSide.PLAYER, BattleSide.ENEMY]:
 				var gauge := BattleGauge.create(BattleStage.Side.PLAYER if side == BattleSide.PLAYER else BattleStage.Side.ENEMY)
 				gauge.visible = false
@@ -368,6 +369,10 @@ func _play(event: Dictionary) -> void:
 			await _show_ability(_event_place(event), event.ability)
 		"ball":
 			await _throw_ball(event)
+		"shift":
+			await _shift(event)
+		"rotate":
+			await _rotate(event)
 		"request":
 			await _answer(event.request)
 
@@ -491,7 +496,9 @@ func _prepare_pokemon(event: Dictionary) -> int:
 	var place := _event_place(event)
 	var sprite := BattleSprite.for_pokemon(mon.pokemon, side == BattleSide.PLAYER)
 	_put_sprite(place, sprite)
-	var gauge: BattleGauge = gauges[place]
+	var gauge: BattleGauge = gauges.get(place)
+	if gauge == null:
+		return place
 	gauge.show_pokemon(mon.pokemon)
 	gauge.level = event.get("level", mon.level())
 	gauge.max_hp = maxi(event.get("max", mon.max_hp()), 1)
@@ -538,6 +545,84 @@ func _slide_gauge(place: int, show: bool) -> void:
 	else:
 		tween.tween_property(gauge, "position", away, GAUGE_SLIDE_TIME).set_ease(Tween.EASE_IN)
 		tween.tween_callback(func() -> void: gauge.visible = false)
+
+
+## Combat triple : le Pokémon d'un bord et celui du milieu échangent leurs places ; les sprites
+## glissent jusqu'à leur nouvelle place et les jauges suivent.
+func _shift(event: Dictionary) -> void:
+	var a := place_of(event.side, event.from)
+	var b := place_of(event.side, event.to)
+	var first: BattleSprite = slots.get(a)
+	var second: BattleSprite = slots.get(b)
+	slots.erase(a)
+	slots.erase(b)
+	var tween := create_tween().set_parallel(true)
+	for pair: Array in [[first, b], [second, a]]:
+		var sprite: BattleSprite = pair[0]
+		if sprite == null:
+			continue
+		var start := sprite.world
+		var goal := BattleSprite.home(pair[1])
+		sprite.slot = pair[1]
+		slots[pair[1]] = sprite
+		tween.tween_method(func(t: float) -> void: sprite.world = Vector3i(Vector3(start).lerp(Vector3(goal), t)), 0.0, 1.0, 0.3)
+	var gauge_a: BattleGauge = gauges.get(a)
+	var gauge_b: BattleGauge = gauges.get(b)
+	gauges[a] = gauge_b
+	gauges[b] = gauge_a
+	for place in [a, b]:
+		var gauge: BattleGauge = gauges[place]
+		if gauge:
+			tween.tween_property(gauge, "position", _gauge_home(place), 0.3)
+	if tween.is_valid() and (first or second or gauge_a or gauge_b):
+		await tween.finished
+	else:
+		tween.kill()
+	_sort_sprites()
+
+
+## Combat rotatif : les trois Pokémon d'un camp tournent (celui de la place `incoming` passe devant,
+## comme 0x021B9BF0) ; la jauge montre ensuite le nouveau Pokémon de devant.
+func _rotate(event: Dictionary) -> void:
+	var side: int = event.side
+	var incoming: int = event.incoming
+	var other := 3 - incoming
+	# Nouvelle place de chaque sprite : place `incoming` -> devant, l'autre retrait -> `incoming`,
+	# devant -> l'autre retrait.
+	var moves := {place_of(side, incoming): place_of(side, 0), place_of(side, other): place_of(side, incoming),
+		place_of(side, 0): place_of(side, other)}
+	var moving := {}
+	for from: int in moves:
+		moving[from] = slots.get(from)
+		slots.erase(from)
+	var tween := create_tween().set_parallel(true)
+	var animated := false
+	for from: int in moving:
+		var sprite: BattleSprite = moving[from]
+		if sprite == null:
+			continue
+		var goal_place: int = moves[from]
+		var start := sprite.world
+		var goal := BattleSprite.home(goal_place)
+		sprite.slot = goal_place
+		slots[goal_place] = sprite
+		tween.tween_method(func(t: float) -> void: sprite.world = Vector3i(Vector3(start).lerp(Vector3(goal), t)), 0.0, 1.0, 0.35)
+		animated = true
+	if animated:
+		await tween.finished
+	else:
+		tween.kill()
+	_sort_sprites()
+	var front := battle.mon_at(side, 0)
+	var gauge: BattleGauge = gauges.get(place_of(side, 0))
+	if front and gauge:
+		gauge.show_pokemon(front.pokemon)
+		gauge.level = front.level()
+		gauge.max_hp = maxi(front.max_hp(), 1)
+		gauge.shown_hp = front.hp()
+		gauge.animate_hp(front.hp())
+		gauge.status = front.status()
+		gauge.queue_redraw()
 
 
 ## Le dresseur d'en face revient après sa défaite : il glisse à sa place (effet 624).
@@ -1027,50 +1112,96 @@ func _answer(request: Dictionary) -> void:
 			value = await _choose_move_to_forget(request.pokemon, request.move)
 		"yes_no":
 			value = await _ask_yes_no()
+		"rotate":
+			value = await _choose_rotation(request.choices)
 	battle.answer(value)
 
 
+## Combat rotatif : le Pokémon en retrait qui passe devant (place 1 ou 2).
+func _choose_rotation(choices: Array) -> int:
+	var names := PackedStringArray()
+	for slot: int in choices:
+		names.append(battle.player().mon(slot).name())
+	var menu := ChoiceMenu.new()
+	menu.set_items(names)
+	var index: int = await _open(menu)
+	return choices[clampi(index, 0, choices.size() - 1)]
+
+
 ## L'action du tour : commandes, puis capacité, objet ou Pokémon (Annuler revient aux commandes).
-func _choose_action(mon: BattleMon) -> Dictionary:
+func _choose_action(front: BattleMon) -> Dictionary:
 	var prompt_chars: PackedInt32Array = Autoloads.rom().text_file(BWFiles.TEXT_SYSTEM, BWFiles.TEXT_BATTLE).get_chars(BattleText.WHAT_WILL)
-	var prompt := TextFlow.plain(prompt_chars, {0: mon.name()}).replace("
-", " ")
+	# Combat rotatif : le Pokémon qui agit peut être un Pokémon en retrait, qui passera devant.
+	var mon := front
+	var rotate := 0
 	while true:
+		var prompt := TextFlow.plain(prompt_chars, {0: mon.name()}).replace("
+", " ")
 		# Comme l'écran du haut de la DS pendant ce choix : la scène reste dégagée, l'invite est
 		# au-dessus des commandes.
 		messages.close()
-		var commands := BattleCommandPanel.create(prompt)
+		var commands := BattleCommandPanel.create(prompt, battle.format == Battle.Format.TRIPLE and mon.slot != 1, _rotation_buttons(rotate))
 		commands.cancellable = false
 		var index: int = await _open(commands)
+		var action := {}
 		match commands.command_of(index):
+			BattleCommandPanel.Command.ROTATE:
+				var slot := commands.rotation_slot(index)
+				rotate = 0 if rotate == slot else slot
+				mon = front if rotate == 0 else battle.player().mon(rotate)
+			BattleCommandPanel.Command.SHIFT:
+				action = {"action": Battle.Action.SHIFT}
 			BattleCommandPanel.Command.FIGHT:
-				if _no_pp_left(mon):
-					return {"action": Battle.Action.FIGHT, "move": -1}
-				while true:
-					messages.close()
-					var moves := BattleMovePanel.create(mon, battle.moves.move_type_of)
-					var choice: int = await _open(moves)
-					if choice < 0:
-						break
-					var slot := moves.slot_of(choice)
-					var data := MoveData.of(mon.pokemon.moves[slot].id) if slot < mon.pokemon.moves.size() else null
-					if not BattleTargetPanel.needs_choice(battle, data):
-						return {"action": Battle.Action.FIGHT, "move": slot}
-					# Combat à plusieurs : la cible (Annuler revient aux capacités).
-					var targets := BattleTargetPanel.create(battle, mon, data)
-					var picked: int = await _open(targets)
-					if picked >= 0:
-						return {"action": Battle.Action.FIGHT, "move": slot, "target": targets.position_of(picked)}
+				action = await _choose_fight(mon)
 			BattleCommandPanel.Command.BAG:
 				var use := await _choose_item(mon)
 				if not use.is_empty():
-					return {"action": Battle.Action.BAG, "item": use.item, "target": use.target}
+					action = {"action": Battle.Action.BAG, "item": use.item, "target": use.target}
 			BattleCommandPanel.Command.POKEMON:
 				var party_index: int = await _choose_party(PROMPT_CHOOSE, true, mon.slot)
 				if party_index >= 0:
-					return {"action": Battle.Action.SWITCH, "party": party_index}
+					action = {"action": Battle.Action.SWITCH, "party": party_index}
 			BattleCommandPanel.Command.RUN:
-				return {"action": Battle.Action.RUN}
+				action = {"action": Battle.Action.RUN}
+		if not action.is_empty():
+			if rotate != 0:
+				action.rotate = rotate
+			return action
+	return {}
+
+
+## Boutons de rotation (combat rotatif) : les Pokémon en retrait en forme ; `chosen` : celui qui a
+## été choisi pour passer devant.
+func _rotation_buttons(chosen: int) -> Array:
+	var list := []
+	if battle.format != Battle.Format.ROTATION:
+		return list
+	for slot in [1, 2]:
+		var back := battle.player().mon(slot)
+		if back and not back.is_fainted():
+			list.append({"name": back.name(), "slot": slot, "chosen": slot == chosen})
+	return list
+
+
+## ATTAQUE : la capacité, puis la cible en combat à plusieurs ({} : Annuler, retour aux commandes).
+func _choose_fight(mon: BattleMon) -> Dictionary:
+	if _no_pp_left(mon):
+		return {"action": Battle.Action.FIGHT, "move": -1}
+	while true:
+		messages.close()
+		var moves := BattleMovePanel.create(mon, battle.moves.move_type_of)
+		var choice: int = await _open(moves)
+		if choice < 0:
+			return {}
+		var slot := moves.slot_of(choice)
+		var data := MoveData.of(mon.pokemon.moves[slot].id) if slot < mon.pokemon.moves.size() else null
+		if not BattleTargetPanel.needs_choice(battle, data):
+			return {"action": Battle.Action.FIGHT, "move": slot}
+		# Combat à plusieurs : la cible (Annuler revient aux capacités).
+		var targets := BattleTargetPanel.create(battle, mon, data)
+		var picked: int = await _open(targets)
+		if picked >= 0:
+			return {"action": Battle.Action.FIGHT, "move": slot, "target": targets.position_of(picked)}
 	return {}
 
 

@@ -47,25 +47,49 @@ func choose_action(mon: BattleMon) -> Dictionary:
 		var target: BattleMon = foes[battle.random.range_of(foes.size())] if foes.size() > 1 else (foes[0] if not foes.is_empty() else null)
 		return {"action": Battle.Action.FIGHT, "mon": mon, "move": slot, "target": target.position() if target else -1}
 	var flags := owner.ai_flags
-	# Chaque capacité est notée contre chaque adversaire à portée ; la meilleure paire l'emporte.
+	var plan := _best_fight(mon, mon, usable, flags)
+	# Combat rotatif : un Pokémon en retrait qui ferait mieux passe devant.
+	if battle.format == Battle.Format.ROTATION and mon.slot == 0:
+		for back_slot in [1, 2]:
+			var back := side.mon(back_slot)
+			if back == null or back.is_fainted() or not battle.moves.forced_action(back).is_empty():
+				continue
+			var back_usable: Array[int] = []
+			for slot in back.pokemon.moves.size():
+				if back.pp(slot) > 0 and battle.moves.move_blocked(back, back.pokemon.moves[slot].id).is_empty():
+					back_usable.append(slot)
+			if back_usable.is_empty():
+				continue
+			var other := _best_fight(back, mon, back_usable, flags)
+			if other.score > plan.score:
+				plan = other
+				plan.action.rotate = back_slot
+	return plan.action
+
+
+## Meilleure capacité de `user` (qui agira à la place de `front`) : chaque capacité est notée contre
+## chaque adversaire à portée de `front`, la meilleure paire l'emporte (égalités tirées au sort).
+## Renvoie { score, action }.
+func _best_fight(user: BattleMon, front: BattleMon, usable: Array[int], flags: int) -> Dictionary:
 	var best: Array[Dictionary] = []
 	var best_score := -1000
+	var foes := battle.foes_of(front)
+	if foes.is_empty() and battle.foe_of(front):
+		foes.append(battle.foe_of(front))
 	for slot in usable:
-		var foes := battle.foes_of(mon)
-		if foes.is_empty() and battle.foe_of(mon):
-			foes.append(battle.foe_of(mon))
 		for foe in foes:
-			var score := score_move(mon, mon.pokemon.moves[slot].id, flags, foe)
+			var score := score_move(user, user.pokemon.moves[slot].id, flags, foe)
 			if score > best_score:
 				best_score = score
 				best = [{"move": slot, "target": foe}]
 			elif score == best_score:
 				best.append({"move": slot, "target": foe})
 	if best.is_empty():
-		return {"action": Battle.Action.FIGHT, "mon": mon, "move": usable[0]}
+		return {"score": best_score, "action": {"action": Battle.Action.FIGHT, "mon": user, "move": usable[0]}}
 	var choice: Dictionary = best[battle.random.range_of(best.size())]
 	var chosen: BattleMon = choice.target
-	return {"action": Battle.Action.FIGHT, "mon": mon, "move": choice.move, "target": chosen.position() if chosen else -1}
+	return {"score": best_score, "action": {"action": Battle.Action.FIGHT, "mon": user, "move": choice.move,
+		"target": chosen.position() if chosen else -1}}
 
 
 ## Note d'une capacité pour l'IA d'un dresseur, contre un adversaire donné (celui d'en face par défaut).
