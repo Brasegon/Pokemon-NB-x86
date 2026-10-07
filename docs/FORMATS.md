@@ -1377,6 +1377,20 @@ ceux du fichier 14 (variante selon le camp) ; « état » : condition passagère
 | Cadeau | 0x021E2BEC, 0x021E2CC0 | 20 % : soigne 1/4 des PV de la cible (387) ; sinon puissance 40, 80 ou 120 (40, 30, 10 chances sur 80) |
 | Mitra-Poing | 0x021E6988 | début du tour : « se concentre davantage » (616) |
 | Cyclone, Babil | 0x021E59C8, 0x021E1244 | Cyclone partage la réaction de Tour Rapide, qui ne joue qu'après des dégâts : renvoi ordinaire ; Babil ne rend confus que si Pijako a un cri enregistré (aucun dans le portage) |
+| Coup d'Main | 0x021E5EE8, 0x021E5F70 | échec en combat simple ; la capacité de l'allié fait x 1,5 ce tour (1044) |
+| Par Ici, Poudre Fureur | 0x021E0B08, 0x021E0B88 | échec en simple et en rotatif ; les attaques à une cible d'en face vont sur le lanceur jusqu'à la fin du tour (670) |
+| Garde Large, Prévention | 0x021E54CC, 0x021E7DAC | effets de côté 9 et 10 pour un tour (fichier 15 : 160, 162) : les attaques qui visent plusieurs Pokémon, ou de priorité positive, ne touchent pas (797, 800) ; à la suite, même chance décroissante qu'Abri |
+| Après Vous, À la Queue | 0x021E7C4C, 0x021E7CA0 | la cible agit juste après (1134) ou en dernier (1131) |
+| Interversion | 0x021E7DF8 | le lanceur et l'allié de l'autre bord échangent leurs places (1137 ; 0x021CA370) |
+| Zone Étrange, Zone Magique | 0x021E7938, 0x021E79A8 | effets de terrain 6 et 7, 5 tours : Défense et Défense Spéciale interverties (178, fin 179) ; objets neutralisés (180, fin 181) ; relancées, elles s'arrêtent |
+| Brouhaha | 0x021E231C... | état 0x19, 3 tours (703, 715, fin 718) : tout le monde se réveille (706) et personne ne s'endort |
+| Possessif | 0x021E4860 | les adversaires ne peuvent plus utiliser les capacités du lanceur (586, 589) |
+| Échange Psy | 0x021E3F60 | le statut du lanceur passe à la cible |
+| Stockage, Relâche, Avale | 0x021E1608, 0x021E1750, 0x021E188C | jusqu'à 3 Stockage (721 ; Défense et Défense Spéciale +1) ; Relâche : 100 par Stockage ; Avale : 1/4, 1/2 ou tous les PV ; puis les Stockage se dissipent (724) |
+| Prescience, Carnareket | 0x021E56C0, 0x021E56E8 | l'attaque touche la place visée deux tours plus tard (1074, 1077 ; 1080), calculée à ce moment-là |
+| Vœu Soin, Danse-Lune | 0x021E5620, 0x021E55C0 | il faut un remplaçant ; le lanceur est K.O., celui qui prend sa place est soigné (697 ; Danse-Lune rend aussi les PP, 694) |
+| Relais | 0x021E5B18 | il faut un remplaçant, qui garde les crans et les effets passagers (clone, confusion, Racines, Vampigraine...) |
+| Pouvoir Antique, Vent Argenté, Vent Mauvais | 0x021E6F2C | justes par leurs données : 10 % de chances de +1 dans toutes les statistiques |
 
 Corrigés en passant : messages du premier tour de Rebond (544), Piqué (550), Coud'Krâne (556) et
 Revenant (541), qui étaient ceux d'un Pokémon sauvage ; Prélèvement Destin et Rancune s'arrêtent à

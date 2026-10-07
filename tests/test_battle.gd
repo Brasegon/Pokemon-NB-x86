@@ -47,6 +47,7 @@ func _initialize() -> void:
 	_test_rotation()
 	_test_special_moves()
 	_test_attack_moves()
+	_test_team_moves()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -655,6 +656,95 @@ func _test_attack_moves() -> void:
 	_check(me.stage(Stats.Stat.ATTACK) == 1, "Frénésie : touché, le lanceur gagne un cran d'Attaque")
 	_use(battle, me, 2)
 	_check(me.is_fainted(), "Explosion : le lanceur est K.O.")
+
+
+## Combat double préparé : Gruikui et Ponchiot N.50 (capacités données au premier) contre deux
+## Ratentif N.50 sauvages, une réserve dans l'équipe du joueur.
+func _double_duel(moves: Array[int], seed: int) -> Battle:
+	var state := _player(498, 50, seed)
+	state.party[0].set_moves(moves)
+	state.party.append(Pokemon.create(506, 50, {"random": GameRandom.new(seed + 1), "ot_id": state.trainer_id}))
+	state.party.append(Pokemon.create(495, 50, {"random": GameRandom.new(seed + 2), "ot_id": state.trainer_id}))
+	var first := Pokemon.create(504, 50, {"random": GameRandom.new(seed + 3)})
+	var battle := Battle.wild(state, first, {"random": GameRandom.new(seed + 4), "partner": Pokemon.create(504, 50, {"random": GameRandom.new(seed + 5)})})
+	for slot in 2:
+		battle._send_out(battle.player(), slot, slot)
+		battle._send_out(battle.enemy(), slot, slot)
+	battle.auto_answer = _auto
+	return battle
+
+
+## Capacités du combat à plusieurs et effets à retardement.
+func _test_team_moves() -> void:
+	var battle := _double_duel([270, 266, 469, 495], 110)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var ally := battle.mon_at(BattleSide.PLAYER, 1)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	var other_foe := battle.mon_at(BattleSide.ENEMY, 1)
+	var tackle := MoveData.of(33)
+	var plain := battle.moves.move_power(ally, foe, tackle, Stats.Type.NORMAL)
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 0, "mon": me, "target": ally.position()})
+	_check(battle.moves.move_power(ally, foe, tackle, Stats.Type.NORMAL) == BattleCalc.fx_mul(plain, 0x1800), "Coup d'Main : l'allié frappe x 1,5")
+	_use(battle, me, 1)
+	_check(battle.abilities.redirect(foe, ally, tackle, Stats.Type.NORMAL) == me, "Par Ici : les attaques d'en face vont sur le lanceur")
+	_use(battle, me, 2)
+	var quake := MoveData.of(89)
+	_check(not battle.moves._passes_protection(foe, me, quake), "Garde Large : Séisme ne touche pas le côté protégé")
+	battle.queue = [{"action": Battle.Action.FIGHT, "mon": foe, "move": 0}, {"action": Battle.Action.FIGHT, "mon": other_foe, "move": 0}]
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 3, "mon": me, "target": other_foe.position()})
+	_check(battle.queue[0].mon == other_foe, "Après Vous : la cible agit juste après")
+	battle.queue.clear()
+
+	battle = _double_duel([502, 472, 286, 375], 114)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	ally = battle.mon_at(BattleSide.PLAYER, 1)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	_use(battle, me, 0)
+	_check(me.slot == 1 and ally.slot == 0 and battle.mon_at(BattleSide.PLAYER, 1) == me, "Interversion : le lanceur et l'allié échangent leurs places")
+	_use(battle, me, 1)
+	_check(battle.field.has("wonder_room"), "Zone Étrange : effet de terrain posé")
+	_use(battle, me, 2)
+	foe.pokemon.set_moves([502, 33])
+	_check(not battle.moves.move_blocked(foe, 502).is_empty() and battle.moves.move_blocked(foe, 33).is_empty(),
+		"Possessif : l'adversaire ne peut plus utiliser une capacité que le lanceur connaît")
+	me.pokemon.status = Pokemon.Status.BURN
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 3, "mon": me, "target": foe.position()})
+	_check(me.status() == Pokemon.Status.NONE and foe.status() == Pokemon.Status.BURN, "Échange Psy : la brûlure passe à la cible")
+
+	battle = _double_duel([254, 255, 256, 248], 118)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	_use(battle, me, 0)
+	_use(battle, me, 0)
+	_check(int(me.get_effect("stockpile", 0)) == 2 and me.stage(Stats.Stat.DEFENSE) == 2, "Stockage : deux fois, Défense +2")
+	_check(battle.moves.special_power(me, foe, MoveData.of(255)) == 200, "Relâche : 100 par Stockage")
+	me.pokemon.hp = 1
+	_use(battle, me, 2)
+	_check(me.hp() == 1 + me.max_hp() / 2 and me.stage(Stats.Stat.DEFENSE) == 0 and not me.has("stockpile"), "Avale : la moitié des PV après deux Stockage, qui se dissipent")
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 3, "mon": me, "target": foe.position()})
+	var before := foe.hp()
+	battle.moves.side_conditions_end_of_turn()
+	battle.moves.side_conditions_end_of_turn()
+	var waiting := foe.hp() == before
+	battle.moves.side_conditions_end_of_turn()
+	_check(waiting and foe.hp() < before, "Prescience : l'attaque arrive deux tours plus tard")
+
+	battle = _double_duel([361, 226, 33, 33], 122)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	var reserve := battle.player().party[2]
+	reserve.hp = 1
+	reserve.status = Pokemon.Status.POISON
+	_use(battle, me, 0)
+	_check(me.is_fainted(), "Vœu Soin : le lanceur est K.O.")
+	battle.switch_in_replacement(battle.player(), 2, 0)
+	_check(reserve.hp == reserve.max_hp() and reserve.status == Pokemon.Status.NONE, "Vœu Soin : le remplaçant est soigné en arrivant")
+	var passer := battle.mon_at(BattleSide.PLAYER, 0)
+	passer.pokemon.set_moves([226])
+	battle.player().party[0].hp = 1
+	passer.stages[Stats.Stat.SPEED] = 2
+	battle.moves.use_move(passer, {"action": Battle.Action.FIGHT, "move": 0, "mon": passer})
+	var incoming := battle.mon_at(BattleSide.PLAYER, 0)
+	_check(incoming != passer and incoming.stage(Stats.Stat.SPEED) == 2, "Relais : le remplaçant garde les crans")
 
 
 ## Décor (a/1/5/2) : la Route 1 en herbe, au printemps et en été, et un décor qui change avec les

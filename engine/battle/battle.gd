@@ -812,10 +812,23 @@ func _announce_send(side: BattleSide, mon: BattleMon) -> void:
 		say(BattleText.WILD_APPEARED, {0: mon.name()})
 
 
-## Arrivée au combat : pièges posés sur le côté (Picots, Piège de Roc, Pics Toxik), talent.
+## Arrivée au combat : soin de Vœu Soin ou Danse-Lune, pièges posés sur le côté (Picots, Piège de
+## Roc, Pics Toxik), talent.
 func on_entry(mon: BattleMon) -> void:
 	if mon.side == BattleSide.ENEMY:
 		state.register_seen(mon.pokemon.species)
+	var wish_key := "healing_wish_" + str(mon.slot)
+	if sides[mon.side].has(wish_key):
+		var wished: int = sides[mon.side].conditions[wish_key]
+		sides[mon.side].conditions.erase(wish_key)
+		mon.pokemon.status = Pokemon.Status.NONE
+		mon.pokemon.sleep_turns = 0
+		heal(mon, mon.max_hp())
+		push({"type": "status", "side": mon.side, "slot": mon.slot, "status": 0})
+		if wished == 461:
+			for move in mon.pokemon.moves:
+				move.pp = MoveData.max_pp(move.id, move.get("pp_ups", 0))
+		say_mon(694 if wished == 461 else 697, mon)
 	moves.apply_entry_hazards(mon)
 	if not mon.is_fainted():
 		abilities.on_switch_in(mon)
