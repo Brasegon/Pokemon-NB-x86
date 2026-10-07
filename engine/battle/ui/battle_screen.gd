@@ -21,6 +21,7 @@ signal _answered(value: Variant)
 
 const PROMPT_CHOOSE := 6
 const PROMPT_ITEM_TARGET := 7
+const PROMPT_RESTORE_MOVE := 104
 const PROMPT_FIGHT := 9
 const YES_LINE := 8
 const NO_LINE := 9
@@ -1195,7 +1196,7 @@ func _choose_action(front: BattleMon) -> Dictionary:
 			BattleCommandPanel.Command.BAG:
 				var use := await _choose_item(mon)
 				if not use.is_empty():
-					action = {"action": Battle.Action.BAG, "item": use.item, "target": use.target}
+					action = {"action": Battle.Action.BAG, "item": use.item, "target": use.target, "move": use.get("move", -1)}
 			BattleCommandPanel.Command.POKEMON:
 				var party_index: int = await _choose_party(PROMPT_CHOOSE, true, mon.slot)
 				if party_index >= 0:
@@ -1290,8 +1291,33 @@ func _choose_item(mon: BattleMon) -> Dictionary:
 			target = await _choose_party(PROMPT_ITEM_TARGET, true, mon.slot)
 			if target < 0:
 				continue
-		return {"item": item, "target": target}
+		# Huile, Huile Max : la capacité à restaurer (« Laquelle restaurer ? », fichier 18, 104).
+		var move := -1
+		if data and data.pp_restore and not data.pp_restore_all:
+			move = await _choose_restore_move(battle.player().party[target])
+			if move < 0:
+				continue
+		return {"item": item, "target": target, "move": move}
 	return {}
+
+
+## La capacité d'un Pokémon de l'équipe dont on restaure les PP (Huile) : ses capacités et leurs PP.
+## -1 si annulé.
+func _choose_restore_move(pokemon: Pokemon) -> int:
+	await _show_message(BWFiles.TEXT_BATTLE_PARTY, PROMPT_RESTORE_MOVE, {}, false, true)
+	var panel := BattleButtonPanel.new()
+	var list: Array[Dictionary] = []
+	var width := (BattleMovePanel.PANEL_SIZE.x - 4) / 2.0
+	var height := (BattleMovePanel.PANEL_SIZE.y - 4) / 2.0
+	for i in pokemon.moves.size():
+		var slot: Dictionary = pokemon.moves[i]
+		var pp_label := "PP %d/%d" % [slot.pp, MoveData.max_pp(slot.id, slot.get("pp_ups", 0))]
+		list.append({"rect": Rect2((i % 2) * (width + 4), (i / 2) * (height + 4), width, height),
+			"lines": [Autoloads.rom().text(BWFiles.TEXT_MOVE_NAMES, slot.id), pp_label], "data": i})
+	panel.size = BattleMovePanel.PANEL_SIZE
+	panel.set_buttons(list)
+	var index: int = await _open(panel)
+	return list[index].data if index >= 0 else -1
 
 
 ## Objets d'une poche du combat (bit de ItemData.battle_pocket), avec leur nombre. 0 si annulé.

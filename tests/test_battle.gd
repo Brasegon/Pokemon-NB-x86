@@ -53,6 +53,7 @@ func _initialize() -> void:
 	_test_sky_drop_and_pledges()
 	_test_last_abilities()
 	_test_last_items()
+	_test_bag_items()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -1326,6 +1327,33 @@ func _test_last_items() -> void:
 	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
 	_check(battle.mon_at(BattleSide.PLAYER, 0).party_index == 0 and _said(battle, BWFiles.TEXT_BATTLE_SET, 414),
 		"Bouton Fuite : le porteur se retire (414)")
+
+
+## Objets du sac en combat (0x021CB6D0) : messages du jeu, Huile sur une seule capacité.
+func _test_bag_items() -> void:
+	var battle := _duel([33, 52], 210)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	me.pokemon.hp = 1
+	_check(battle.items.apply_item(ItemData.of(17), me.pokemon, me) and me.hp() == 21 and _said(battle, BWFiles.TEXT_BATTLE_SET, 387),
+		"Potion : 20 PV, « X récupère des PV ! » (387)")
+	me.pokemon.moves[0].pp = 0
+	me.pokemon.moves[1].pp = 0
+	battle.items.apply_item(ItemData.of(38), me.pokemon, me, 1)
+	_check(me.pp(0) == 0 and me.pp(1) == 10 and _said(battle, BWFiles.TEXT_BATTLE_SET, 390), "Huile : 10 PP à la capacité choisie seulement (390)")
+	battle.items.apply_item(ItemData.of(40), me.pokemon, me)
+	_check(me.pp(0) == 10 and _said(battle, BWFiles.TEXT_BATTLE_SET, 393), "Élixir : toutes les capacités (393)")
+	_check(not battle.items.apply_item(ItemData.of(28), me.pokemon, me) and _said(battle, BWFiles.TEXT_BATTLE, 68),
+		"Rappel sur un Pokémon en forme : « Mais ça n'a aucun effet ! » (68)")
+	var friend := Pokemon.create(506, 50, {"random": GameRandom.new(211)})
+	friend.hp = 0
+	battle.player().party.append(friend)
+	_check(battle.items.apply_item(ItemData.of(28), friend, null) and friend.hp == friend.max_hp() / 2 and _said(battle, BWFiles.TEXT_BATTLE_SET, 3),
+		"Rappel : la moitié des PV, « n'est plus K.O. ! » (3)")
+	battle.state.add_item(38, 1)
+	me.pokemon.moves[0].pp = MoveData.max_pp(33, me.pokemon.moves[0].get("pp_ups", 0))
+	_check(battle.items.bag_problem({"item": 38, "target": 0, "move": 0}).get("line", -1) == 91
+		and battle.items.bag_problem({"item": 38, "target": 0, "move": 1}).is_empty(),
+		"Huile : « Ça n'aura aucun effet. » si la capacité choisie a tous ses PP (fichier 18, 91)")
 
 
 ## Vérification qui ne s'affiche qu'en cas d'échec (boucles).

@@ -870,12 +870,12 @@ func bag_problem(action: Dictionary) -> Dictionary:
 	var target_index: int = action.get("target", -1)
 	if target_index < 0 or target_index >= battle.player().party.size():
 		return {"line": BattleText.BUT_IT_FAILED}
-	if not _would_help(data, battle.player().party[target_index], target_index):
+	if not _would_help(data, battle.player().party[target_index], target_index, action.get("move", -1)):
 		return {"line": 91, "file": BWFiles.TEXT_BATTLE_PARTY}
 	return {}
 
 
-func _would_help(data: ItemData, pokemon: Pokemon, index: int) -> bool:
+func _would_help(data: ItemData, pokemon: Pokemon, index: int, move := -1) -> bool:
 	if data == null:
 		return false
 	if data.revive:
@@ -893,9 +893,12 @@ func _would_help(data: ItemData, pokemon: Pokemon, index: int) -> bool:
 	if data.cures & (1 << ItemData.Cure.CONFUSION) and on_field and active.has("confusion"):
 		return true
 	if data.pp_restore or data.pp_restore_all:
-		for move in pokemon.moves:
-			if move.pp < MoveData.max_pp(move.id, move.pp_ups):
+		for i in pokemon.moves.size():
+			var slot: Dictionary = pokemon.moves[i]
+			if (data.pp_restore_all or move < 0 or i == move) and slot.pp < MoveData.max_pp(slot.id, slot.get("pp_ups", 0)):
 				return true
+	if data.cures_status(ItemData.Cure.ATTRACT) and on_field and active.has("attract"):
+		return true
 	if on_field and (data.stat_boosts.max() > 0 or data.critical_boost > 0 or data.cures_status(ItemData.Cure.GUARD_SPEC)):
 		return true
 	return false
@@ -931,60 +934,97 @@ func use_from_bag(mon: BattleMon, action: Dictionary) -> void:
 	for each in side.active:
 		if each and each.party_index == index and not each.is_fainted():
 			target = each
-	apply_item(data, pokemon, target)
+	apply_item(data, pokemon, target, action.get("move", -1), side.id)
 
 
-## Effet d'un objet de soin ou de combat sur un Pokémon (target : celui au combat, sinon null).
-func apply_item(data: ItemData, pokemon: Pokemon, target: BattleMon) -> void:
+## Effet d'un objet de soin ou de combat sur un Pokémon (target : celui au combat, sinon null), comme
+## 0x021CB6D0 et sa table de 23 effets (0x021EFD84, un gestionnaire par paramètre de l'objet) :
+## réanimation (« n'est plus K.O. », fichier 14, 3), PV (387), statut, confusion, amour, PP d'une
+## capacité (`move`, 390) ou de toutes (393), Défense Spéc. (Brume, fichier 15, 136), crans, Muscle +.
+## Rien n'a agi : « Mais ça n'a aucun effet ! » (fichier 15, 68). Vrai si l'objet a servi.
+func apply_item(data: ItemData, pokemon: Pokemon, target: BattleMon, move := -1, side_id := BattleSide.PLAYER) -> bool:
 	if data == null:
-		return
+		return false
 	var name := pokemon.name()
-	if data.revive and pokemon.is_fainted():
+	var v := 0 if side_id == BattleSide.PLAYER else (1 if battle.is_wild() else 2)
+	var worked := false
+	if data.revive:
+		if not pokemon.is_fainted():
+			battle.say(68)
+			return false
 		var amount := pokemon.max_hp() / 2 if data.hp_amount == ItemData.HP_HALF else pokemon.max_hp()
 		pokemon.hp = maxi(amount, 1)
-		battle.say(44, {0: name, 1: str(pokemon.hp)}, 157)
-		return
-	if data.hp_restore and not pokemon.is_fainted():
+		battle.say(3 + v, {0: name}, BWFiles.TEXT_BATTLE_SET)
+		return true
+	if pokemon.is_fainted():
+		battle.say(68)
+		return false
+	if data.hp_restore and pokemon.hp < pokemon.max_hp():
 		var amount := data.hp_amount
 		match amount:
 			ItemData.HP_FULL: amount = pokemon.max_hp()
 			ItemData.HP_HALF: amount = pokemon.max_hp() / 2
 			ItemData.HP_QUARTER: amount = pokemon.max_hp() / 4
-		var before := pokemon.hp
 		if target:
 			battle.heal(target, amount)
 		else:
 			pokemon.hp = mini(pokemon.hp + amount, pokemon.max_hp())
-		battle.say(44, {0: name, 1: str(pokemon.hp - before)}, 157)
+		battle.say(387 + v, {0: name}, BWFiles.TEXT_BATTLE_SET)
+		worked = true
 	if data.cures != 0:
 		var status_bits := {Pokemon.Status.SLEEP: 0, Pokemon.Status.POISON: 1, Pokemon.Status.BURN: 2, Pokemon.Status.FREEZE: 3, Pokemon.Status.PARALYSIS: 4}
 		if pokemon.status != Pokemon.Status.NONE and data.cures & (1 << status_bits.get(pokemon.status, 7)):
-			var messages := {Pokemon.Status.POISON: 45, Pokemon.Status.PARALYSIS: 46, Pokemon.Status.BURN: 47, Pokemon.Status.FREEZE: 48, Pokemon.Status.SLEEP: 49}
-			var line: int = messages.get(pokemon.status, 45)
+			var messages := {Pokemon.Status.POISON: BattleText.POISON_CURED, Pokemon.Status.PARALYSIS: BattleText.PARALYSIS_CURED,
+				Pokemon.Status.BURN: BattleText.BURN_CURED, Pokemon.Status.FREEZE: BattleText.THAWED, Pokemon.Status.SLEEP: BattleText.WOKE_UP}
+			var line: int = messages.get(pokemon.status, BattleText.POISON_CURED)
 			pokemon.status = Pokemon.Status.NONE
 			pokemon.sleep_turns = 0
 			if target:
 				target.badly_poisoned = false
 				battle.push({"type": "status", "side": target.side, "slot": target.slot, "status": 0})
-			battle.say(line, {0: name}, 157)
+			battle.say(line + v, {0: name}, BWFiles.TEXT_BATTLE_SET)
+			worked = true
 		if target and data.cures_status(ItemData.Cure.CONFUSION) and target.has("confusion"):
 			target.clear_effect("confusion")
 			battle.say_mon(BattleText.CONFUSION_CURED, target)
-		if target and data.cures_status(ItemData.Cure.GUARD_SPEC):
+			worked = true
+		if target and data.cures_status(ItemData.Cure.ATTRACT) and target.has("attract"):
+			target.clear_effect("attract")
+			battle.say_mon(BattleText.LOVE_CURED, target)
+			worked = true
+		if target and data.cures_status(ItemData.Cure.GUARD_SPEC) and not battle.sides[target.side].has("mist"):
 			battle.sides[target.side].conditions["mist"] = 5
 			battle.say(BattleText.MIST_UP + (0 if target.side == BattleSide.PLAYER else 1))
+			worked = true
 	if data.pp_restore or data.pp_restore_all:
-		for move in pokemon.moves:
-			move.pp = mini(move.pp + (data.pp_amount if data.pp_amount < 255 else 99), MoveData.max_pp(move.id, move.pp_ups))
-		battle.say(393, {0: name}, BWFiles.TEXT_BATTLE_SET)
+		# Huile (0x021CC118) : une capacité choisie ; Élixir (0x021CC1B4) : toutes ; 0x7F = tous les PP.
+		var gained := false
+		for i in pokemon.moves.size():
+			if data.pp_restore and not data.pp_restore_all and i != move:
+				continue
+			var slot: Dictionary = pokemon.moves[i]
+			var full := MoveData.max_pp(slot.id, slot.get("pp_ups", 0))
+			if slot.pp < full:
+				slot.pp = full if data.pp_amount >= 0x7F else mini(slot.pp + data.pp_amount, full)
+				gained = true
+		if gained:
+			if data.pp_restore_all:
+				battle.say(393 + v, {0: name}, BWFiles.TEXT_BATTLE_SET)
+			else:
+				battle.say(390 + v, {0: name, 1: Autoloads.rom().text(BWFiles.TEXT_MOVE_NAMES, pokemon.moves[move].id)}, BWFiles.TEXT_BATTLE_SET)
+			worked = true
 	if target:
 		var stats := [Stats.Stat.ATTACK, Stats.Stat.DEFENSE, Stats.Stat.SP_ATTACK, Stats.Stat.SP_DEFENSE, Stats.Stat.SPEED, Stats.Stat.ACCURACY]
 		for i in 6:
 			if data.stat_boosts[i] > 0:
-				battle.moves.change_stat(target, target, stats[i], data.stat_boosts[i], false)
+				worked = battle.moves.change_stat(target, target, stats[i], data.stat_boosts[i], false) or worked
 		if data.critical_boost > 0 and not target.has("focus_energy"):
 			target.set_effect("focus_energy")
 			battle.say_mon(616, target)
+			worked = true
+	if not worked:
+		battle.say(68)
+	return worked
 
 
 ## Lancer d'une Ball (formule 0x021CBAD4) : secousses, puis capture ou non.

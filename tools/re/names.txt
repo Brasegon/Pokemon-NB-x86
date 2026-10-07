@@ -422,6 +422,7 @@ ov93:0x021C9EAC   server_set_move                 travail 0x25 : une capacité r
 ov93:0x021CA41C   server_transform                travail 0x33 : Morphing
 ov93:0x021CB274   battle_exp_share                partage de l'expérience
 ov93:0x021CB4FC   battle_exp_gain                 expérience reçue
+ov93:0x021CB6D0   battle_use_bag_item             action 2 : objet du sac (table des effets 0x021EFD84)
 ov93:0x021CBAD4   battle_capture                  calcul de la capture
 ov93:0x021CBC94   capture_dark_grass              modificateur des herbes sombres (0,3 à 1)
 ov93:0x021CBCE8   capture_ball                    multiplicateur des Balls
@@ -636,6 +637,7 @@ ov74:0x021F5470   cutin_kinds                     26 fiches de genres de coupure
 ov223:0x021BC6B0  starter_species                 les trois starters (495, 498, 501)
 
 # Overlay 93
+ov93:0x021EFD84   bag_item_effects                23 effets des objets du sac en combat : paramètre, gestionnaire
 ov93:0x021EFF18   trainer_speech_order            genres des paroles en combat (18, 17, 19, 20)
 ov93:0x021F0080   client_commands                 commandes du client : 92 paires gestionnaire, numéro
 ov93:0x021F03BC   critical_table                  coups critiques : 1 chance sur 16, 8, 4, 3, 2

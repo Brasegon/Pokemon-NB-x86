@@ -1488,6 +1488,17 @@ les immunités dues aux types du porteur tombent) ; Carton Rouge (0x021DFBA0 : t
 l'attaquant, remplacé au hasard, 417 à 7 variantes) ; Bouton Fuite (0x021DFDC8 : touché, le porteur se
 retire, 414, et son dresseur choisit le remplaçant). Il faut un remplaçant pour les deux derniers.
 
+**Objets du sac en combat** (action 2 : 0x021CB6D0) : « X utilise Y ! » (fichier 15, 33 ; 35 pour un
+dresseur), puis la table 0x021EFD84 de 23 effets (paramètre de l'objet, gestionnaire) : soins de
+statut (paramètres 18 à 24 : sommeil, poison, brûlure, gel, paralysie, confusion, amour), Défense
+Spéc. (25 : Brume 5 tours, fichier 15, 136), réanimation (26 : « n'est plus K.O. », fichier 14, 3),
+crans (30 à 36, seulement au combat), PP d'une capacité choisie (39 : Huile, « récupère les PP
+de... », 390 ; 0x7F : tous), de toutes (40 : Élixir, 393), PV (41 : « récupère des PV », 387 ; 0xFD
+un quart, 0xFE la moitié, 0xFF tous) ; les objets 611 à 614 (Appel CapSpé, Jette Objet, Appel
+Objet, Réamorçage) ont leur propre gestionnaire (non repris). Rien n'a agi : « Mais ça n'a aucun
+effet ! » (fichier 15, 68). L'écran demande la capacité d'une Huile (« Laquelle restaurer ? »,
+fichier 18, 104) ; un objet sans effet est refusé dans le menu (« Ça n'aura aucun effet. », 91).
+
 **Objet employé tout de suite** (travail 0x22, 0x021C9DDC : un gestionnaire provisoire de l'objet,
 0x021DCF18, reçoit l'événement 0x73) : les baies (soin, statut, confusion, crans, Lansat, Micle,
 Mepo), Herbe Blanche, Herbe Mental, Roche Royale et Croc Rasoir (apeurement à coup sûr), Balle
