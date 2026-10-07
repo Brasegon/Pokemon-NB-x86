@@ -51,6 +51,7 @@ func _initialize() -> void:
 	_test_call_moves()
 	_test_item_moves()
 	_test_sky_drop_and_pledges()
+	_test_last_abilities()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -1169,6 +1170,99 @@ func _test_sky_drop_and_pledges() -> void:
 	battle.moves.side_conditions_end_of_turn()
 	_check(foe.hp() == before - maxi(foe.max_hp() / 8, 1) and not battle.enemy().has("sea_of_fire") and _said(battle, BWFiles.TEXT_BATTLE, 171),
 		"Mer de feu : 1/8 des PV en fin de tour, puis elle disparaît (171)")
+
+
+## Derniers talents : Plus, Minus, Garde Amie, Heavy Metal, Télépathe, Pickpocket, Cœur Soin, Récolte,
+## Ramassage, Mode Transe, Météo, Illusion, Imposteur.
+func _test_last_abilities() -> void:
+	var battle := _double_duel([33, 52], 170)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var ally := battle.mon_at(BattleSide.PLAYER, 1)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	var ember := MoveData.of(52)
+	var tackle := MoveData.of(33)
+	me.ability = BattleAbilities.PLUS
+	ally.ability = BattleAbilities.MINUS
+	_check(battle.abilities.attack_ratio(me, foe, ember, false, Stats.Type.FIRE, BattleCalc.FX_ONE) == 0x1800,
+		"Plus : Attaque Spéciale x 1,5 avec un allié Minus")
+	ally.ability = BattleAbilities.FRIEND_GUARD
+	_check(battle.abilities.final_ratio(foe, me, tackle, Stats.Effectiveness.NORMAL, false, BattleCalc.FX_ONE) == 0xC00,
+		"Garde Amie : l'allié prend x 0,75")
+	me.ability = BattleAbilities.HEAVY_METAL
+	_check(battle.weight_of(me) == me.weight() * 2, "Heavy Metal : poids x 2")
+	me.ability = BattleAbilities.TELEPATHY
+	_check(battle.abilities.blocks_move(me, ally, tackle) and not battle.abilities.blocks_move(me, foe, tackle),
+		"Télépathe : les attaques des alliés ne le touchent pas")
+	me.ability = BattleAbilities.PICKPOCKET
+	me.pokemon.held_item = 0
+	foe.pokemon.held_item = 234
+	foe.pokemon.set_moves([33])
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe, "target": me.position()})
+	_check(me.pokemon.held_item == 234 and foe.pokemon.held_item == 0, "Pickpocket : prend l'objet de l'attaquant au contact")
+	me.ability = BattleAbilities.HEALER
+	var cured := false
+	for i in 30:
+		ally.pokemon.status = Pokemon.Status.POISON
+		battle.abilities.on_turn_end(me)
+		if ally.status() == Pokemon.Status.NONE:
+			cured = true
+			break
+	_check(cured, "Cœur Soin : l'allié voisin guérit de son statut (30 %)")
+	me.ability = BattleAbilities.HARVEST
+	me.pokemon.held_item = 0
+	battle.player().consumed[me.party_index] = 158
+	battle.weather = Battle.Weather.SUN
+	battle.abilities.on_turn_end_late(me)
+	_check(me.pokemon.held_item == 158 and _said(battle, BWFiles.TEXT_BATTLE_SET, 475), "Récolte : la baie revient au soleil")
+	battle.weather = Battle.Weather.NONE
+	me.ability = BattleAbilities.PICKUP
+	me.pokemon.held_item = 0
+	foe.pokemon.held_item = 155
+	battle.items.consume(foe)
+	battle.abilities.on_turn_end_late(me)
+	_check(me.pokemon.held_item == 155 and not battle.enemy().consumed.has(foe.party_index), "Ramassage : l'objet consommé ce tour par un voisin")
+
+	battle = _duel([33], 174, 555)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.ability = BattleAbilities.ZEN_MODE
+	foe.pokemon.hp = foe.max_hp() / 2
+	battle.abilities.on_turn_end_late(foe)
+	_check(foe.pokemon.form == 1 and foe.has_type(Stats.Type.PSYCHIC) and _said(battle, BWFiles.TEXT_BATTLE, 185),
+		"Mode Transe : Darumacho change de forme à la moitié de ses PV (185)")
+	foe.pokemon.hp = foe.max_hp()
+	battle.abilities.on_turn_end_late(foe)
+	_check(foe.pokemon.form == 0 and _said(battle, BWFiles.TEXT_BATTLE, 186), "Mode Transe : retour au Mode Normal (186)")
+	foe.pokemon.hp = foe.max_hp() / 2
+	battle.abilities.on_turn_end_late(foe)
+	battle._finish()
+	_check(foe.pokemon.form == 0, "les formes de combat reviennent à la fin du combat")
+
+	battle = _duel([241], 178, 351)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.ability = BattleAbilities.FORECAST
+	_use(battle, me, 0)
+	_check(foe.pokemon.form == 1 and foe.has_type(Stats.Type.FIRE), "Météo : Morphéo prend la forme du soleil")
+
+	var state := _player(571, 50, 182)
+	state.party[0].ability = BattleAbilities.ILLUSION
+	state.party.append(Pokemon.create(506, 50, {"random": GameRandom.new(183), "ot_id": state.trainer_id}))
+	battle = Battle.wild(state, Pokemon.create(504, 50, {"random": GameRandom.new(184)}), {"random": GameRandom.new(185)})
+	me = battle.send_out(battle.player(), 0, 0)
+	foe = battle.send_out(battle.enemy(), 0, 0)
+	_check(me.illusion == state.party[1] and me.name() == state.party[1].name(), "Illusion : il prend l'apparence du dernier de l'équipe")
+	foe.pokemon.set_moves([33])
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
+	_check(me.illusion == null and _said(battle, BWFiles.TEXT_BATTLE_SET, 478), "Illusion : un coup la brise (478)")
+
+	state = _player(132, 50, 186)
+	state.party[0].ability = BattleAbilities.IMPOSTER
+	battle = Battle.wild(state, Pokemon.create(504, 50, {"random": GameRandom.new(187)}), {"random": GameRandom.new(188)})
+	foe = battle.send_out(battle.enemy(), 0, 0)
+	me = battle.send_out(battle.player(), 0, 0)
+	battle.abilities.on_switch_in(me)
+	_check(me.has("transformed") and me.pokemon.move_ids() == foe.pokemon.move_ids(), "Imposteur : Morphing sur l'adversaire en entrant")
+	battle._finish()
 
 
 ## Vérification qui ne s'affiche qu'en cas d'échec (boucles).

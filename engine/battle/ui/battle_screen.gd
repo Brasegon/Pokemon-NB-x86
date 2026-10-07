@@ -375,6 +375,8 @@ func _play(event: Dictionary) -> void:
 			await _rotate(event)
 		"transform":
 			_transform(event)
+		"illusion_end", "form":
+			_reveal(event)
 		"request":
 			await _answer(event.request)
 
@@ -495,13 +497,15 @@ func _sync_side_arrays() -> void:
 func _prepare_pokemon(event: Dictionary) -> int:
 	var side: int = event.side
 	var mon: BattleMon = event.mon
+	# Le Pokémon montré : celui de son Illusion le cas échéant.
+	var shown: Pokemon = event.get("shown", mon.pokemon)
 	var place := _event_place(event)
-	var sprite := BattleSprite.for_pokemon(mon.pokemon, side == BattleSide.PLAYER)
+	var sprite := BattleSprite.for_pokemon(shown, side == BattleSide.PLAYER)
 	_put_sprite(place, sprite)
 	var gauge: BattleGauge = gauges.get(place)
 	if gauge == null:
 		return place
-	gauge.show_pokemon(mon.pokemon)
+	gauge.show_pokemon(shown)
 	gauge.level = event.get("level", mon.level())
 	gauge.max_hp = maxi(event.get("max", mon.max_hp()), 1)
 	gauge.shown_hp = event.get("hp", mon.hp())
@@ -533,6 +537,22 @@ func _transform(event: Dictionary) -> void:
 	shown.ot_id = old.pokemon.ot_id
 	shown.nickname = old.pokemon.name()
 	_put_sprite(place, BattleSprite.for_pokemon(shown, _side_of_place(place) == BattleSide.PLAYER))
+
+
+## L'Illusion se brise (travail 0x34) ou la forme change (travail 0x39) : le vrai Pokémon, dans sa
+## forme, remplace le sprite ; la jauge prend son nom.
+func _reveal(event: Dictionary) -> void:
+	var place := _event_place(event)
+	var mon: BattleMon = event.mon
+	if not slots.has(place):
+		return
+	_put_sprite(place, BattleSprite.for_pokemon(mon.pokemon, _side_of_place(place) == BattleSide.PLAYER))
+	var gauge: BattleGauge = gauges.get(place)
+	if gauge and event.type == "illusion_end":
+		# Seuls le nom et le sexe changent : les PV montrés suivent toujours la file des événements.
+		gauge.pokemon_name = mon.pokemon.name()
+		gauge.gender = mon.pokemon.gender
+		gauge.queue_redraw()
 
 
 func _withdraw(place: int) -> void:

@@ -209,6 +209,7 @@ func consume(mon: BattleMon) -> void:
 	mon.set_effect("unburden")
 	if item != 0:
 		battle.sides[mon.side].consumed[mon.party_index] = item
+		mon.consumed_turn = battle.turn
 
 
 ## Change l'objet tenu (travail 0x20 du jeu, 0x021C9B58). Un autre Pokémon ne peut pas retirer

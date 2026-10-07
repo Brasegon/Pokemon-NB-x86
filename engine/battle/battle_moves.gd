@@ -1169,6 +1169,9 @@ func _say_critical(target: BattleMon, named: bool) -> void:
 func _after_damage(mon: BattleMon, target: BattleMon, data: MoveData, total: int, move_type: int, last := true) -> void:
 	var substitute_hit := target.has("substitute_hit")
 	target.clear_effect("substitute_hit")
+	# Illusion (événement 0x4B, 0x021DCD70) : un coup qui touche vraiment la brise.
+	if total > 0 and not substitute_hit and target.illusion:
+		battle.abilities.break_illusion(target)
 	if total > 0 and not target.is_fainted() and data.has_flag(MoveData.Flag.CONTACT):
 		battle.abilities.on_contact(target, mon)
 		battle.items.on_contact(target, mon)
@@ -1525,7 +1528,7 @@ func special_power(mon: BattleMon, target: BattleMon, data: MoveData) -> int:
 			return maxi(150 * mon.hp() / maxi(mon.max_hp(), 1), 1)
 		67, 447:
 			# Balayage, Nœud Herbe : selon le poids de la cible (en hectogrammes).
-			var weight := target.weight()
+			var weight := battle.weight_of(target, mon)
 			if weight < 100: return 20
 			if weight < 250: return 40
 			if weight < 500: return 60
@@ -1592,7 +1595,7 @@ func special_power(mon: BattleMon, target: BattleMon, data: MoveData) -> int:
 				boosts += maxi(target.stage(stat), 0)
 			return mini(60 + 20 * boosts, 200)
 		484, 535:
-			var ratio := mon.weight() * 100 / maxi(target.weight(), 1)
+			var ratio := battle.weight_of(mon) * 100 / maxi(battle.weight_of(target, mon), 1)
 			if ratio >= 500: return 120
 			if ratio >= 400: return 100
 			if ratio >= 300: return 80
@@ -1929,6 +1932,7 @@ func set_weather(weather: Battle.Weather, turns: int) -> bool:
 	battle.weather_turns = turns
 	battle.push({"type": "weather", "weather": weather})
 	battle.say([0, BattleText.SUN_STARTED, BattleText.RAIN_STARTED, BattleText.HAIL_STARTED, BattleText.SAND_STARTED][weather])
+	battle.weather_changed()
 	return true
 
 
@@ -2324,6 +2328,7 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 				return true
 			target.set_effect("gastro_acid")
 			battle.say_mon(565, target)
+			battle.abilities.on_ability_lost(target)
 		388, 493, 494:
 			# Soucigraine (Insomnia), Rayon Simple (Simple), Ten-danse (le talent du lanceur) : le
 			# talent de la cible change (message 405) ; Absentéisme et Multi-Type ne se remplacent pas.
@@ -2335,6 +2340,7 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 			target.ability = given
 			target.clear_effect("gastro_acid")
 			battle.say_mon(405, target, {1: Autoloads.rom().text(BWFiles.TEXT_ABILITY_NAMES, given)})
+			battle.abilities.on_ability_lost(target)
 			if target.status() == Pokemon.Status.SLEEP and given == BattleAbilities.INSOMNIA:
 				_cure_status(target, BattleText.WOKE_UP)
 		272:
@@ -2346,6 +2352,7 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 				return true
 			mon.ability = copied
 			battle.say_pair(619, mon, target, {2: Autoloads.rom().text(BWFiles.TEXT_ABILITY_NAMES, copied)})
+			battle.abilities.on_ability_lost(mon)
 		160:
 			# Adaptation (0x021E0408) : un type au hasard parmi ceux des capacités du lanceur (sauf
 			# celle-ci) qu'il n'a pas déjà.
@@ -2583,12 +2590,10 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 			mon.pokemon.moves[sketch_slot] = {"id": sketched, "pp": MoveData.max_pp(sketched, 0), "pp_ups": 0}
 			battle.say_mon(691, mon, {1: _move_name(sketched)})
 		144:
-			# Morphing (0x021CA41C) : échoue si l'un des deux est déjà transformé ou si la cible a un
-			# clone.
-			if mon.has("transformed") or target.has("transformed") or target.has("substitute"):
+			if not can_transform(mon, target):
 				battle.say(BattleText.BUT_IT_FAILED)
 				return true
-			_transform(mon, target)
+			transform(mon, target)
 		289, 277:
 			# Saisie (0x021E3540), Reflet Magik (0x021E3454) : échouent si tous les autres ont déjà agi
 			# (0x021C804C) ; jusqu'à la fin du tour, le lanceur guette une capacité à voler (751) ou
@@ -2645,10 +2650,16 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 	return true
 
 
+## Morphing (0x021CA41C, aussi pour Imposteur) : échoue si l'un des deux est déjà transformé ou a une
+## Illusion, ou si la cible a un clone.
+func can_transform(mon: BattleMon, target: BattleMon) -> bool:
+	return not (mon.has("transformed") or target.has("transformed") or target.has("substitute") or mon.illusion or target.illusion)
+
+
 ## Morphing (0x021D6BF0 copie la structure de la cible, sauf le début : PV, niveau...) : types,
 ## statistiques sauf les PV, crans, talent, poids et capacités (5 PP au plus) ; le sprite devient
 ## celui de la cible (commande 0x53 du client) ; « X prend l'apparence de Y ! » (644).
-func _transform(mon: BattleMon, target: BattleMon) -> void:
+func transform(mon: BattleMon, target: BattleMon) -> void:
 	mon.set_effect("transformed", {"species": target.pokemon.species, "form": target.pokemon.form,
 		"gender": target.pokemon.gender, "weight": target.weight()})
 	mon.types = target.types.duplicate()
@@ -2663,6 +2674,15 @@ func _transform(mon: BattleMon, target: BattleMon) -> void:
 	battle.push({"type": "transform", "side": mon.side, "slot": mon.slot, "species": target.pokemon.species,
 		"form": target.pokemon.form, "gender": target.pokemon.gender})
 	battle.say_pair(644, mon, target)
+
+
+## Changement de forme au combat (travail 0x39 : Météo, Mode Transe, ChantAntique) : statistiques et
+## types de la forme, et son sprite.
+func change_form(mon: BattleMon, form: int) -> void:
+	mon.pokemon.form = form
+	mon.pokemon.calc_stats()
+	mon.types = mon.pokemon.types().duplicate()
+	battle.push({"type": "form", "side": mon.side, "slot": mon.slot, "mon": mon})
 
 
 ## Le Pokémon n'a plus qu'un type (Adaptation, Camouflage, Détrempage) : « X prend le type Y ! »
@@ -2758,9 +2778,7 @@ func _special_after(mon: BattleMon, target: BattleMon, data: MoveData, total: in
 			# ChantAntique (0x021E8130) : Meloetta change de forme (Chant ou Danse) ; « se transforme »
 			# (222).
 			if mon.pokemon.species == MELOETTA and not mon.has("transformed"):
-				mon.pokemon.form = 1 - mon.pokemon.form
-				mon.pokemon.calc_stats()
-				mon.types = mon.pokemon.types().duplicate()
+				change_form(mon, 1 - mon.pokemon.form)
 				battle.say_mon(222, mon)
 		99:
 			# Frénésie (0x021E2038) : le lanceur enrage jusqu'à sa prochaine autre capacité.
@@ -2802,7 +2820,7 @@ func _special_after(mon: BattleMon, target: BattleMon, data: MoveData, total: in
 			# Sabotage (0x021E33C0) : l'objet de la cible tombe (1050), sauf objet lié, Glue ou lanceur
 			# sauvage.
 			var item := target.pokemon.held_item
-			if reached and item != 0 and not target.is_fainted() and not _item_locked(mon, target) and battle.items.change_item(target, 0, mon):
+			if reached and item != 0 and not target.is_fainted() and not item_locked(mon, target) and battle.items.change_item(target, 0, mon):
 				battle.say_pair(1050, mon, target, {2: _item_name(item)})
 	if data.id != 210:
 		mon.clear_effect("fury_cutter")
@@ -3050,7 +3068,7 @@ func _pivot_switch(mon: BattleMon) -> void:
 ## non vérifié).
 func _steal_item(mon: BattleMon, target: BattleMon) -> void:
 	var item := target.pokemon.held_item
-	if mon.pokemon.held_item != 0 or item == 0 or _item_locked(mon, target):
+	if mon.pokemon.held_item != 0 or item == 0 or item_locked(mon, target):
 		return
 	if target.side == BattleSide.ENEMY and not battle.is_wild():
 		return
@@ -3062,7 +3080,7 @@ func _steal_item(mon: BattleMon, target: BattleMon) -> void:
 
 ## Objet qu'on ne peut pas prendre (0x021E8688) : lanceur sauvage (0x021E8668 : combat sauvage, camp
 ## d'en face), objet lié à l'espèce de la cible ou à celle du lanceur.
-func _item_locked(mon: BattleMon, target: BattleMon) -> bool:
+func item_locked(mon: BattleMon, target: BattleMon) -> bool:
 	var item := target.pokemon.held_item
 	return _wild_thief(mon) or BattleItems.bound_to(target.pokemon.species, item) or BattleItems.bound_to(mon.pokemon.species, item)
 

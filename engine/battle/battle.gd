@@ -463,15 +463,29 @@ func _first_able(side: BattleSide, slot := 0) -> int:
 
 
 ## Met le Pokémon n° index de l'équipe au combat à une place ; l'écran l'apprend par
-## push_send_out(), après l'annonce. Celui qui était là retrouve ses capacités (Copie, Morphing).
+## push_send_out(), après l'annonce. Celui qui était là retrouve ses capacités (Copie, Morphing) et
+## sa forme ; celui qui arrive prend son Illusion.
 func send_out(side: BattleSide, index: int, slot := 0) -> BattleMon:
 	var mon := BattleMon.create(side.party[index], side.id, index, slot)
 	if side.active.size() <= slot:
 		side.active.resize(slot + 1)
 	elif side.active[slot]:
-		side.active[slot].restore_moves()
+		side.active[slot].leave_field()
 	side.active[slot] = mon
+	abilities.set_illusion(mon)
 	return mon
+
+
+## Poids au combat (0x021C8340) : poids de l'espèce moins Allègement, x Heavy Metal ou Light Metal
+## (que le Brise Moule de l'attaquant ignore), 0,1 kg au moins.
+func weight_of(mon: BattleMon, attacker: BattleMon = null) -> int:
+	return maxi(BattleCalc.fx_mul(mon.weight(), abilities.weight_ratio(mon, attacker)), 1)
+
+
+## Le temps a changé (ou un talent qui l'annule est arrivé, parti) : Météo de chaque Morphéo.
+func weather_changed() -> void:
+	for mon in all_active():
+		abilities.update_forecast(mon)
 
 
 ## Le Pokémon arrive à l'écran (`intro` : au début du combat). Le moteur joue tout le tour
@@ -481,8 +495,8 @@ func push_send_out(mon: BattleMon, intro := false) -> void:
 
 
 func _send_out_event(mon: BattleMon, intro := false) -> Dictionary:
-	return {"type": "send_out", "side": mon.side, "slot": mon.slot, "mon": mon, "intro": intro, "hp": mon.hp(), "max": mon.max_hp(),
-		"level": mon.level(), "status": mon.status()}
+	return {"type": "send_out", "side": mon.side, "slot": mon.slot, "mon": mon, "shown": mon.shown(), "intro": intro, "hp": mon.hp(),
+		"max": mon.max_hp(), "level": mon.level(), "status": mon.status()}
 
 
 ## Un message à montrer plus tard (fichier, ligne, mots des tampons), comme say().
@@ -1115,6 +1129,9 @@ func _end_of_turn() -> void:
 		if result != Result.NONE:
 			return
 	moves.side_conditions_end_of_turn()
+	for mon in by_speed(all_active()):
+		if not mon.is_fainted():
+			abilities.on_turn_end_late(mon)
 	for mon in all_active():
 		mon.turns_active += 1
 
@@ -1128,6 +1145,7 @@ func _weather_end_of_turn() -> void:
 			say([0, BattleText.SUN_ENDED, BattleText.RAIN_ENDED, BattleText.HAIL_ENDED, BattleText.SAND_ENDED][weather])
 			weather = Weather.NONE
 			push({"type": "weather", "weather": weather})
+			weather_changed()
 			return
 	if weather == Weather.SAND or weather == Weather.HAIL:
 		say(BattleText.SAND_RAGES if weather == Weather.SAND else BattleText.HAIL_CONTINUES)
@@ -1219,7 +1237,7 @@ func _finish() -> void:
 	for side in sides:
 		for mon in side.active:
 			if mon:
-				mon.restore_moves()
+				mon.leave_field()
 				mon.volatile.clear()
 				mon.last_attacker = null
 		side.conditions.clear()

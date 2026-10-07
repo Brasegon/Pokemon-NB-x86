@@ -49,11 +49,19 @@ var stat_overrides := {}
 var weight_lost := 0
 ## Capacités déjà utilisées depuis l'entrée au combat (Dernierecour).
 var used_moves := {}
+## Tour où il a consommé son objet (indicateur 8 du tour dans le jeu : Ramassage).
+var consumed_turn := -1
 ## Capacités de l'équipe remplacées le temps de la présence au combat (Copie, Morphing) : place ->
 ## capacité d'origine, ou -1 -> toutes les capacités d'origine (Morphing). Le jeu garde deux copies
 ## de chaque capacité (celle de l'équipe et celle du combat, 0x021D517C) ; elles sont rendues quand
 ## le Pokémon quitte le terrain ou à la fin du combat.
 var replaced_moves := {}
+## Forme à l'entrée au combat : Météo (Morphéo), Mode Transe (Darumacho) et ChantAntique (Meloetta)
+## la changent le temps de la présence au combat.
+var original_form := 0
+## Illusion (0x021B9CB0) : le Pokémon dont il prend l'apparence et le nom (le dernier de l'équipe
+## en état de se battre), jusqu'à ce qu'un coup la brise ; null sinon.
+var illusion: Pokemon
 
 
 static func create(member: Pokemon, side_id: int, index: int, slot_index := 0) -> BattleMon:
@@ -62,6 +70,7 @@ static func create(member: Pokemon, side_id: int, index: int, slot_index := 0) -
 	mon.side = side_id
 	mon.party_index = index
 	mon.slot = slot_index
+	mon.original_form = member.form
 	mon.reset_on_entry()
 	return mon
 
@@ -125,6 +134,14 @@ func replace_all_moves(ids: Array[int], pp_cap: int) -> void:
 	pokemon.moves = moves
 
 
+## Le Pokémon quitte le terrain ou le combat finit : capacités de l'équipe et forme d'origine.
+func leave_field() -> void:
+	restore_moves()
+	if pokemon.form != original_form:
+		pokemon.form = original_form
+		pokemon.calc_stats()
+
+
 ## Rend les capacités de l'équipe (le Pokémon quitte le terrain, ou fin du combat).
 func restore_moves() -> void:
 	if replaced_moves.has(-1):
@@ -136,8 +153,14 @@ func restore_moves() -> void:
 	replaced_moves.clear()
 
 
+## Nom montré dans les messages (celui de l'Illusion tant qu'elle tient).
 func name() -> String:
-	return pokemon.name()
+	return illusion.name() if illusion else pokemon.name()
+
+
+## Le Pokémon que voient l'écran et l'adversaire (celui de l'Illusion tant qu'elle tient).
+func shown() -> Pokemon:
+	return illusion if illusion else pokemon
 
 
 func hp() -> int:

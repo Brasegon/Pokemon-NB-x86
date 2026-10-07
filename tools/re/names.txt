@@ -378,6 +378,7 @@ ov74:0x021F5460   cutin_kind                      fiche d'un genre de coupure (t
 
 # Moteur du combat (overlay 93)
 ov93:0x021B857C   battle_text_speed               vitesse d'écriture des messages (options)
+ov93:0x021B9CB0   illusion_setup                  Illusion : apparence du dernier membre de l'équipe en état de se battre
 ov93:0x021BBF48   battle_run_actions              exécute les actions dans l'ordre (ordre recalculé après les rotations)
 ov93:0x021BC3B8   battle_rotate                   rotation : un Pokémon en retrait passe devant (combat rotatif)
 ov93:0x021BC5B0   battle_action_keys              clés de l'ordre des actions : rang, priorité, priorité spéciale, vitesse
@@ -411,6 +412,7 @@ ov93:0x021C804C   others_all_acted                tous les autres ont-ils agi ce
 ov93:0x021C80B4   battle_last_move                dernière capacité lancée au combat (champ 0x1F74 du serveur, Photocopie)
 ov93:0x021C80FC   battle_rule                     type de combat : 0 simple, 1 double, 2 triple, 3 rotatif
 ov93:0x021C81EC   items_usable                    objets utilisables : ni Maladresse, ni Embargo, ni Zone Magique
+ov93:0x021C8340   battle_weight                   poids au combat : espèce moins Allègement, x Heavy Metal, Light Metal (événement 0x7B)
 ov93:0x021C88B8   server_work                     travaux du serveur (selon le type : 4 message, 0x25 capacité remplacée, 0x33 Morphing...)
 ov93:0x021C9B58   server_change_item              travail 0x20 : pose un objet (Glue empêche un autre de le retirer)
 ov93:0x021C9C60   server_swap_items               travail 0x24 : échange deux objets (Tour de Magie, Larcin)
@@ -452,7 +454,9 @@ ov93:0x021D7F98   battle_money_lost               somme perdue
 ov93:0x021D805C   default_target                  cible d'une capacité selon ses données et le type de combat
 ov93:0x021D8424   ability_handler_lookup          cherche un talent dans la table des gestionnaires (0x9E entrées)
 ov93:0x021DB148   mold_breaker_filter             Brise Moule : fait taire les talents de la liste 0x0689E450
+ov93:0x021DB314   forecast_form                   Météo : forme de Morphéo selon le temps (222)
 ov93:0x021DB8DC   ability_pressure_pp             Pression : un PP de plus (porteur visé, terrain, ou liste 0x0689E2C4)
+ov93:0x021DCDE8   illusion_break                  l'Illusion se brise (travail 0x34, 478)
 ov93:0x021DCE64   item_handler_lookup             cherche un objet tenu dans la table des gestionnaires (171 entrées et une fin)
 ov93:0x021DCF18   item_temp_handler               gestionnaire provisoire d'un objet (Picore, Dégommage)
 ov93:0x021E027C   move_handler_lookup             cherche une capacité à part dans la table des gestionnaires (0x102 entrées)

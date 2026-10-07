@@ -1254,6 +1254,29 @@ les autres sont écrites une à une.
   (événements 0x03 à 0x04), un filtre (0x021DB148) fait taire les talents de la liste 0x0689E450
   (overlay 95, 55 entrées) : ceux qui protègent la cible, Glue, Garde Amie, Heavy Metal, Light Metal,
   Télépathe et Miroir Magik compris.
+- **Derniers talents** (gestionnaires de la table 0x021F0E14) :
+
+  | Talent | Réaction | Effet |
+  | --- | --- | --- |
+  | Ramassage | 0x021DBB78 | fin du tour (événement 0x77), sans objet : l'objet consommé ce tour (indicateur 8) par un voisin tiré au sort (positions « voisins », mode 2 de 0x021B8718) ; « trouve un objet » (490) |
+  | Plus, Minus | 0x021D8CE0 | Attaque Spéciale x 1,5 si un allié a Plus ou Minus |
+  | Météo | 0x021DB314 | Morphéo (351) prend la forme du temps (soleil 1, pluie 2, grêle 3, sinon 0 ; Ciel Gris et Air Lock l'annulent) en entrant, quand le temps change et en fin de tour ; « se transforme » (222) |
+  | Glue | 0x021DB870 | un autre ne peut pas lui retirer son objet (493) ; Tour de Magie et Passe-Passe ne l'atteignent pas (210) |
+  | Pickpocket | 0x021DBC8C | touché par une capacité de contact, sans objet : prend celui de l'attaquant (460) |
+  | Cœur Soin | 0x021DC110 | fin du tour (0x76) : chaque allié voisin qui a un statut, 30 % de chances d'en guérir |
+  | Garde Amie | 0x021DC0DC | les alliés du porteur prennent x 0,75 (événement 0x47) |
+  | Heavy Metal, Light Metal | 0x021DCB88, 0x021DCBB0 | poids x 2, x 0,5 (événement 0x7B de 0x021C8340, après Allègement) |
+  | Récolte | 0x021DCAD8 | fin du tour (0x77), sans objet : la baie consommée revient, au soleil ou une fois sur deux (475) |
+  | Télépathe | 0x021DC240 | les attaques des alliés ne le touchent pas (469) |
+  | Illusion | 0x021DCD70... | à l'entrée (0x021B9CB0), l'apparence et le nom du dernier membre de l'équipe en état de se battre ; un coup qui le touche vraiment (événement 0x4B) ou la perte du talent la brise (travail 0x34, 0x021DCDE8 ; 478) ; Morphing échoue s'il y a une Illusion |
+  | Imposteur | 0x021DCCC0 | en entrant, Morphing sur l'adversaire d'en face (travail 0x33, 644) |
+  | Miroir Magik | 0x021DCACC | comme Reflet Magik, sans limite de tour |
+  | Mode Transe | 0x021DC6D8 | fin du tour (0x78) : Darumacho (555) en Mode Transe à la moitié de ses PV ou moins (forme 1 ; fichier 15, 185), sinon en Mode Normal (186) |
+
+  Les formes de combat (travail 0x39 : Météo, Mode Transe, ChantAntique) donnent les statistiques et
+  types de la forme ; le portage les rend quand le Pokémon quitte le terrain et à la fin du combat.
+  Le sprite d'une forme n'est pas encore lu (l'archive `a/0/0/4` range 64 formes après les 650
+  espèces).
 - **Pression** (réaction à l'événement 0x4E, 0x021DB8DC) : un PP de plus par porteur, seulement si
   le lanceur est d'en face, et si le porteur est visé, ou si la capacité vise le terrain (cible 10),
   ou si elle est dans la liste 0x0689E2C4 (Saisie, Possessif, Picots, Pics Toxik, Piège de Roc). Une
