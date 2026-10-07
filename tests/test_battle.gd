@@ -45,6 +45,7 @@ func _initialize() -> void:
 	_test_triple_adjacency()
 	_test_spread_and_screens()
 	_test_rotation()
+	_test_special_moves()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -512,6 +513,89 @@ func _test_rotation() -> void:
 	for event in rotation.events:
 		rotated = rotated or event.type == "rotate"
 	_check(rotated and rotation.result in [Battle.Result.WIN, Battle.Result.LOSE], "combat rotatif joué jusqu'au bout, avec une rotation (%s)" % Battle.Result.keys()[rotation.result])
+
+
+## Un contre un préparé pour essayer des capacités : un Gruikui N.50 (capacités données) contre un
+## Ponchiot N.50 sauvage, tous deux au combat.
+func _duel(moves: Array[int], seed: int) -> Battle:
+	var state := _player(498, 50, seed)
+	state.party[0].set_moves(moves)
+	var foe := Pokemon.create(506, 50, {"random": GameRandom.new(seed + 1)})
+	var battle := Battle.wild(state, foe, {"random": GameRandom.new(seed + 2)})
+	battle._send_out(battle.player(), 0, 0)
+	battle._send_out(battle.enemy(), 0, 0)
+	return battle
+
+
+func _use(battle: Battle, mon: BattleMon, slot: int) -> void:
+	battle.moves.use_move(mon, {"action": Battle.Action.FIGHT, "move": slot, "mon": mon})
+
+
+## Capacités à part (gestionnaires de la table 0x021F2FD0) : chacune jouée une fois et son effet
+## vérifié.
+func _test_special_moves() -> void:
+	var battle := _duel([212, 244, 391, 471], 80)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	_use(battle, me, 0)
+	_check(battle.moves.is_trapped(foe), "Regard Noir : la cible ne peut plus fuir (état 0x16)")
+	foe.stages[Stats.Stat.ATTACK] = 2
+	_use(battle, me, 1)
+	_check(me.stage(Stats.Stat.ATTACK) == 2, "Boost : les crans de la cible sont copiés")
+	me.stages[Stats.Stat.SPEED] = 1
+	foe.stages[Stats.Stat.DEFENSE] = -1
+	_use(battle, me, 2)
+	_check(me.stage(Stats.Stat.DEFENSE) == -1 and foe.stage(Stats.Stat.SPEED) == 1, "Permucœur : tous les crans échangés")
+	var mine := me.raw_stat(Stats.Stat.ATTACK)
+	var theirs := foe.raw_stat(Stats.Stat.ATTACK)
+	_use(battle, me, 3)
+	_check(me.raw_stat(Stats.Stat.ATTACK) == (mine + theirs) / 2 and foe.raw_stat(Stats.Stat.ATTACK) == (mine + theirs) / 2,
+		"Partage Force : la moyenne des Attaques")
+
+	battle = _duel([487, 234, 380, 388], 84)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	_use(battle, me, 0)
+	_check(foe.types == [Stats.Type.WATER, Stats.Type.WATER], "Détrempage : la cible devient de type Eau")
+	me.pokemon.hp = 1
+	battle.weather = Battle.Weather.SUN
+	_use(battle, me, 1)
+	_check(me.hp() == 1 + BattleCalc.fx_mul(me.max_hp(), 0xAAC), "Aurore au soleil : 0xAAC des PV (0x021E6104)")
+	_use(battle, me, 2)
+	_check(battle.abilities.ability_of(foe) == 0, "Suc Digestif : le talent de la cible ne fait plus effet")
+	foe.clear_effect("gastro_acid")
+	_use(battle, me, 3)
+	_check(foe.ability == BattleAbilities.INSOMNIA, "Soucigraine : la cible prend Insomnia")
+
+	battle = _duel([393, 504, 74, 432], 88)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	_use(battle, me, 0)
+	_check(battle.moves.is_floating(me) and battle.abilities.blocks_move(me, foe, MoveData.of(89), Stats.Type.GROUND),
+		"Vol Magnétik : le Sol ne touche plus le lanceur")
+	_use(battle, me, 1)
+	_check(me.stage(Stats.Stat.ATTACK) == 2 and me.stage(Stats.Stat.DEFENSE) == -1 and me.stage(Stats.Stat.SPEED) == 2,
+		"Exuviation : +2 en Attaque, Attaque Spéciale et Vitesse, -1 en Défense et Défense Spéciale")
+	me.stages = [0, 0, 0, 0, 0, 0, 0, 0]
+	battle.weather = Battle.Weather.SUN
+	_use(battle, me, 2)
+	_check(me.stage(Stats.Stat.ATTACK) == 2 and me.stage(Stats.Stat.SP_ATTACK) == 2, "Croissance au soleil : +2 au lieu de +1")
+	battle.enemy().conditions["reflect"] = 5
+	_use(battle, me, 3)
+	_check(not battle.enemy().has("reflect") and foe.stage(Stats.Stat.EVASION) == -1, "Anti-Brume : Esquive -1, Protection retirée")
+
+	battle = _duel([262, 300, 84, 160], 92)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	var shock := MoveData.of(84)
+	var before := battle.moves.move_power(me, foe, shock, Stats.Type.ELECTRIC)
+	_use(battle, me, 1)
+	_check(battle.moves.move_power(me, foe, shock, Stats.Type.ELECTRIC) == BattleCalc.fx_mul(before, BattleMoves.SPORT_RATIO),
+		"Lance-Boue : l'Électrik x 0x548 (%d)" % before)
+	_use(battle, me, 3)
+	_check(me.types[0] == me.types[1] and me.types[0] in [Stats.Type.DARK, Stats.Type.GROUND, Stats.Type.ELECTRIC], "Adaptation : le type d'une autre capacité du lanceur")
+	_use(battle, me, 0)
+	_check(me.is_fainted() and foe.stage(Stats.Stat.ATTACK) == -2 and foe.stage(Stats.Stat.SP_ATTACK) == -2, "Souvenir : -2 en Attaque et Attaque Spéciale, puis K.O.")
 
 
 ## Décor (a/1/5/2) : la Route 1 en herbe, au printemps et en été, et un décor qui change avec les

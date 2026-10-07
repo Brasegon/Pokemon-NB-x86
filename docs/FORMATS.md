@@ -1312,6 +1312,46 @@ camp + 2 x place (0, 2, 4 côté joueur ; 1, 3, 5 en face).
   somme des Défenses et Défenses Spéciales d'en face, Fouille et Calque en prennent un au hasard,
   Mauvais Rêve blesse chaque adversaire endormi, Tension empêche les baies si un adversaire l'a.
 
+### Capacités à part (`battle_moves.gd`)
+
+La fonction d'une capacité de la table 0x021F2FD0 renvoie ses réactions (événement, fonction) ;
+`tools/re/handlers.py move <n>` les liste et `--decomp` en donne le pseudo-C. Les messages sont
+ceux du fichier 14 (variante selon le camp) ; « état » : condition passagère posée par le serveur.
+`tools/re/battle_coverage.gd` compte les capacités écrites (liste `BattleMoves.HANDLED`).
+
+| Capacités | Réaction | Effet |
+| --- | --- | --- |
+| Toile, Regard Noir, Barrage | 0x021E0C80 | état 0x16 sur la cible, sauf s'il y est : plus de fuite ni de changement tant que le lanceur est là ; « ne peut plus s'échapper » (872) |
+| Verrouillage, Lire-Esprit | 0x021E5204 | état 0x1D pour 2 tours sur cette cible : la prochaine capacité ne rate pas ; message à 7 variantes (651) |
+| Œil Miracle | 0x021E81D8 | comme Clairvoyance (369), et le Psy touche les Ténèbres |
+| Croissance | 0x021E8210 | +1 en Attaque et Attaque Spéciale (données), +2 au soleil |
+| Coud'Krâne | 0x021E64E8 | tour de charge : « baisse la tête » (556) et Défense +1 |
+| Aurore, Synthèse, Rayon Lune | 0x021E6104 | soin 0x800 des PV, 0xAAC au soleil, 0x400 sous la pluie, le sable ou la grêle |
+| Souvenir | 0x021E4A10 | Attaque et Attaque Spéciale de la cible -2, puis le lanceur est K.O. |
+| Dépit | 0x021E4AA0 | la dernière capacité de la cible perd jusqu'à 4 PP (641) |
+| Rancune | 0x021E67A0 | « veut que son adversaire subisse sa Rancune » (632) ; mis K.O. par une attaque avant sa capacité suivante, l'attaquant perd les PP de cette capacité (635) |
+| Boost | 0x021E4B50 | copie les 7 crans de la cible (1047) |
+| Permucœur, Permuforce, Permugarde | 0x021E4C14... | échange tous les crans (673), ceux d'Attaque et Attaque Spéciale (676), de Défense et Défense Spéciale (679) |
+| Astuce Force | 0x021E4F94 | état 10 : Attaque et Défense échangées (773) |
+| Partage Force, Partage Garde | 0x021E502C, 0x021E511C | moyenne des Attaques et Attaques Spéciales (1096), des Défenses et Défenses Spéciales (1099) |
+| Acupression | 0x021E42E0 | +2 dans une statistique tirée parmi celles qui peuvent monter (table 0x021F2CC0) |
+| Suc Digestif | 0x021E5810 | état 0x10 : le talent ne fait plus effet (565) |
+| Soucigraine, Rayon Simple, Ten-danse | 0x021E0F58... | la cible prend Insomnia (15), Simple (0x56), le talent du lanceur (405) ; pas sur Absentéisme |
+| Imitation | 0x021E5878 | le lanceur copie le talent de la cible (619) |
+| Adaptation | 0x021E0408 | un type tiré parmi ceux des autres capacités du lanceur qu'il n'a pas (896) |
+| Adaptation 2 | 0x021E456C | un type tiré parmi ceux qui résistent à la dernière capacité qui l'a touché |
+| Camouflage | 0x021E04B8 | type selon le terrain (0x021C8114) : 0, 5 Plante ; 1-3, 8, 9, 15 Sol ; 6, 11, 12 Eau ; 7, 13 Glace ; 10 Roche ; sinon Normal |
+| Détrempage, Copie Type | 0x021E72CC, 0x021E77BC | la cible devient Eau ; le lanceur prend les types de la cible (1089) |
+| Allègement | 0x021E7850 | Vitesse +2, 100 kg de moins (commande 0x2D ; 1102) |
+| Vol Magnétik, Lévikinésie | 0x021E5E1C... | le lanceur flotte 5 tours (658, fin 661) ; la cible flotte 3 tours et toute capacité la touche sauf K.O. en un coup (1140, fin 1143) |
+| Anti-Brume | 0x021E06CC | Esquive de la cible -1 ; son côté perd Protection, Mur Lumière, Rune Protect, Brume et les pièges |
+| Exuviation | 0x021E7700 | Défense et Défense Spéciale -1 ; Attaque, Attaque Spéciale et Vitesse +2 |
+| Lance-Boue, Tourniquet | 0x021E067C, 0x021E062C | effets de terrain 5 et 4 tant que le lanceur est là : Électrik ou Feu x 0x548 (overlay 95) ; messages 115 et 114 du fichier 15 |
+
+Corrigés en passant : messages du premier tour de Rebond (544), Piqué (550), Coud'Krâne (556) et
+Revenant (541), qui étaient ceux d'un Pokémon sauvage ; Prélèvement Destin et Rancune s'arrêtent à
+la capacité suivante du lanceur.
+
 ### Formules du combat (`battle_calc.gd`)
 
 Les nombres « fx » ont 12 bits après la virgule (0x1000 = 1,0). Arrondi des multiplicateurs

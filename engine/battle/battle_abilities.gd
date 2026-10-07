@@ -57,11 +57,13 @@ const FLAME_BODY := 49
 const RUN_AWAY := 50
 const KEEN_EYE := 51
 const HYPER_CUTTER := 52
+const PICKUP := 53
 const TRUANT := 54
 const HUSTLE := 55
 const CUTE_CHARM := 56
 const PLUS := 57
 const MINUS := 58
+const FORECAST := 59
 const STICKY_HOLD := 60
 const SHED_SKIN := 61
 const GUTS := 62
@@ -121,18 +123,26 @@ const SOLID_ROCK := 116
 const SNOW_WARNING := 117
 const FRISK := 119
 const RECKLESS := 120
+const MULTITYPE := 121
 const FLOWER_GIFT := 122
 const BAD_DREAMS := 123
+const PICKPOCKET := 124
 const SHEER_FORCE := 125
 const CONTRARY := 126
 const UNNERVE := 127
 const DEFIANT := 128
 const DEFEATIST := 129
 const CURSED_BODY := 130
+const HEALER := 131
+const FRIEND_GUARD := 132
 const WEAK_ARMOR := 133
+const HEAVY_METAL := 134
+const LIGHT_METAL := 135
 const MULTISCALE := 136
 const TOXIC_BOOST := 137
 const FLARE_BOOST := 138
+const HARVEST := 139
+const TELEPATHY := 140
 const MOODY := 141
 const OVERCOAT := 142
 const POISON_TOUCH := 143
@@ -141,15 +151,19 @@ const BIG_PECKS := 145
 const SAND_RUSH := 146
 const WONDER_SKIN := 147
 const ANALYTIC := 148
+const ILLUSION := 149
+const IMPOSTER := 150
 const INFILTRATOR := 151
 const MUMMY := 152
 const MOXIE := 153
 const JUSTIFIED := 154
 const RATTLED := 155
+const MAGIC_BOUNCE := 156
 const SAP_SIPPER := 157
 const PRANKSTER := 158
 const SAND_FORCE := 159
 const IRON_BARBS := 160
+const ZEN_MODE := 161
 const VICTORY_STAR := 162
 const TURBOBLAZE := 163
 const TERAVOLT := 164
@@ -339,6 +353,12 @@ func on_faint(mon: BattleMon) -> void:
 	if mon.has("destiny_bond") and attacker.side != mon.side:
 		battle.say_mon(629, mon)
 		battle.damage(attacker, attacker.hp(), "destiny_bond")
+	# Rancune : la capacité qui a mis le Pokémon K.O. perd tous ses PP (message 635).
+	if mon.has("grudge") and attacker.side != mon.side and mon.last_hit_by_move > 0:
+		var slot := attacker.move_index(mon.last_hit_by_move)
+		if slot >= 0 and attacker.pp(slot) > 0:
+			attacker.pokemon.moves[slot].pp = 0
+			battle.say_mon(635, attacker, {1: Autoloads.rom().text(BWFiles.TEXT_MOVE_NAMES, mon.last_hit_by_move)})
 	if has_ability(mon, AFTERMATH) and MoveData.of(mon.last_hit_by_move) and MoveData.of(mon.last_hit_by_move).has_flag(MoveData.Flag.CONTACT):
 		if not _magic_guard(attacker):
 			announce(mon)
@@ -617,7 +637,8 @@ func blocks_move(target: BattleMon, attacker: BattleMon, data: MoveData, move_ty
 				announce(target)
 				battle.say(BattleText.BUT_IT_FAILED)
 				return true
-	if move_type == Stats.Type.GROUND and data.is_damaging() and battle.items.floats(target) and not battle.field.has("gravity"):
+	# Ballon, Vol Magnétik, Lévikinésie : le Sol ne touche pas (sauf Gravité, Racines, Balle Fer).
+	if move_type == Stats.Type.GROUND and data.is_damaging() and battle.moves.is_floating(target, false):
 		battle.say_mon(BattleText.NO_EFFECT_ON, target)
 		return true
 	return false

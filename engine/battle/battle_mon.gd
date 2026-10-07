@@ -39,6 +39,11 @@ var hit_this_turn := false
 var protect_streak := 0
 ## Adversaires affrontés (pour le partage de l'expérience : 0x021CB274).
 var opponents_faced := {}
+## Statistiques remplacées le temps de la présence au combat (Astuce Force, Partage Force, Partage
+## Garde, Morphing) : Stats.Stat -> valeur.
+var stat_overrides := {}
+## Poids perdu (Allègement : 100 kg par emploi), en hectogrammes.
+var weight_lost := 0
 
 
 static func create(member: Pokemon, side_id: int, index: int, slot_index := 0) -> BattleMon:
@@ -71,6 +76,14 @@ func reset_on_entry() -> void:
 	acted = false
 	hit_this_turn = false
 	protect_streak = 0
+	stat_overrides.clear()
+	weight_lost = 0
+
+
+## Poids au combat en hectogrammes (Allègement en retire, 0,1 kg au moins).
+func weight() -> int:
+	var data := pokemon.personal()
+	return maxi((data.weight if data else 0) - weight_lost, 1)
 
 
 func name() -> String:
@@ -101,8 +114,11 @@ func has_type(type: int) -> bool:
 	return type in types
 
 
-## Statistique de base du combat (sans les crans) : PV, Attaque... (Stats.Stat).
+## Statistique de base du combat (sans les crans) : PV, Attaque... (Stats.Stat), ou celle qui la
+## remplace (Astuce Force, Partage Force...).
 func raw_stat(stat: int) -> int:
+	if stat_overrides.has(stat):
+		return stat_overrides[stat]
 	return pokemon.stats[stat] if stat >= 0 and stat < 6 else 0
 
 
