@@ -1415,6 +1415,8 @@ ceux du fichier 14 (variante selon le camp) ; « état » : condition passagère
 | Tour de Magie, Passe-Passe | 0x021E3760 | échange des objets (682, puis « obtient... », 685, pour chacun) ; échec sans objet, avec une Lettre, un objet lié, ou lancé par un Pokémon sauvage ; Glue : « Ça n'affecte pas X... » (210) |
 | Recyclage | 0x021E3EE4 | sans objet, le lanceur retrouve l'objet qu'il a consommé (733 ; +0x14 de la structure du Pokémon, 0x021D66E0) |
 | Passe-Cadeau | 0x021E7B38 | le lanceur donne son objet à une cible qui n'en a pas (message à 7 variantes, 1111) |
+| Chute Libre | 0x021E7F48... | premier tour (0x021BFE4C) : le lanceur emporte la cible (message à 7 variantes, 1118) ; tous deux dans les airs (état caché 3), la cible ne peut ni agir ni partir (condition 0x21) ; échec sur un allié, une cible K.O., derrière un clone ou hors d'atteinte, « X se protège ! » (523) si elle s'est protégée ; second tour : dégâts, sans effet sur un type Vol (événement 0x2C) ; la cible retombe (0x021BFF00 ; « est lâché en Chute Libre », 1125, si le lanceur ne peut pas finir) ; pas de limite de poids dans ce jeu (le poids n'est lu que par Balayage, Nœud Herbe, Tacle Lourd et Tacle Feu) |
+| Aire d'Eau, de Feu, d'Herbe | 0x021E8360 | si un allié a choisi une autre Aire, le premier l'attend (0x021BE68C : « X attend Y... », 1146) et l'allié agit juste après (0x021BD0E8) ; l'attaque combinée (table 0x021F2C90) : « Les deux capacités se sont combinées ! » (fichier 15, 187), puissance 150, type et animation de l'Aire : Eau + Feu, type Eau, arc-en-ciel sur le côté du lanceur ; Feu + Herbe, Feu, mer de feu en face ; Eau + Herbe, Herbe, marécage en face ; 4 tours (fichier 15 : 164, 168, 172 ; fin 166, 170, 174) |
 | Reflet Magik | 0x021E3454... | échoue si tous les autres ont déjà agi ; « s'entoure du Reflet Magik » (761) ; jusqu'à la fin du tour, renvoie les capacités au drapeau 4 qui le visent (événement 0x2D, 0x021E8738), et Picots, Pics Toxik, Piège de Roc lancés d'en face (événement 0x1F, 0x021E86E4) ; « repousse Y ! Retour à l'envoyeur ! » (764) ; une capacité renvoyée ne l'est pas une seconde fois |
 
 **Capacités qui en lancent une autre** (emploi d'une capacité, 0x021BDE38) : après les conditions
@@ -1433,6 +1435,12 @@ lue par Mimique et l'Écho de l'objet Métronome) ; le serveur garde la dernièr
 (0x1F74, Photocopie). Encore échoue sur la liste 0x0689E2DA (Encore, Mimique, Morphing, Copie,
 Gribouille) ou sans PP (0x021D5540) ; il pose 3 tours et Entrave 4, un de plus si le bit 1 des
 indicateurs du tour de la cible est mis (0x021D5B50, rôle non identifié).
+
+**Effets de côté** (overlay 95, table 0x0689D780 de 14 fiches : numéro, gestionnaire, couches au
+plus ; posés par le travail 0x19, 0x06898C10) : 9 Garde Large, 10 Prévention, 11 arc-en-ciel
+(chances des effets secondaires et de l'apeurement doublées pour les attaquants de ce côté), 12 mer
+de feu (fin du tour : 1/8 des PV aux Pokémon qui ne sont pas de type Feu, « est plongé dans un océan
+de feu », 1156), 13 marécage (Vitesse x 0x400).
 
 **Objets qui changent de main** : le travail 0x20 (0x021C9B58) pose un objet ; quand un autre
 Pokémon retire l'objet d'un porteur, l'événement 0x9A laisse Glue l'en empêcher (« L'objet de X ne

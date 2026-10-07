@@ -77,6 +77,16 @@ const SKETCH_EXCLUDED: Array[int] = [166, 165, 448]
 const TRANSFORM_PP := 5
 ## Cran monté par un objet : premier des messages du fichier 14 (Attaque +1).
 const ITEM_STAT_UP := 938
+## Aires (Aire d'Eau, de Feu, d'Herbe) et leurs combinaisons (table 0x021F2C90) : type de l'attaque
+## combinée, effet de côté posé (sur le côté du lanceur pour l'arc-en-ciel, de la cible sinon) et
+## premier de ses messages du fichier 15 (posé, fin : + 2).
+const PLEDGES: Array[int] = [518, 519, 520]
+const PLEDGE_COMBOS := {
+	1: {"type": Stats.Type.WATER, "condition": "rainbow", "own_side": true, "message": 164, "anim": 518},
+	2: {"type": Stats.Type.FIRE, "condition": "sea_of_fire", "own_side": false, "message": 168, "anim": 519},
+	3: {"type": Stats.Type.GRASS, "condition": "swamp", "own_side": false, "message": 172, "anim": 520},
+}
+const PLEDGE_POWER := 150
 ## Capacités à part (table 0x021F2FD0 du jeu) entièrement écrites dans ce fichier, pour le décompte
 ## de tools/re/battle_coverage.gd ; les autres se comportent selon leurs seules données.
 const HANDLED: Array[int] = [
@@ -91,9 +101,9 @@ const HANDLED: Array[int] = [
 	361, 362, 363, 364, 365, 366, 367, 368, 369, 371, 372, 374, 375, 376, 378, 379, 380, 381, 382,
 	383, 384, 385, 386, 387, 388, 389, 390, 391, 392, 393, 415, 419, 432, 433, 445, 446, 447, 448,
 	449, 450, 461, 462, 463, 466, 467, 469, 470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 481,
-	484, 485, 486, 487, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 504, 506, 509, 510,
-	511, 512, 513, 514, 515, 516, 521, 525, 533, 535, 537, 540, 542, 546, 547, 548, 553, 554, 558,
-	559]
+	484, 485, 486, 487, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 504, 506, 507, 509,
+	510, 511, 512, 513, 514, 515, 516, 518, 519, 520, 521, 525, 533, 535, 537, 540, 542, 546, 547,
+	548, 553, 554, 558, 559]
 
 ## Le combat, gardé par une référence faible : il possède ce module (pas de cycle de références).
 var battle: Battle:
@@ -182,7 +192,7 @@ func _heal_or_gravity_block(mon: BattleMon, data: MoveData) -> Dictionary:
 func is_trapped(mon: BattleMon) -> bool:
 	if battle.items.frees_from_traps(mon):
 		return false
-	if mon.has("bind") or mon.has("ingrain"):
+	if mon.has("bind") or mon.has("ingrain") or mon.has("sky_dropped"):
 		return true
 	if mon.has("trapped") and battle.is_on_field(mon.get_effect("trapped")):
 		return true
@@ -214,6 +224,9 @@ func use_move(mon: BattleMon, action: Dictionary) -> void:
 	if action.get("recharge", false):
 		mon.clear_effect("recharge")
 		battle.say_mon(BattleText.MUST_RECHARGE, mon)
+		return
+	if mon.has("sky_dropped"):
+		# Emporté par Chute Libre (condition 0x21) : il ne fait rien.
 		return
 	var move := _action_move(mon, action)
 	var slot: int = action.get("move", -1)
@@ -303,13 +316,22 @@ func _spend_pp(mon: BattleMon, slot: int, data: MoveData, targets: Array[BattleM
 ## une seconde fois).
 func _execute(mon: BattleMon, data: MoveData, targets: Array[BattleMon], forced: String, chosen: int, reflected := false) -> void:
 	var move := data.id
+	var target: BattleMon = targets[0] if not targets.is_empty() else null
+	if move == 507 and forced != "charging":
+		_sky_drop_lift(mon, target)
+		return
 	if not await _charge_turn(mon, data, forced, chosen):
 		return
-	var target: BattleMon = targets[0] if not targets.is_empty() else null
 	# L'animation n'est jouée que si la capacité part vraiment (pas d'échec, pas d'esquive).
 	if not _before_move(mon, target, data):
 		_after_failed(mon, data)
 		return
+	if move in PLEDGES and not reflected:
+		if _pledge_wait(mon, data):
+			return
+		if mon.has("pledge_combo"):
+			# Événement 0x23 : « Les deux capacités se sont combinées ! » (fichier 15, 187).
+			battle.say(187)
 	if not reflected:
 		# Reflet Magik et Miroir Magik (événement 0x1F, 0x021E86E4) : Picots, Pics Toxik et Piège de
 		# Roc sont renvoyés sur le côté du lanceur.
@@ -408,6 +430,76 @@ func _execute(mon: BattleMon, data: MoveData, targets: Array[BattleMon], forced:
 	for bouncer in bouncers:
 		if not mon.is_fainted():
 			await _bounce(bouncer, mon, data)
+
+
+## Chute Libre, premier tour (0x021E7F84, 0x021BFE4C) : le lanceur emporte la cible dans les airs
+## (message à 7 variantes, 1118) ; elle ne peut plus agir ni partir jusqu'à sa chute (condition 0x21).
+## Échec sur un allié (événement 0x93), une cible K.O., derrière un clone ou hors d'atteinte ; « X se
+## protège ! » (523) si elle se protège ce tour.
+func _sky_drop_lift(mon: BattleMon, target: BattleMon) -> void:
+	if target == null or target.side == mon.side or target.is_fainted() or target.has("substitute") or _is_hidden(target):
+		battle.say(BattleText.BUT_IT_FAILED)
+		return
+	if target.has("protect"):
+		battle.say_mon(523, target)
+		return
+	mon.set_effect("charging", {"move": 507, "target": target.position()})
+	mon.set_effect("flying")
+	target.set_effect("flying")
+	target.set_effect("sky_dropped", mon)
+	battle.say_pair(1118, mon, target)
+
+
+## La cible de Chute Libre retombe (0x021BFF00) : après le second tour, ou quand le lanceur ne peut
+## pas agir ou s'en va (`dropped` : « X est lâché en Chute Libre ! », 1125).
+func _sky_drop_release(holder: BattleMon, dropped: bool) -> void:
+	for each in battle.all_active():
+		if each.get_effect("sky_dropped") == holder:
+			_free_from_sky_drop(each, dropped)
+
+
+func _free_from_sky_drop(mon: BattleMon, dropped: bool) -> void:
+	mon.clear_effect("sky_dropped")
+	mon.clear_effect("flying")
+	if dropped and not mon.is_fainted():
+		battle.say_mon(1125, mon)
+
+
+## Aires (0x021BE68C) : si un allié va lancer une autre Aire ce tour, le lanceur l'attend (« X attend
+## Y... », message à 7 variantes, 1146) et l'allié agit tout de suite après (0x021BD0E8) avec
+## l'attaque combinée. Vrai si le lanceur attend.
+func _pledge_wait(mon: BattleMon, data: MoveData) -> bool:
+	if mon.has("pledge_combo") or mon.has("pledge_waited"):
+		return false
+	var partner: BattleMon = null
+	var partner_action := {}
+	for ally in battle.allies_of(mon, false):
+		var pending := _pending_action(ally)
+		if pending.is_empty() or pending.get("action") != Battle.Action.FIGHT:
+			continue
+		var other := _action_move(ally, pending)
+		if other in PLEDGES and other != data.id and (partner == null or battle.queue.find(pending) < battle.queue.find(partner_action)):
+			partner = ally
+			partner_action = pending
+	if partner == null:
+		return false
+	mon.set_effect("pledge_waited")
+	partner.set_effect("pledge_combo", data.id)
+	battle.say_pair(1146, mon, partner)
+	battle.queue.erase(partner_action)
+	battle.queue.push_front(partner_action)
+	return true
+
+
+## Combinaison de deux Aires (table 0x021F2C90, 0x021E8324) : 1 Eau et Feu, 2 Herbe et Feu, 3 Eau et
+## Herbe.
+func _pledge_combo(mon: BattleMon, move: int) -> int:
+	var pair := [move, int(mon.get_effect("pledge_combo", move))]
+	if 518 in pair and 519 in pair:
+		return 1
+	if 520 in pair and 519 in pair:
+		return 2
+	return 3
 
 
 ## Reflet Magik (effet du tour) ou Miroir Magik renvoie une capacité de ce Pokémon (pas pendant
@@ -552,6 +644,9 @@ func _called_target(mon: BattleMon, data: MoveData) -> int:
 ## Animation d'une capacité (effet n° de la capacité) ; `variant` : variante du script (tour des
 ## capacités en deux tours...), variable 10 des effets.
 func push_anim(mon: BattleMon, target: BattleMon, move: int, variant := 0) -> void:
+	if move in PLEDGES and mon.has("pledge_combo"):
+		# L'attaque combinée prend l'animation de l'Aire de son type (variable 0x13, 0x021E8458).
+		move = PLEDGE_COMBOS[_pledge_combo(mon, move)].anim
 	battle.push({"type": "move", "side": mon.side, "slot": mon.slot, "target": target.side if target else mon.side,
 		"target_slot": target.slot if target else mon.slot, "move": move, "variant": variant})
 
@@ -653,6 +748,8 @@ func _move_name(move: int) -> String:
 
 ## Interrompu avant d'agir : les capacités qui durent s'arrêtent.
 func _interrupt(mon: BattleMon) -> void:
+	if mon.has("charging") and mon.get_effect("charging").move == 507:
+		_sky_drop_release(mon, true)
 	for state in ["charging", "rampage", "rollout", "uproar", "bide"]:
 		mon.clear_effect(state)
 	mon.clear_effect("flying")
@@ -792,6 +889,8 @@ func locked_on(mon: BattleMon, target: BattleMon) -> bool:
 func _can_reach(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 	if battle.abilities.has_no_guard(mon) or battle.abilities.has_no_guard(target) or locked_on(mon, target):
 		return true
+	if data.id == 507 and target.get_effect("sky_dropped") == mon:
+		return true
 	if target.has("flying"):
 		return data.id in HITS_FLYING
 	if target.has("underground"):
@@ -858,6 +957,11 @@ func _damaging_move(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 		return
 	if battle.abilities.blocks_move(target, mon, data, move_type):
 		_after_failed(mon, data)
+		return
+	if data.id == 507 and target.has_type(Stats.Type.FLYING):
+		# Chute Libre (événement 0x2C, 0x021E80EC) : sans effet sur un type Vol, qui retombe.
+		battle.say_mon(BattleText.NO_EFFECT_ON, target)
+		_sky_drop_release(mon, false)
 		return
 	if not hits(mon, target, data):
 		battle.say_mon(BattleText.AVOIDED, target)
@@ -1111,6 +1215,10 @@ func _secondary_effects(mon: BattleMon, target: BattleMon, data: MoveData, total
 	if total <= 0 and data.category != MoveData.Category.DAMAGE_RAISE:
 		return
 	var chance_bonus := 2 if battle.abilities.has_ability(mon, BattleAbilities.SERENE_GRACE) else 1
+	# Arc-en-ciel (effet de côté 11, réactions 0x0689983C et 0x068998A4) : chances doublées pour les
+	# attaquants de ce côté, apeurement compris.
+	if battle.sides[mon.side].has("rainbow"):
+		chance_bonus *= 2
 	match data.category:
 		MoveData.Category.DAMAGE_AILMENT:
 			if not target.is_fainted() and _roll(data.ailment_chance * chance_bonus):
@@ -1152,6 +1260,10 @@ func _critical(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 ## Type d'une capacité pour ce lanceur (Puissance Cachée, Ball'Météo, Jugement, Normalise...).
 func move_type_of(mon: BattleMon, data: MoveData) -> int:
 	match data.id:
+		518, 519, 520:
+			# Aire combinée (0x021E836C) : le type de la combinaison.
+			if mon.has("pledge_combo"):
+				return PLEDGE_COMBOS[_pledge_combo(mon, data.id)].type
 		363:
 			# Don Naturel (0x021E332C) : le type de la baie tenue.
 			var berry := ItemData.of(mon.pokemon.held_item) if BattleItems.is_berry(mon.pokemon.held_item) else null
@@ -1331,6 +1443,10 @@ func move_power(mon: BattleMon, target: BattleMon, data: MoveData, move_type: in
 func special_power(mon: BattleMon, target: BattleMon, data: MoveData) -> int:
 	var power := data.power
 	match data.id:
+		518, 519, 520:
+			# Aire combinée (0x021E8438) : puissance 150.
+			if mon.has("pledge_combo"):
+				return PLEDGE_POWER
 		363, 374:
 			# Don Naturel, Dégommage (événement 0x37) : la puissance que donne l'objet tenu.
 			var held := ItemData.of(mon.pokemon.held_item) if mon.pokemon.held_item != 0 else null
@@ -2561,6 +2677,18 @@ func _special_after(mon: BattleMon, target: BattleMon, data: MoveData, total: in
 	# Événements 0x83 et 0x4B (après les dégâts d'une cible) : rien à travers un clone.
 	var reached := total > 0 and not substitute_hit
 	match data.id:
+		518, 519, 520:
+			# Aire combinée (événement 0x85, 0x021E849C) : arc-en-ciel sur le côté du lanceur, mer de
+			# feu ou marécage sur celui de la cible, 4 tours.
+			if mon.has("pledge_combo"):
+				var combo: Dictionary = PLEDGE_COMBOS[_pledge_combo(mon, data.id)]
+				mon.clear_effect("pledge_combo")
+				var covered := battle.sides[mon.side if combo.own_side else target.side]
+				if not covered.has(combo.condition):
+					covered.conditions[combo.condition] = 4
+					battle.say(combo.message + (0 if covered.is_player() else 1))
+		507:
+			_sky_drop_release(mon, false)
 		365, 450:
 			# Picore, Piqûre (0x021E6550) : la baie de la cible est retirée (Glue l'empêche) et le lanceur
 			# la mange tout de suite (776).
@@ -3041,8 +3169,12 @@ func end_of_turn_effects(mon: BattleMon) -> void:
 
 ## Compteurs des effets passagers en fin de tour : Provoc, Encore, Entrave, Bâillement, Requiem...
 func end_of_turn_counters(mon: BattleMon) -> void:
-	for effect in ["protect", "endure", "roost", "follow_me", "helping_hand", "snatch", "magic_coat"]:
+	for effect in ["protect", "endure", "roost", "follow_me", "helping_hand", "snatch", "magic_coat", "pledge_waited", "pledge_combo"]:
 		mon.clear_effect(effect)
+	if mon.has("sky_dropped"):
+		var holder: BattleMon = mon.get_effect("sky_dropped")
+		if holder == null or not battle.is_on_field(holder) or not holder.has("charging"):
+			_free_from_sky_drop(mon, true)
 	if mon.has("uproar"):
 		_uproar_turn(mon)
 	if mon.has("lock_on"):
@@ -3104,6 +3236,13 @@ func side_conditions_end_of_turn() -> void:
 	for side in battle.sides:
 		for guard in ["wide_guard", "quick_guard"]:
 			side.conditions.erase(guard)
+		if side.has("sea_of_fire"):
+			# Mer de feu (effet de côté 12, réaction 0x06899900) : 1/8 des PV aux Pokémon qui ne sont pas
+			# de type Feu (« X est plongé dans un océan de feu ! », 1156).
+			for mon in side.on_field():
+				if not mon.has_type(Stats.Type.FIRE) and not battle.abilities.has_ability(mon, BattleAbilities.MAGIC_GUARD):
+					battle.damage(mon, maxi(mon.max_hp() / 8, 1), "sea_of_fire")
+					battle.say_mon(1156, mon)
 		for slot in battle.slot_count():
 			_future_attack(side, slot)
 		if side.has("wish"):
@@ -3115,7 +3254,7 @@ func side_conditions_end_of_turn() -> void:
 				var wisher: BattleMon = wish.mon
 				if mon and not mon.is_fainted() and battle.heal(mon, wish.amount) > 0:
 					battle.say_mon(700, wisher)
-		for condition in ["reflect", "light_screen", "safeguard", "mist", "tailwind", "lucky_chant"]:
+		for condition in ["reflect", "light_screen", "safeguard", "mist", "tailwind", "lucky_chant", "rainbow", "sea_of_fire", "swamp"]:
 			if not side.has(condition):
 				continue
 			side.conditions[condition] -= 1
@@ -3124,7 +3263,7 @@ func side_conditions_end_of_turn() -> void:
 				var offset := 0 if side.is_player() else 1
 				var messages := {"reflect": BattleText.REFLECT_ENDED, "light_screen": BattleText.LIGHT_SCREEN_ENDED,
 					"safeguard": BattleText.SAFEGUARD_ENDED, "mist": BattleText.MIST_ENDED, "tailwind": BattleText.TAILWIND_ENDED,
-					"lucky_chant": 146}
+					"lucky_chant": 146, "rainbow": 166, "sea_of_fire": 170, "swamp": 174}
 				battle.say(messages[condition] + offset)
 	for effect in ["trick_room", "gravity", "wonder_room", "magic_room"]:
 		if battle.field.has(effect):

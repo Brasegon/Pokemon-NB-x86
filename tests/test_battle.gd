@@ -50,6 +50,7 @@ func _initialize() -> void:
 	_test_team_moves()
 	_test_call_moves()
 	_test_item_moves()
+	_test_sky_drop_and_pledges()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -1120,6 +1121,54 @@ func _test_item_moves() -> void:
 	me.pokemon.held_item = 149
 	battle.moves.set_status(me, battle.mon_at(BattleSide.ENEMY, 0), Pokemon.Status.PARALYSIS)
 	_check(me.status() == Pokemon.Status.NONE and _said(battle, BWFiles.TEXT_BATTLE_SET, 920), "Baie Ceriz : « le sort de sa paralysie » (920)")
+
+
+## Chute Libre (deux tours, la cible emportée) et Aires (attaques combinées, effets de côté).
+func _test_sky_drop_and_pledges() -> void:
+	var battle := _duel([507], 160)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.set_moves([33])
+	_use(battle, me, 0)
+	_check(me.has("charging") and foe.has("sky_dropped") and foe.has("flying") and _said(battle, BWFiles.TEXT_BATTLE_SET, 1118 + 1),
+		"Chute Libre : le lanceur emporte la cible dans les airs (1118)")
+	var mine := me.hp()
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
+	_check(me.hp() == mine and battle.moves.is_trapped(foe), "Chute Libre : la cible emportée ne peut ni agir ni partir")
+	var before := foe.hp()
+	battle.moves.use_move(me, battle.moves.forced_action(me))
+	_check(foe.hp() < before and not foe.has("sky_dropped") and not foe.has("flying") and not me.has("flying"),
+		"Chute Libre : second tour, la cible tombe et prend les dégâts")
+	foe.set_effect("substitute", 10)
+	_use(battle, me, 0)
+	_check(not me.has("charging"), "Chute Libre échoue contre un clone")
+
+	battle = _double_duel([518, 520], 164)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	var ally := battle.mon_at(BattleSide.PLAYER, 1)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	ally.pokemon.set_moves([519])
+	var ally_action := {"action": Battle.Action.FIGHT, "mon": ally, "move": 0, "target": foe.position()}
+	battle.queue = [{"action": Battle.Action.FIGHT, "mon": foe, "move": 0}, ally_action]
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 0, "mon": me, "target": foe.position()})
+	_check(battle.queue[0] == ally_action and ally.has("pledge_combo") and _said(battle, BWFiles.TEXT_BATTLE_SET, 1146),
+		"Aires : le premier attend son allié (1146), qui agit juste après")
+	_check(battle.moves.move_type_of(ally, MoveData.of(519)) == Stats.Type.WATER and battle.moves.special_power(ally, foe, MoveData.of(519)) == 150,
+		"Aire de Feu + Aire d'Eau : attaque combinée de type Eau, puissance 150")
+	battle.queue.pop_front()
+	battle.moves.use_move(ally, ally_action)
+	_check(battle.player().conditions.get("rainbow", 0) == 4 and _said(battle, BWFiles.TEXT_BATTLE, 187) and _said(battle, BWFiles.TEXT_BATTLE, 164),
+		"Aires combinées : « Les deux capacités se sont combinées ! » et arc-en-ciel sur le côté du lanceur")
+	battle.queue.clear()
+	var plain := battle.speed_of(foe)
+	battle.enemy().conditions["swamp"] = 4
+	_check(battle.speed_of(foe) == BattleCalc.fx_mul(plain, 0x400), "Marécage : Vitesse x 1/4 (0x400)")
+	battle.enemy().conditions.erase("swamp")
+	battle.enemy().conditions["sea_of_fire"] = 1
+	before = foe.hp()
+	battle.moves.side_conditions_end_of_turn()
+	_check(foe.hp() == before - maxi(foe.max_hp() / 8, 1) and not battle.enemy().has("sea_of_fire") and _said(battle, BWFiles.TEXT_BATTLE, 171),
+		"Mer de feu : 1/8 des PV en fin de tour, puis elle disparaît (171)")
 
 
 ## Vérification qui ne s'affiche qu'en cas d'échec (boucles).

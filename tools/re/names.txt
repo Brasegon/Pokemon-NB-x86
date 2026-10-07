@@ -384,13 +384,17 @@ ov93:0x021BC5B0   battle_action_keys              clés de l'ordre des actions :
 ov93:0x021BC814   battle_action_order             ordre des actions
 ov93:0x021BC8E8   battle_speed                    vitesse d'un Pokémon
 ov93:0x021BCC80   battle_run_action               exécute une action (1 attaque, 2 objet, 3 changement, 4 fuite, 5 déplacement, 6 rotation, 7 rechargement)
+ov93:0x021BD0E8   battle_action_next              fait agir un Pokémon juste après (Aires)
 ov93:0x021BD388   battle_shift_center             combat triple : le Pokémon d'un bord passe au milieu (message 231)
 ov93:0x021BD5AC   battle_escape                   la fuite réussit-elle
 ov93:0x021BDE38   battle_use_move                 emploi d'une capacité : conditions, événements 0x18 et 0x19, PP, Saisie, effets
 ov93:0x021BE348   called_move_blocked             capacité appelée (Métronome...) : Anti-Soin (drapeau 12) et Gravité (drapeau 9)
 ov93:0x021BE4F0   snatch_use                      Saisie : le voleur lance la capacité (754)
+ov93:0x021BE68C   pledge_wait                     Aires : le lanceur attend l'allié qui a choisi une autre Aire (1146)
 ov93:0x021BEAB4   snatch_check                    événement 0x1A : Saisie vole-t-elle la capacité (drapeau 5)
 ov93:0x021BFA00   battle_accuracy                 précision : la capacité touche-t-elle
+ov93:0x021BFE4C   sky_drop_lift                   Chute Libre : le lanceur emporte la cible (condition 0x21)
+ov93:0x021BFF00   sky_drop_release                Chute Libre : la cible retombe (1125)
 ov93:0x021C0D30   battle_damage_targets           dégâts sur la liste des cibles : x 0,75 si la capacité en visait plusieurs, adversaires puis alliés
 ov93:0x021C154C   effectiveness_message           efficacité d'une seule cible : « C'est super efficace ! » ou « pas très efficace »
 ov93:0x021C1E14   battle_damage                   dégâts d'une capacité
@@ -452,6 +456,7 @@ ov93:0x021DB8DC   ability_pressure_pp             Pression : un PP de plus (port
 ov93:0x021DCE64   item_handler_lookup             cherche un objet tenu dans la table des gestionnaires (171 entrées et une fin)
 ov93:0x021DCF18   item_temp_handler               gestionnaire provisoire d'un objet (Picore, Dégommage)
 ov93:0x021E027C   move_handler_lookup             cherche une capacité à part dans la table des gestionnaires (0x102 entrées)
+ov93:0x021E8324   pledge_combo                    combinaison de deux Aires (table 0x021F2C90)
 ov93:0x021E85D8   item_bound_to_species           objet lié à une espèce : Orbe Platiné, Plaques, Modules
 ov93:0x021E8668   wild_item_thief                 combat sauvage (sorte 0) et lanceur d'en face : il ne prend pas d'objet
 ov93:0x021E8688   item_untakeable                 l'objet de la cible ne peut pas être pris (lanceur sauvage, objet lié)
@@ -529,6 +534,7 @@ ov94:0x02209008   tray_hide                       la rangée disparaît d'un cou
 ov94:0x02209054   tray_update                     une image de la rangée de Balls
 
 # Overlay 95 (chargé en VRAM, 0x06898020) : gestionnaires et listes de cibles
+ov95:0x06898C10   side_condition_add              pose un effet de côté (table 0x0689D780)
 ov95:0x06898E54   screen_damage_ratio             Protection, Mur Lumière : 0x800 en simple et rotatif, 0xA8F en double et triple
 ov95:0x0689CD38   target_list_count               nombre de cibles restantes d'une liste de cibles (+0x42)
 ov95:0x0689CD40   target_list_initial             nombre de cibles de départ d'une liste de cibles (+0x43)
@@ -636,6 +642,7 @@ ov93:0x021F0402   accuracy_ratio_table            rapports des crans de précisi
 ov93:0x021F041C   type_chart                      table des types 17 x 17 (0 aucun effet, 2 moitié, 4 normal, 8 double)
 ov93:0x021F0E14   ability_handlers                gestionnaires des 158 talents (une table, lue jusqu'à 0x9E par 0x021D8424)
 ov93:0x021F1E44   item_handlers                   gestionnaires des 171 objets tenus
+ov93:0x021F2C90   pledge_combos                   combinaisons des Aires : paires de capacités et résultat (1 à 3)
 ov93:0x021F2FD0   move_handlers                   gestionnaires des 258 capacités à part (une table, borne 0x102 en 0x021E02EC)
 ov93:0x021F3940   side_messages                   27 messages du fichier 15 qui ont une ligne pour le camp d'en face
 ov93:0x021F3978   set_message_functions           14 messages du fichier 14 et leur fonction de variantes
@@ -663,6 +670,7 @@ ov94:0x0220AC88   camera_eyes                     yeux des prises de vue
 ov94:0x0220ACA0   camera_targets                  points visés des prises de vue
 
 # Overlay 95
+ov95:0x0689D780   side_conditions                 14 effets de côté : numéro, gestionnaire, couches au plus
 ov95:0x0689E2BC   genesect_drives                 Modules liés à Genesect (116 à 119)
 ov95:0x0689E2C4   pressure_moves                  Saisie, Possessif, Picots, Pics Toxik, Piège de Roc : Pression compte tous les adversaires
 ov95:0x0689E2CE   mimic_excluded                  capacités que Copie ne copie pas

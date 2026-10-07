@@ -685,6 +685,9 @@ func speed_of(mon: BattleMon) -> int:
 	ratio = items.speed_ratio(mon, ratio)
 	if sides[mon.side].has("tailwind"):
 		ratio = BattleCalc.fx_mul(ratio, 0x2000)
+	# Marécage (effet de côté 13 des Aires, overlay 95) : Vitesse x 1/4.
+	if sides[mon.side].has("swamp"):
+		ratio = BattleCalc.fx_mul(ratio, 0x400)
 	speed = BattleCalc.fx_mul(speed, clampi(ratio, BattleCalc.RATIO_MIN, BattleCalc.RATIO_MAX))
 	if mon.status() == Pokemon.Status.PARALYSIS and not abilities.ignores_paralysis_speed(mon):
 		speed = speed * 25 / 100
