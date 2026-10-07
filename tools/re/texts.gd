@@ -6,14 +6,29 @@ extends SceneTree
 ##   godot --headless --path . --script res://tools/re/texts.gd -- system 89     a/0/0/2, fichier 89
 ##   ... -- system 89 12 20       seulement les messages 12 à 20
 ##   ... -- seq 1161 1304         noms des séquences du SDAT (musiques, sons)
+##   ... -- find "milieu"          messages des textes système qui contiennent ce motif (sans
+##                                 tenir compte des majuscules), avec leur fichier et leur numéro
 
 
 func _initialize() -> void:
 	var rom: Node = root.get_node("Rom")
 	var args := OS.get_cmdline_user_args()
 	if not rom.try_auto_load() or args.size() < 2:
-		print("Usage : -- zone|story|system <numéro> [premier] [dernier], ou -- seq <numéros...>")
+		print("Usage : -- zone|story|system <numéro> [premier] [dernier], -- seq <numéros...>, ou -- find <motif>")
 		quit(1)
+		return
+	if args[0] == "find":
+		var needle := args[1].to_lower()
+		var archive: NARC = rom.narc(BWFiles.TEXT_SYSTEM)
+		for file in archive.count():
+			var found: MsgFile = rom.text_file(BWFiles.TEXT_SYSTEM, file)
+			if found == null:
+				continue
+			for i in found.line_count():
+				var line: String = found.get_line(i)
+				if line.to_lower().contains(needle):
+					print("système %d, %d : %s" % [file, i, line.replace("\n", " / ")])
+		quit(0)
 		return
 	if args[0] == "seq":
 		var sdat: SDAT = root.get_node("Sound").sdat()

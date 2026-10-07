@@ -8,14 +8,29 @@ const ENEMY := 1
 
 var id := PLAYER
 var party: Array[Pokemon] = []
-## Pokémon au combat, une place par position (une seule en combat simple).
+## Pokémon au combat, une case par place (une en combat simple, deux en double, trois en triple
+## et en rotatif) ; null : place vide (plus personne à envoyer).
 var active: Array[BattleMon] = []
 ## Dresseur adverse (null : le joueur, ou un Pokémon sauvage).
 var trainer: TrainerData
+## Second dresseur d'un combat à deux dresseurs (commande 0x85 avec « dresseur 2 ») : il tient la
+## place 1 avec sa propre équipe, rangée dans `party` après celle du premier (`partner_first`).
+var partner: TrainerData
+var partner_first := -1
 ## Effets du côté : nom -> tours restants ou couches.
 var conditions := {}
-## Objets que le dresseur adverse peut encore utiliser.
+## Objets du sac du dresseur adverse, à leur case (une case utilisée vaut 0 : l'IA lit les cases par
+## leur numéro, 0x021D3D64) ; ceux du second dresseur d'un combat à deux dresseurs.
 var items: Array[int] = []
+var partner_items: Array[int] = []
+## Ordre de l'équipe au combat (places dans `party`) : le jeu range les Pokémon au combat en tête et
+## échange deux places à chaque envoi ; l'IA parcourt les membres en retrait dans cet ordre.
+var order: Array[int] = []
+## Dernier tour où un Pokémon de ce camp a été mis K.O. (Vengeance).
+var last_faint_turn := -2
+## Objet consommé par chaque membre de l'équipe (place dans l'équipe -> objet), que Recyclage
+## rend : le jeu le garde dans la structure du Pokémon pour tout le combat (+0x14).
+var consumed := {}
 
 
 func is_player() -> bool:
@@ -26,11 +41,34 @@ func mon(slot := 0) -> BattleMon:
 	return active[slot] if slot >= 0 and slot < active.size() else null
 
 
-## Pokémon en état de se battre qui ne sont pas au combat.
-func reserves() -> Array[int]:
+## Pokémon en état de se battre sur le terrain, dans l'ordre des places.
+func on_field() -> Array[BattleMon]:
+	var result: Array[BattleMon] = []
+	for each in active:
+		if each and not each.is_fainted():
+			result.append(each)
+	return result
+
+
+## Le dresseur qui tient une place (le second dresseur tient la place 1 d'un combat à deux).
+func trainer_of_slot(slot: int) -> TrainerData:
+	return partner if partner and slot == 1 else trainer
+
+
+## Vrai si la place peut envoyer le membre n° index de l'équipe : dans un combat à deux dresseurs,
+## chacun n'envoie que les siens (`slot` < 0 : toute l'équipe).
+func slot_owns(slot: int, index: int) -> bool:
+	if slot < 0 or partner == null or partner_first < 0:
+		return true
+	return index >= partner_first if slot == 1 else index < partner_first
+
+
+## Pokémon en état de se battre qui ne sont pas au combat (`slot` >= 0 : seulement ceux que cette
+## place peut envoyer).
+func reserves(slot := -1) -> Array[int]:
 	var result: Array[int] = []
 	for i in party.size():
-		if party[i].is_fainted():
+		if party[i].is_fainted() or not slot_owns(slot, i):
 			continue
 		var on_field := false
 		for mon in active:
@@ -55,3 +93,25 @@ func all_fainted() -> bool:
 
 func has(condition: String) -> bool:
 	return conditions.has(condition)
+
+
+## Ordre de l'équipe au combat (voir `order`), celui de l'équipe tant que personne n'a été envoyé.
+func battle_order() -> Array[int]:
+	if order.size() != party.size():
+		order.clear()
+		for i in party.size():
+			order.append(i)
+	return order
+
+
+## Le membre n° index arrive à la place `slot` : il échange sa place dans l'ordre avec celle de tête
+## qui correspond à cette place (avec deux dresseurs, chacun a sa propre équipe et l'ordre ne change
+## pas).
+func note_sent_out(index: int, slot: int) -> void:
+	var list := battle_order()
+	if partner:
+		return
+	var from := list.find(index)
+	if from >= 0 and slot < list.size() and from != slot:
+		list[from] = list[slot]
+		list[slot] = index

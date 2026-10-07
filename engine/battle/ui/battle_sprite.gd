@@ -50,6 +50,27 @@ const HOMES := {
 }
 ## Échelle du mode « monde » (0x02209F68 pour les Pokémon, 0x02209FC0 pour les dresseurs).
 const WORLD_SCALES := {0: 0x1030, 1: 0x11BF, 8: 0x1030, 9: 0x1300, 10: 0xF00, 11: 0x1300, 12: 0xD00, 13: 0x1300}
+## Combats à plusieurs (0x02201848, 0x022018D4) : les Pokémon sont aux places 2 à 7 (place du
+## combat + 2) et la table dépend du type de combat (bits 0 et 1 de [vue+0x510]) : positions
+## 0x0220A020 (double), 0x0220A0F8 (triple), 0x0220A140 (rotatif) ; échelles du mode « monde »
+## 0x02209F70, 0x02209FD8, 0x02209FA8.
+const MULTI_HOMES := {
+	Battle.Format.DOUBLE: [Vector3i(-0x1B00, 0x666, 0x6600), Vector3i(0x26CD, 0x666, -0xA600),
+		Vector3i(0x2800, 0x666, 0x7A00), Vector3i(-0x2333, 0x666, -0xB900)],
+	Battle.Format.TRIPLE: [Vector3i(-0x4000, 0x666, 0x7000), Vector3i(0x4800, 0x666, -0xC000),
+		Vector3i(0xC00, 0x666, 0x4C00), Vector3i(0xBCD, 0x666, -0x9000), Vector3i(0x5300, 0x666, 0x6300),
+		Vector3i(-0x4633, 0x666, -0xC000)],
+	Battle.Format.ROTATION: [Vector3i(0x0, 0x666, 0x7000), Vector3i(0x0, 0x666, -0x8000),
+		Vector3i(-0x454C, 0x666, 0xE801), Vector3i(0x454A, 0x666, -0xF801), Vector3i(0x454A, 0x666, 0xE801),
+		Vector3i(-0x454C, 0x666, -0xF801)],
+}
+const MULTI_SCALES := {
+	Battle.Format.DOUBLE: [0x11B8, 0x118E, 0xE6A, 0x1320],
+	Battle.Format.TRIPLE: [0x11F0, 0x11F0, 0x1270, 0x110E, 0xEC4, 0x13F0],
+	Battle.Format.ROTATION: [0x1040, 0x109C, 0xD80, 0x1440, 0xC00, 0x1610],
+}
+## Type du combat affiché (Battle.Format) : choisit les tables des places 2 à 7.
+static var layout := 0
 ## Sortes d'animation (un mouvement à la fois par sorte et par sprite, comme les compteurs de
 ## génération du jeu en [vue+0x542...]).
 enum Motion { POSITION, SCALE, BASE_SCALE, ROTATION, ALPHA }
@@ -118,11 +139,11 @@ var _acting := false
 
 static func for_pokemon(shown: Pokemon, back: bool) -> BattleSprite:
 	var sprites: NARC = Autoloads.rom().narc(BWFiles.POKEMON_SPRITES)
-	var cell_sprite := PokemonSprites.create_animated(sprites, shown.species, back, shown.is_shiny()) if sprites else null
+	var cell_sprite := PokemonSprites.create_animated(sprites, shown.species, back, shown.is_shiny(), shown.form) if sprites else null
 	var sprite := BattleSprite.new()
 	sprite.name = shown.name()
 	sprite.pokemon = shown
-	sprite.metadata = PokemonSprites.metadata(sprites, shown.species, back) if sprites else {}
+	sprite.metadata = PokemonSprites.metadata(sprites, shown.species, back, shown.form) if sprites else {}
 	sprite._attach(cell_sprite)
 	return sprite
 
@@ -175,8 +196,21 @@ func set_slot(index: int) -> void:
 	reset_base_scale()
 
 
+## Position de départ d'une place (0x02201848) : 0 et 1 en combat simple, 2 à 7 dans la table du
+## type de combat, 8 à 13 pour les dresseurs.
 static func home(index: int) -> Vector3i:
+	if index >= 2 and index < 8:
+		var table: Array = MULTI_HOMES.get(layout, MULTI_HOMES[Battle.Format.DOUBLE])
+		return table[index - 2] if index - 2 < table.size() else Vector3i.ZERO
 	return HOMES.get(index, Vector3i.ZERO)
+
+
+## Échelle du mode « monde » d'une place (0x022018D4).
+static func world_scale(index: int) -> int:
+	if index >= 2 and index < 8:
+		var table: Array = MULTI_SCALES.get(layout, MULTI_SCALES[Battle.Format.DOUBLE])
+		return table[index - 2] if index - 2 < table.size() else ONE
+	return WORLD_SCALES.get(index, ONE)
 
 
 ## Point d'appui dans le décor, en unités Godot.
@@ -201,7 +235,7 @@ func reset_base_scale() -> void:
 func pixel_scale(ds_pixel: float, perspective: float) -> Vector2:
 	var effect := Vector2(effect_scale.x, effect_scale.y) / float(ONE)
 	if world_space:
-		var table: int = WORLD_SCALES.get(slot, ONE)
+		var table := world_scale(slot)
 		return effect * perspective * table / float(ONE) * side_factor / float(ONE)
 	return effect * ds_pixel * Vector2(base_scale.x, base_scale.y) / float(0x10000)
 

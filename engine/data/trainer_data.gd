@@ -191,8 +191,10 @@ func _class_row() -> int:
 ## L'équipe du dresseur, créée comme 0x0202A44C : PID tiré d'une graine (difficulté + niveau +
 ## espèce + n° du dresseur) que le générateur 64 bits du jeu fait avancer (classe) fois, IV tous
 ## égaux à difficulté x 31 / 255, sexe et talent forcés par l'octet +1, bonheur 255 (0 avec
-## Frustration), capacités et objet du fichier s'il les donne.
-func create_party() -> Array[Pokemon]:
+## Frustration), capacités et objet du fichier s'il les donne. La nature est tirée au hasard, comme le
+## fait 0x02017638 (rand(25), générateur commun du jeu) : par `natures` s'il est donné (le combat en
+## donne un, pour qu'il se rejoue à l'identique avec la même graine), sinon par l'horloge.
+func create_party(natures: GameRandom = null) -> Array[Pokemon]:
 	var party: Array[Pokemon] = []
 	var base := PID_BASE_FEMALE if is_female() else PID_BASE_MALE
 	for member in members:
@@ -206,8 +208,10 @@ func create_party() -> Array[Pokemon]:
 			random = generator.high16()
 		var pid := ((random << 8) + pid_base) & 0xFFFFFFFF
 		var iv: int = member.difficulty * 31 / 255
-		var pokemon := Pokemon.create(member.species, member.level, {"pid": pid, "ivs": [iv, iv, iv, iv, iv, iv],
-			"form": member.form})
+		var options := {"pid": pid, "ivs": [iv, iv, iv, iv, iv, iv], "form": member.form}
+		if natures:
+			options.random = natures
+		var pokemon := Pokemon.create(member.species, member.level, options)
 		if not (member.moves as Array).is_empty():
 			pokemon.set_moves(member.moves)
 		pokemon.held_item = member.item

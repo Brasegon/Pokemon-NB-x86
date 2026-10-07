@@ -86,10 +86,19 @@ const HURT_BY_SPIKES := 851
 const HURT_BY_ROCKS := 854
 const CANT_ESCAPE := 875
 const LOST_HP := 1013
+## Efficacité sur des cibles nommées (attaque qui touche plusieurs Pokémon, 0x021C57E0) : base
+## pour une cible, puis + 3 par cible de plus (6, 9, 12 et 15, 18, 21), + la variante du premier.
+const SUPER_EFFECTIVE_ON := 6
+const NOT_VERY_EFFECTIVE_ON := 15
+## « Coup critique infligé à X ! » (attaque qui touche plusieurs Pokémon).
+const CRITICAL_ON := 384
 
-## Fichier 15 : messages ordinaires.
+## Fichier 15 : messages ordinaires. Les messages d'envoi existent pour un, deux et trois Pokémon
+## (ligne de base + nombre - 1) ; deux sauvages : 2 ; deux dresseurs : 9.
 const WILD_APPEARED := 1
+const WILD_PAIR_APPEARED := 2
 const TRAINER_CHALLENGE := 7
+const TRAINERS_CHALLENGE := 9
 const GO := 11
 const TRAINER_SENT := 14
 const GO_FONCE := 21
@@ -103,11 +112,13 @@ const TRAINER_USED_ITEM := 35
 const GAINED_EXP := 42
 const GAINED_EXP_BOOSTED := 43
 const DEFEATED_TRAINER := 44
+const DEFEATED_TRAINERS := 45
 const PLAYER_OUT := 54
 const PAID_IN_PANIC := 55
 const PAID_WINNER := 56
 const PLAYER_BLACKED_OUT := 57
 const WON_MONEY := 58
+const GOT_MONEY := 59
 const GREW_TO_LEVEL := 60
 const BROKE_FREE := 61
 const ALMOST_1 := 62
@@ -162,6 +173,10 @@ const UI_RUN := 1
 const PARTY_CHOOSE := 6
 const PARTY_ALREADY_OUT := 86
 const PARTY_FAINTED := 87
+const PARTY_ALREADY_SELECTED := 103
+## Sac en combat (fichier 17) : pas de Ball face à deux Pokémon, ou quand aucun n'est visible.
+const BALL_TWO_TARGETS := 44
+const BALL_NO_TARGET := 47
 
 
 ## Variante d'un message du fichier 14 pour ce Pokémon : 0 le sien, 1 sauvage, 2 ennemi.

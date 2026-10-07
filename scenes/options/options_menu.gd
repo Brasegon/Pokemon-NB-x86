@@ -6,8 +6,15 @@ const KEY_BINDINGS := "res://scenes/options/key_bindings.tscn"
 const PREVIEW_TEXT := "Voici la vitesse du texte choisie.\nAppuie sur Gauche ou Droite pour la changer."
 const VOLUME_STEPS := 10
 
-enum Row { TEXT_SPEED, MUSIC, EFFECTS, WINDOW, FULLSCREEN, KEYS, BACK }
-const LABELS := ["Vitesse du texte", "Volume de la musique", "Volume des effets", "Taille de la fenêtre", "Plein écran", "Touches…", "Retour"]
+enum Row { TEXT_SPEED, ANIMATIONS, BATTLE_STYLE, MUSIC, EFFECTS, WINDOW, FULLSCREEN, KEYS, BACK }
+const LABELS := ["Vitesse du texte", "Animations de combat", "Style de combat", "Volume de la musique", "Volume des effets",
+	"Taille de la fenêtre", "Plein écran", "Touches…", "Retour"]
+## Valeurs des options du jeu (fichier système 29) : AVEC, SANS ; CHOIX, DÉFINI.
+const OPTIONS_TEXT := 29
+const WITH_LINE := 13
+const WITHOUT_LINE := 14
+const SHIFT_LINE := 15
+const SET_LINE := 16
 
 const DEV_MENU := "res://scenes/dev_menu/dev_menu.tscn"
 
@@ -71,6 +78,11 @@ func _change(direction: int) -> void:
 			var current := speeds.find(Settings.get_value("jeu", "vitesse_texte", DialogueBox.DEFAULT_TEXT_SPEED))
 			Settings.set_value("jeu", "vitesse_texte", speeds[wrapi(current + direction, 0, speeds.size())])
 			_show_preview()
+		Row.ANIMATIONS:
+			Settings.set_value("jeu", "animations_combat", not bool(Settings.get_value("jeu", "animations_combat", true)))
+		Row.BATTLE_STYLE:
+			var shift: bool = Settings.get_value("jeu", "style_combat", Battle.STYLE_SHIFT) == Battle.STYLE_SHIFT
+			Settings.set_value("jeu", "style_combat", Battle.STYLE_SET if shift else Battle.STYLE_SHIFT)
 		Row.MUSIC:
 			Settings.set_value("son", "musique", clampi(Settings.get_value("son", "musique", VOLUME_STEPS) + direction, 0, VOLUME_STEPS))
 		Row.EFFECTS:
@@ -87,8 +99,13 @@ func _change(direction: int) -> void:
 func _values() -> PackedStringArray:
 	var speed: String = Settings.get_value("jeu", "vitesse_texte", DialogueBox.DEFAULT_TEXT_SPEED)
 	var scale := mini(Display.window_scale, Display.max_window_scale())
+	var rom: Node = Autoloads.rom()
+	var animations: bool = Settings.get_value("jeu", "animations_combat", true)
+	var shift: bool = Settings.get_value("jeu", "style_combat", Battle.STYLE_SHIFT) == Battle.STYLE_SHIFT
 	return PackedStringArray([
 		DialogueBox.TEXT_SPEED_LABELS.get(speed, speed),
+		rom.text(OPTIONS_TEXT, WITH_LINE if animations else WITHOUT_LINE) if rom else ("Avec" if animations else "Sans"),
+		rom.text(OPTIONS_TEXT, SHIFT_LINE if shift else SET_LINE) if rom else ("Choix" if shift else "Défini"),
 		"%d / %d" % [Settings.get_value("son", "musique", VOLUME_STEPS), VOLUME_STEPS],
 		"%d / %d" % [Settings.get_value("son", "effets", VOLUME_STEPS), VOLUME_STEPS],
 		"x%d (%dx%d)" % [scale, Display.BASE_SIZE.x * scale, Display.BASE_SIZE.y * scale],

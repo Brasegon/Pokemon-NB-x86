@@ -16,6 +16,11 @@ const SPECIES_COUNT := 649
 const PARTY_SIZE := 6
 ## Nombre maximal d'un même objet dans le sac (0x02007DF8 ; 1 seul dans la poche des CT et CS).
 const MAX_ITEM_COUNT := 999
+## PC : 24 boîtes de 30 Pokémon (noms par défaut : fichier système 9, lignes 6 à 29).
+const BOX_COUNT := 24
+const BOX_SIZE := 30
+const BOX_NAMES_FILE := 9
+const BOX_NAMES_FIRST := 6
 
 var player_name := DEFAULT_NAME
 ## Sexe du héros : octet +0x1D du profil, lu par 0x02008550 (0 garçon, 1 fille). La commande de
@@ -33,6 +38,9 @@ var money := 0
 var trainer_id := 0
 ## L'équipe (6 au plus).
 var party: Array[Pokemon] = []
+## Le PC : une liste de Pokémon par boîte, et la boîte courante (où vont les captures).
+var boxes: Array = []
+var current_box := 0
 ## Pokédex : espèces vues et capturées (la formule de capture et les herbes sombres comptent les
 ## capturées : 0x021CBC94).
 var seen := {}
@@ -54,6 +62,24 @@ var started := false
 
 func _init() -> void:
 	roll_trainer_id()
+	for i in BOX_COUNT:
+		boxes.append([])
+
+
+## Range un Pokémon dans le PC (après une capture, équipe pleine : 0x020076D0) : la boîte courante,
+## sinon la suivante qui a de la place. Renvoie la boîte, ou -1 si le PC est plein.
+func store_in_pc(pokemon: Pokemon) -> int:
+	for i in BOX_COUNT:
+		var box := (current_box + i) % BOX_COUNT
+		if (boxes[box] as Array).size() < BOX_SIZE:
+			(boxes[box] as Array).append(pokemon)
+			return box
+	return -1
+
+
+## Nom d'une boîte (le nom par défaut du jeu).
+static func box_name(box: int) -> String:
+	return Autoloads.rom().text(BOX_NAMES_FILE, BOX_NAMES_FIRST + box) if Autoloads.rom() else "BOÎTE %d" % (box + 1)
 
 
 func to_dict() -> Dictionary:
@@ -63,11 +89,18 @@ func to_dict() -> Dictionary:
 	var party_list := []
 	for pokemon in party:
 		party_list.append(pokemon.to_dict())
+	var box_list := []
+	for box: Array in boxes:
+		var stored := []
+		for pokemon: Pokemon in box:
+			stored.append(pokemon.to_dict())
+		box_list.append(stored)
 	return {
 		"name": player_name, "gender": gender, "money": money, "pending_script": pending_script,
 		"has_pokedex": has_pokedex, "zone": zone, "x": tile.x, "z": tile.y, "facing": facing,
 		"started": started, "party": party_list, "bag": items, "work": work.to_dict(),
 		"trainer_id": trainer_id, "seen": seen.keys(), "caught": caught.keys(), "badges": badges,
+		"boxes": box_list, "current_box": current_box,
 	}
 
 
@@ -90,6 +123,12 @@ static func from_dict(data: Dictionary) -> GameState:
 				member.ot_id = state.trainer_id
 				member.ot_name = state.player_name
 			state.party.append(member)
+	var saved_boxes: Array = data.get("boxes", [])
+	for i in mini(saved_boxes.size(), BOX_COUNT):
+		for pokemon: Variant in saved_boxes[i]:
+			if pokemon is Dictionary and (state.boxes[i] as Array).size() < BOX_SIZE:
+				(state.boxes[i] as Array).append(Pokemon.from_dict(pokemon))
+	state.current_box = clampi(int(data.get("current_box", 0)), 0, BOX_COUNT - 1)
 	for species: Variant in data.get("seen", []):
 		state.seen[int(species)] = true
 	for species: Variant in data.get("caught", []):

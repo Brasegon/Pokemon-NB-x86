@@ -156,6 +156,14 @@ palette) ne touche qu'à cette petite texture.
 
 Le sprite fixe 96x96 est rangé en 4 OBJ consécutifs : 64x64, 32x64, 64x32, 32x32.
 
+Formes : après les 650 espèces viennent deux Œufs (650, 651), puis, à partir de l'entrée 652, les
+formes alternatives (forme 1 et suivantes) de chaque espèce qui en a, à la place que donne le mot
++0x1E de sa fiche (paramètre 0x1F de 0x0201AE38) : Zarbi 0 (B à Z, !, ?), Morphéo 27, Deoxys 30,
+Cheniti 33, Cheniselle 35, Ceriflor 37, Sancoki 38, Tritosor 39, Motisma 40, Giratina 45, Shaymin 46,
+Bargantua 47, Darumacho 48, Vivaldaim 49, Haydaim 52, Meloetta 55, Genesect 56 ; entrée = 652 +
+place + forme - 1, pour une forme inférieure au nombre de formes (+0x20). Vérifié sur la ROM (planche
+des 64 entrées : chaque forme est à sa place). Arceus a 17 formes mais pas de sprite à part.
+
 ## Textes de la Gen 5 (`engine/text/msg_file.gd`)
 
 En-tête : nombre de sections (u16), nombre de lignes (u16), taille, inconnu, puis la position de chaque
@@ -580,8 +588,9 @@ ces cases autour du héros (herbe qui bouge, poussière, remous, ombres sur les 
   terrain »), 1C bits 6-8 (0x02013BB8 : 1 dehors, 0 dedans), 1E bits 5-9 décor des combats
   (0x02013EF4, recopié par 0x021AA2A4 avec le genre de la case et l'heure, pour la phase 4),
   20 rectangles de la caméra (`a/1/0/8`), 24, 28, 2C position par défaut x, y, z (u32, en cases :
-  0x02013B84). La météo n'est pas dans l'en-tête (Désert Délassant et Tour Dragospire n'y ont rien
-  de particulier) : sa table reste à retrouver. Une nouvelle partie commence dans la zone 391 à cette position, (5, 6)
+  0x02013B84). 1C bits 0-5 : temps du terrain par défaut (0x02013C2C ; seules les zones 233 et 238
+  en ont un) : le temps vient surtout du calendrier `a/0/9/7` (voir « Temps du terrain »). Une
+  nouvelle partie commence dans la zone 391 à cette position, (5, 6)
   (0x02014280). Renouet = zone 389 (lieu n° 4, `SEQ_BGM_T_01`), Route 1 = 317 ;
   ses intérieurs sont les zones 390 à 396, chacune avec sa matrice d'un seul morceau (390-391 : la
   maison du héros, 396 : le laboratoire).
@@ -858,7 +867,7 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 6B, 6C | valeur | faire apparaître un PNJ des événements de la zone (0x0216CE74), le retirer |
 | 6D | valeurs : personnage, x, y, z, direction | placer un personnage au centre d'une case (0x0216E014 ; y en cases), sans changer son entrée des événements. 0x0216DE24 le cherche par son numéro, héros compris : 0x0216DE70 l'appelle avec 0xFF pour trouver le héros. Dans la chambre, avant le combat contre Bianca, il pose le héros en (4, 6) |
 | 74 | | le PNJ se tourne vers le héros |
-| 85 | valeurs : dresseur, dresseur 2, ? | combat de dresseurs (0x0216E7A8) ; sans dresseur 2, le même si c'est un dresseur de combat double (0x0215A454). Le script attend la fin du combat (écran de combat posé sur le terrain) ; combats doubles pas encore faits : on affronte le premier dresseur |
+| 85 | valeurs : dresseur, dresseur 2, ? | combat de dresseurs (0x0216E7A8) ; sans dresseur 2, le même si c'est un dresseur de combat double (0x0215A454). Le script attend la fin du combat (écran de combat posé sur le terrain) ; avec un dresseur 2 différent, combat double contre les deux, chacun avec son équipe |
 | 8C | | après une défaite : l'événement 0x0215F5DC remplace le script (0x0215F678 le crée, puis la commande, 0x0215B34C, arrête la machine) : fondu au noir, équipe soignée, retour au dernier lieu de soin (la maison du héros tant qu'aucun Centre n'a été visité) |
 | 8D | variable | 0 si le joueur a perdu le dernier combat, sinon 1 : 0x0216EF38(résultat, 1) lit la table 0x02172568 (5 octets par résultat) ; colonne 1 nulle pour les résultats 0 et 2 (défaite) |
 | 8E | | transition de retour du combat (0x021BE8B8) |
@@ -1192,6 +1201,11 @@ avec Œil Composé, 50 / 5 / 1 dans les herbes sombres, 60 / 20 / 5 avec les deu
 4. test (0x021AA39C) : compteur 0, pas de rencontre ; compteur 1 (premier pas), taux 1 ; rencontre
    si pourcent <= taux.
 
+Avant les étapes 3 et 4, dans les herbes sombres (groupe 1), un tirage « pourcent » < 40 décide
+d'un combat double si le joueur a plus d'un Pokémon en forme (0x021A92F0 : bit 0x20, compte des
+Pokémon qui ne sont pas des œufs et ont des PV par 0x0201AA6C) ; les deux Pokémon sont tirés
+l'un après l'autre (0x021A94A8).
+
 ## Les combats (`engine/battle/`)
 
 Le moteur du combat est l'overlay 93 (0x021B60A0-0x021F3AC0), son affichage l'overlay 94
@@ -1208,15 +1222,25 @@ pour les PID des dresseurs).
 Le moteur du portage fait se dérouler un combat simple comme celui du jeu et produit une file
 d'événements (messages, PV, K.O., expérience, musiques...) que l'écran joue à son rythme ; quand
 il lui faut une décision, il pose une demande (action, Pokémon à envoyer, capacité à oublier, oui
-/ non) et attend la réponse. Les gestionnaires du jeu sont rangés en tables dans l'overlay 93 :
-talents 0x021F0E14, 0x021F114C et 0x021F125C (156 talents qui agissent en combat), objets tenus
-0x021F1E44 (171), capacités à part 0x021F2FD0 et 0x021F3518 (257). Les capacités ordinaires sont
-décrites par leurs données (catégorie d'effet +0x01) ; les autres sont écrites une à une.
+/ non) et attend la réponse. Les gestionnaires du jeu sont rangés en tables de paires (numéro,
+fonction) dans l'overlay 93 : talents 0x021F0E14 (158 talents, une seule table : 0x021D8424 la
+parcourt jusqu'à 0x9E), objets tenus 0x021F1E44 (171, puis une entrée vide : 0x021DCE64 s'arrête à
+0xAC), capacités à part 0x021F2FD0 (258 : 0x021E027C, borne 0x102 en 0x021E02EC). La fonction d'un
+talent renvoie la liste de ses réactions (événement, fonction) : Pression, par exemple, 3 réactions
+en 0x021F0A58. Les capacités ordinaires sont décrites par leurs données (catégorie d'effet +0x01) ;
+les autres sont écrites une à une.
 
-- **Ordre des actions** (0x021BC814) : clé = rang de l'action (bits 22-24 : attaque 0, sac et
-  changement 1, fuite 2), priorité + 7 (bits 16-21), priorité spéciale (bits 13-15 : Vive Griffe,
-  Chaîne...), vitesse (bits 0-12) ; tri par sélection du plus grand au plus petit, égalités à pile
-  ou face.
+- **Actions** (0x021BCC80) : le jeu les code sur 4 bits : 1 attaque, 2 objet, 3 changement, 4
+  fuite, 5 déplacement au milieu (combat triple), 6 rotation (combat rotatif), 7 rechargement
+  (« Le contrecoup empêche X de bouger ! », message 848), 8 fin.
+- **Ordre des actions** (clés posées par 0x021BC5B0, tri 0x021BC814) : clé = rang de l'action
+  (bits 22-24 : fuite 4, changement 3, objet 2, rotation 1, attaque, déplacement et rechargement 0 ;
+  un Pokémon sauvage qui fuit prend le rang 0 et la priorité la plus basse, donc après toutes les
+  capacités), priorité + 7 (bits 16-21 ; 7 pour le déplacement et le rechargement), priorité
+  spéciale (bits 13-15 : Vive Griffe, Chaîne... ; 1 par défaut, recalculée pour les attaques et les
+  déplacements quand personne ne fait de rotation), vitesse (bits 0-12) ; tri par sélection du
+  plus grand au plus petit, égalités à pile ou face. Après les rotations, l'ordre des actions
+  restantes est recalculé (0x021BBF48).
 - **Vitesse** (0x021BC8E8) : cran, talents et objets (multiplicateurs bornés de 0x29 à 0x20000,
   0x021D7614), Vent Arrière, paralysie / 4, plafond 10000 ; sous Distorsion, 10000 - vitesse.
 - **Précision** (0x021BFA00) : 101 = jamais ratée ; sinon précision x crans (précision du lanceur
@@ -1231,10 +1255,498 @@ décrites par leurs données (catégorie d'effet +0x01) ; les autres sont écrit
 - **Fin du tour** : météo (sable et grêle 1/16, 0x021D7B74), talents et objets qui soignent,
   Vampigraine, poison 1/8 (grave : n/16, n de 1 à 15), brûlure 1/8, étreintes, compteurs, effets de
   côté et de terrain.
-- **IA des dresseurs** (`battle_ai.gd`) : le code de l'IA n'a pas été trouvé dans les overlays du
-  combat (aucune archive ne contient de scripts d'IA) ; le portage note les capacités selon les
-  indicateurs de la fiche (+0x0C : éviter l'inutile, préférer les dégâts et le K.O., jouer les
-  statuts au bon moment, se préparer au premier tour) et soigne sous le quart des PV.
+- **IA des dresseurs** : client de l'overlay 93 et scripts de l'overlay 96 (`a/1/7/1`), voir
+  « IA des dresseurs » plus bas.
+- **Brise Moule**, TurboBrasier, Téra-Voltage (0x021DB1E8) : pendant la capacité du porteur
+  (événements 0x03 à 0x04), un filtre (0x021DB148) fait taire les talents de la liste 0x0689E450
+  (overlay 95, 55 entrées) : ceux qui protègent la cible, Glue, Garde Amie, Heavy Metal, Light Metal,
+  Télépathe et Miroir Magik compris.
+- **Derniers talents** (gestionnaires de la table 0x021F0E14) :
+
+  | Talent | Réaction | Effet |
+  | --- | --- | --- |
+  | Ramassage | 0x021DBB78 | fin du tour (événement 0x77), sans objet : l'objet consommé ce tour (indicateur 8) par un voisin tiré au sort (positions « voisins », mode 2 de 0x021B8718) ; « trouve un objet » (490) |
+  | Plus, Minus | 0x021D8CE0 | Attaque Spéciale x 1,5 si un allié a Plus ou Minus |
+  | Météo | 0x021DB314 | Morphéo (351) prend la forme du temps (soleil 1, pluie 2, grêle 3, sinon 0 ; Ciel Gris et Air Lock l'annulent) en entrant, quand le temps change et en fin de tour ; « se transforme » (222) |
+  | Glue | 0x021DB870 | un autre ne peut pas lui retirer son objet (493) ; Tour de Magie et Passe-Passe ne l'atteignent pas (210) |
+  | Pickpocket | 0x021DBC8C | touché par une capacité de contact, sans objet : prend celui de l'attaquant (460) |
+  | Cœur Soin | 0x021DC110 | fin du tour (0x76) : chaque allié voisin qui a un statut, 30 % de chances d'en guérir |
+  | Garde Amie | 0x021DC0DC | les alliés du porteur prennent x 0,75 (événement 0x47) |
+  | Heavy Metal, Light Metal | 0x021DCB88, 0x021DCBB0 | poids x 2, x 0,5 (événement 0x7B de 0x021C8340, après Allègement) |
+  | Récolte | 0x021DCAD8 | fin du tour (0x77), sans objet : la baie consommée revient, au soleil ou une fois sur deux (475) |
+  | Télépathe | 0x021DC240 | les attaques des alliés ne le touchent pas (469) |
+  | Illusion | 0x021DCD70... | à l'entrée (0x021B9CB0), l'apparence et le nom du dernier membre de l'équipe en état de se battre ; un coup qui le touche vraiment (événement 0x4B) ou la perte du talent la brise (travail 0x34, 0x021DCDE8 ; 478) ; Morphing échoue s'il y a une Illusion |
+  | Imposteur | 0x021DCCC0 | en entrant, Morphing sur l'adversaire d'en face (travail 0x33, 644) |
+  | Miroir Magik | 0x021DCACC | comme Reflet Magik, sans limite de tour |
+  | Mode Transe | 0x021DC6D8 | fin du tour (0x78) : Darumacho (555) en Mode Transe à la moitié de ses PV ou moins (forme 1 ; fichier 15, 185), sinon en Mode Normal (186) |
+
+  Les formes de combat (travail 0x39 : Météo, Mode Transe, ChantAntique) donnent les statistiques,
+  les types et le sprite de la forme ; le portage les rend quand le Pokémon quitte le terrain et à la
+  fin du combat.
+- **Pression** (réaction à l'événement 0x4E, 0x021DB8DC) : un PP de plus par porteur, seulement si
+  le lanceur est d'en face, et si le porteur est visé, ou si la capacité vise le terrain (cible 10),
+  ou si elle est dans la liste 0x0689E2C4 (Saisie, Possessif, Picots, Pics Toxik, Piège de Roc). Une
+  capacité sur soi ne coûte donc qu'un PP.
+
+### Combats à plusieurs (`battle.gd`, `battle_moves.gd`)
+
+Type de combat (0x021C80FC, champ +0x02 bits 0-1 des dresseurs) : 0 simple, 1 double, 2 triple,
+3 rotatif ; dans la ROM, 26 dresseurs de combat double (par exemple la fiche 18, des jumelles), 7
+de triple (506...) et 8 de rotatif (513...). Chaque camp a 1, 2 ou 3 places ; la place du combat est
+camp + 2 x place (0, 2, 4 côté joueur ; 1, 3, 5 en face).
+
+- **Colonnes et voisins** : d'après les tables de positions (plus bas, « Scène »), la place 0 du
+  joueur est à gauche et la place 0 d'en face à droite. Colonne = place côté joueur, (nombre de
+  places - 1 - place) en face. Deux Pokémon sont voisins si leurs colonnes se touchent : toujours en
+  simple et en double ; en triple, un bord ne touche pas l'autre bord.
+- **Cible des données** (+0x14 de `a/0/2/1`) : 0 un autre Pokémon voisin, au choix (402 capacités),
+  1 soi ou un allié (Acupression), 2 un allié (Coup d'Main), 3 un adversaire (Moi d'Abord), 4 tous
+  les autres voisins (Séisme, Surf), 5 tous les adversaires voisins (Éboulement, Rugissement), 6 son
+  équipe (Glas de Soin), 7 soi, 8 tous (Requiem), 9 un adversaire au hasard (Mania), 10 le terrain
+  (météo, Buée Noire, Distorsion), 11 le côté d'en face (Picots), 12 son côté (Protection), 13 à part
+  (Riposte, Malédiction, Force-Nature). Les capacités « à distance » (drapeau 11) atteignent aussi
+  les non-voisins. Le portage remplace une cible partie par un autre adversaire voisin ; Paratonnerre,
+  Lavabo et Par Ici attirent les capacités à une seule cible (comportement du jeu, pas encore vérifié
+  dans le code).
+- **Dégâts** (0x021C0D30) : la liste des cibles garde le nombre de départ (+0x43) et le nombre
+  restant (+0x42, fonctions de l'overlay 95 en 0x0689CD40 et 0x0689CD38). Si la capacité visait
+  plus d'un Pokémon, les dégâts sont multipliés par 0xC00 (0,75) juste après les dégâts de base
+  (paramètre 6 de 0x021C1E14, avant la météo et le critique). La liste est coupée en deux
+  (0x0689CDCC) : les cibles d'en face prennent leurs dégâts et leurs messages d'abord, puis celles
+  du camp du lanceur.
+- **Efficacité** (0x021C57E0) : avec une seule cible touchée, « C'est super efficace ! » (fichier
+  15, ligne 78) si elle l'est, sinon « Ce n'est pas très efficace... » (79) ; avec plusieurs, un
+  message nomme les cibles super efficaces (fichier 14, ligne 6 pour une, 9 pour deux, 12 pour trois,
+  plus la variante du premier nommé), puis un autre les cibles peu efficaces (15, 18, 21). Le portage
+  nomme aussi la cible du coup critique dans ce cas (« Coup critique infligé à X ! », fichier 14,
+  ligne 384 ; non vérifié dans le code).
+- **Protection et Mur Lumière** (overlay 95, réaction 0x06898E54) : hors coup critique, 0x800 en
+  simple et en rotatif, 0xA8F (environ 2/3) en double et en triple.
+- **Messages** (fichier 15) : deux sauvages 2 ; « X et Y ! Go ! » 12, trois 13 ; « Un X et un Y
+  sont envoyés par... » 15, trois 16 ; deux dresseurs 9 (défi) et 45 (défaite). Fichier 18, 103 :
+  « X est déjà sélectionné. » (le même remplaçant choisi deux fois dans un tour). Fichier 17, 44 :
+  pas de Ball face à deux Pokémon sauvages ; 47 : quand aucun n'est visible.
+- **Combat triple** : un Pokémon d'un bord peut se déplacer au milieu (action 5, 0x021BD388) : il
+  échange sa place avec celui du milieu, « X s'est déplacé au milieu ! » (fichier 14, 231) ; bouton
+  DÉPLACER de l'écran tactile (aide du jeu, fichier 62, 96 ; libellé du fichier 9, 81). En fin de tour
+  (0x021C45B4), s'il ne reste qu'un Pokémon de chaque côté, à la même place d'un bord (deux coins
+  opposés, qui ne se touchent pas), tous deux glissent au milieu, sans message (commande 0x50 de
+  l'écran). Interversion échange deux alliés (0x021CA370).
+- **Combat rotatif** : trois Pokémon par camp ; seul celui de devant (place 0) agit et peut être
+  visé (aide, fichier 62, 97-98 : « un seul Pokémon peut agir par tour »). La rotation (action 6,
+  0x021BC3B8 ; places tournées par 0x021B9BF0) fait passer devant le Pokémon d'une place en retrait,
+  l'autre retrait prend sa place et celui de devant va à l'arrière. Celui qui part passe par la
+  sortie ordinaire (0x021C50A8 : événement 0xA3, d'où Médic Nature et Régé-Force), sans effacer ses
+  crans ; celui qui arrive réinscrit son talent et son objet (0x021D84E8, 0x021DCF54) sans les
+  talents d'entrée. Le portage fait passer devant un Pokémon en retrait quand celui de devant est
+  K.O. et que l'équipe n'a plus personne à envoyer (règle supposée, non vérifiée dans le code).
+- **Talents qui regardent les adversaires** (d'après le comportement du jeu, à vérifier dans leurs
+  gestionnaires) : Intimidation baisse l'Attaque de chaque adversaire voisin, Télécharge compare la
+  somme des Défenses et Défenses Spéciales d'en face, Fouille et Calque en prennent un au hasard,
+  Mauvais Rêve blesse chaque adversaire endormi, Tension empêche les baies si un adversaire l'a.
+
+### Capacités à part (`battle_moves.gd`)
+
+La fonction d'une capacité de la table 0x021F2FD0 renvoie ses réactions (événement, fonction) ;
+`tools/re/handlers.py move <n>` les liste et `--decomp` en donne le pseudo-C. Les messages sont
+ceux du fichier 14 (variante selon le camp) ; « état » : condition passagère posée par le serveur.
+`tools/re/battle_coverage.gd` compte les capacités écrites (liste `BattleMoves.HANDLED`).
+
+| Capacités | Réaction | Effet |
+| --- | --- | --- |
+| Toile, Regard Noir, Barrage | 0x021E0C80 | état 0x16 sur la cible, sauf s'il y est : plus de fuite ni de changement tant que le lanceur est là ; « ne peut plus s'échapper » (872) |
+| Verrouillage, Lire-Esprit | 0x021E5204 | état 0x1D pour 2 tours sur cette cible : la prochaine capacité ne rate pas ; message à 7 variantes (651) |
+| Œil Miracle | 0x021E81D8 | comme Clairvoyance (369), et le Psy touche les Ténèbres |
+| Croissance | 0x021E8210 | +1 en Attaque et Attaque Spéciale (données), +2 au soleil |
+| Coud'Krâne | 0x021E64E8 | tour de charge : « baisse la tête » (556) et Défense +1 |
+| Aurore, Synthèse, Rayon Lune | 0x021E6104 | soin 0x800 des PV, 0xAAC au soleil, 0x400 sous la pluie, le sable ou la grêle |
+| Souvenir | 0x021E4A10 | Attaque et Attaque Spéciale de la cible -2, puis le lanceur est K.O. |
+| Dépit | 0x021E4AA0 | la dernière capacité de la cible perd jusqu'à 4 PP (641) |
+| Rancune | 0x021E67A0 | « veut que son adversaire subisse sa Rancune » (632) ; mis K.O. par une attaque avant sa capacité suivante, l'attaquant perd les PP de cette capacité (635) |
+| Boost | 0x021E4B50 | copie les 7 crans de la cible (1047) |
+| Permucœur, Permuforce, Permugarde | 0x021E4C14... | échange tous les crans (673), ceux d'Attaque et Attaque Spéciale (676), de Défense et Défense Spéciale (679) |
+| Astuce Force | 0x021E4F94 | état 10 : Attaque et Défense échangées (773) |
+| Partage Force, Partage Garde | 0x021E502C, 0x021E511C | moyenne des Attaques et Attaques Spéciales (1096), des Défenses et Défenses Spéciales (1099) |
+| Acupression | 0x021E42E0 | +2 dans une statistique tirée parmi celles qui peuvent monter (table 0x021F2CC0) |
+| Suc Digestif | 0x021E5810 | état 0x10 : le talent ne fait plus effet (565) |
+| Soucigraine, Rayon Simple, Ten-danse | 0x021E0F58... | la cible prend Insomnia (15), Simple (0x56), le talent du lanceur (405) ; pas sur Absentéisme |
+| Imitation | 0x021E5878 | le lanceur copie le talent de la cible (619) |
+| Adaptation | 0x021E0408 | un type tiré parmi ceux des autres capacités du lanceur qu'il n'a pas (896) |
+| Adaptation 2 | 0x021E456C | un type tiré parmi ceux qui résistent à la dernière capacité qui l'a touché |
+| Camouflage | 0x021E04B8 | type selon le terrain (0x021C8114) : 0, 5 Plante ; 1-3, 8, 9, 15 Sol ; 6, 11, 12 Eau ; 7, 13 Glace ; 10 Roche ; sinon Normal |
+| Détrempage, Copie Type | 0x021E72CC, 0x021E77BC | la cible devient Eau ; le lanceur prend les types de la cible (1089) |
+| Allègement | 0x021E7850 | Vitesse +2, 100 kg de moins (commande 0x2D ; 1102) |
+| Vol Magnétik, Lévikinésie | 0x021E5E1C... | le lanceur flotte 5 tours (658, fin 661) ; la cible flotte 3 tours et toute capacité la touche sauf K.O. en un coup (1140, fin 1143) |
+| Anti-Brume | 0x021E06CC | Esquive de la cible -1 ; son côté perd Protection, Mur Lumière, Rune Protect, Brume et les pièges |
+| Exuviation | 0x021E7700 | Défense et Défense Spéciale -1 ; Attaque, Attaque Spéciale et Vitesse +2 |
+| Lance-Boue, Tourniquet | 0x021E067C, 0x021E062C | effets de terrain 5 et 4 tant que le lanceur est là : Électrik ou Feu x 0x548 (overlay 95) ; messages 115 et 114 du fichier 15 |
+| Triple Pied | 0x021E2708, 0x021E272C | puissance 10, 20 puis 30 ; chaque coup vérifie la précision |
+| Faux-Chage | 0x021E39E8 | la cible garde au moins 1 PV |
+| Poursuite | 0x021E1CC0... | frappe avant qu'un adversaire qui l'a choisie se retire, puissance x 2 |
+| Écrasement, Bulldoboule | 0x021E39A4 | x 2 en fin de calcul contre un Pokémon sous Lilliput (état 8) |
+| Casse-Brique | 0x021E07F0 | Protection et Mur Lumière de la cible tombent avant les dégâts (sans message) |
+| Stimulant, Réveil Forcé | 0x021E2B54, 0x021E2AB8 | x 2 contre un Pokémon paralysé ou endormi, qui est ensuite soigné ou réveillé |
+| Avalanche | 0x021E27BC | x 2 si la cible a déjà blessé le lanceur ce tour |
+| Ruse, Revenant | 0x021E41D8 | passent la protection et la font tomber (526, 520), ainsi que Garde Large et Prévention |
+| Dernierecour | 0x021E1AEC | échoue tant que les autres capacités du lanceur n'ont pas toutes servi |
+| Synchropeine | 0x021E7AE0 | sans effet sur un Pokémon sans type commun avec le lanceur |
+| Écho | 0x021E7184 | 40, 80, 120, 160 puis 200 selon les tours de suite où il a servi |
+| Chant Canon | 0x021E7CF4, 0x021E7D50 | les alliés qui l'ont choisi agissent juste après ; x 2 pour les suivants |
+| Vengeance | 0x021E721C | x 2 si un allié a été mis K.O. au tour précédent |
+| Anti-Air | 0x021E75D4 | la cible tombe au sol (état 0x1F ; Vol Magnétik, Lévikinésie et vol annulés ; 1128) |
+| Rebondifeu | 0x021E7A18 | les alliés voisins de la cible perdent 1/16 de leurs PV (1105) |
+| Lame Sainte, Lame Ointe | 0x021E78FC, 0x021E78C4 | les crans de défense de la cible ne comptent pas ; attaque spéciale contre la Défense |
+| Jugement, TechnoBuster | 0x021E3130... | type de la Plaque tenue (objets 298 à 313) ou du Module (116 à 119) |
+| ChantAntique | 0x021E8130 | Meloetta (648) change de forme (222) |
+| Flamme Croix, Éclair Croix | 0x021E82A4 | x 2 juste après l'autre capacité dans le même tour |
+| Bain de Smog | 0x021E7484 | les crans de la cible reviennent à 0 (195) |
+| Projection, Draco-Queue | 0x021E7580 | la cible est renvoyée (commande 0x2E) ; un combat sauvage prend fin |
+| Force Cachée | 0x021E117C, 0x021E10CC | 30 % (sauf Sans Limite) : selon le terrain, sommeil (0, 5), Précision -1 (1-3, 8, 15), Attaque -1 (6, 11, 12), gel (7, 13), Vitesse -1 (9), apeurement (10), sinon paralysie |
+| Explosion, Destruction | 0x021E1D60 | le lanceur est K.O. après l'attaque, même s'il ne touche personne |
+| Frénésie | 0x021E2080 | le lanceur enrage jusqu'à une autre capacité : touché, Attaque +1 (532) |
+| Patience | 0x021E3C44... | deux tours à encaisser (745), puis le double des dégâts reçus au dernier attaquant (748) |
+| Baston | 0x021E5FB0, 0x021E5FF4 | un coup par membre de l'équipe en forme et sans statut, puissance Attaque de base / 10 + 5 |
+| Ronflement | 0x021E1B98 | seulement endormi |
+| Cadeau | 0x021E2BEC, 0x021E2CC0 | 20 % : soigne 1/4 des PV de la cible (387) ; sinon puissance 40, 80 ou 120 (40, 30, 10 chances sur 80) |
+| Mitra-Poing | 0x021E6988 | début du tour : « se concentre davantage » (616) |
+| Cyclone, Babil | 0x021E59C8, 0x021E1244 | Cyclone partage la réaction de Tour Rapide, qui ne joue qu'après des dégâts : renvoi ordinaire ; Babil ne rend confus que si Pijako a un cri enregistré (aucun dans le portage) |
+| Coup d'Main | 0x021E5EE8, 0x021E5F70 | échec en combat simple ; la capacité de l'allié fait x 1,5 ce tour (1044) |
+| Par Ici, Poudre Fureur | 0x021E0B08, 0x021E0B88 | échec en simple et en rotatif ; les attaques à une cible d'en face vont sur le lanceur jusqu'à la fin du tour (670) |
+| Garde Large, Prévention | 0x021E54CC, 0x021E7DAC | effets de côté 9 et 10 pour un tour (fichier 15 : 160, 162) : les attaques qui visent plusieurs Pokémon, ou de priorité positive, ne touchent pas (797, 800) ; à la suite, même chance décroissante qu'Abri |
+| Après Vous, À la Queue | 0x021E7C4C, 0x021E7CA0 | la cible agit juste après (1134) ou en dernier (1131) |
+| Interversion | 0x021E7DF8 | le lanceur et l'allié de l'autre bord échangent leurs places (1137 ; 0x021CA370) |
+| Zone Étrange, Zone Magique | 0x021E7938, 0x021E79A8 | effets de terrain 6 et 7, 5 tours : Défense et Défense Spéciale interverties (178, fin 179) ; objets neutralisés (180, fin 181) ; relancées, elles s'arrêtent |
+| Brouhaha | 0x021E231C... | état 0x19, 3 tours (703, 715, fin 718) : tout le monde se réveille (706) et personne ne s'endort |
+| Possessif | 0x021E4860 | les adversaires ne peuvent plus utiliser les capacités du lanceur (586, 589) |
+| Échange Psy | 0x021E3F60 | le statut du lanceur passe à la cible |
+| Stockage, Relâche, Avale | 0x021E1608, 0x021E1750, 0x021E188C | jusqu'à 3 Stockage (721 ; Défense et Défense Spéciale +1) ; Relâche : 100 par Stockage ; Avale : 1/4, 1/2 ou tous les PV ; puis les Stockage se dissipent (724) |
+| Prescience, Carnareket | 0x021E56C0, 0x021E56E8 | l'attaque touche la place visée deux tours plus tard (1074, 1077 ; 1080), calculée à ce moment-là |
+| Vœu Soin, Danse-Lune | 0x021E5620, 0x021E55C0 | il faut un remplaçant ; le lanceur est K.O., celui qui prend sa place est soigné (697 ; Danse-Lune rend aussi les PP, 694) |
+| Relais | 0x021E5B18 | il faut un remplaçant, qui garde les crans et les effets passagers (clone, confusion, Racines, Vampigraine...) |
+| Pouvoir Antique, Vent Argenté, Vent Mauvais | 0x021E6F2C | justes par leurs données : 10 % de chances de +1 dans toutes les statistiques |
+| Métronome | 0x021E6A24, 0x021E6A78 | capacité tirée (0x021D7DE4) parmi 1 à 0x22F, sauf les 41 de la liste 0x0689E3FC ; « Métronome lance Y ! » (fichier 15, 120) |
+| Force-Nature | 0x021E6AC0, 0x021E6B4C | selon le terrain : 0, 5 Canon Graine (402) ; 1-3, 8, 15 Séisme ; 6, 11, 12 Hydrocanon ; 7 Blizzard ; 9 Boue-Bombe (426) ; 10 Éboulement ; 13 Laser Glace ; sinon Triplattaque ; « Force-Nature provoque Y. » (121) |
+| Blabla Dodo | 0x021E1B74, 0x021E1B98, 0x021E6C7C | endormi seulement (sinon échec, même réveillé ce tour) ; une de ses capacités au hasard, PP ou non, sauf les listes 0x0689E330 et 0x0689E346 et celles en deux tours (drapeau 1) |
+| Assistance | 0x021E6B94 | une capacité au hasard des autres membres de l'équipe de son dresseur, K.O. compris, sauf 0x0689E330 et 0x0689E3D4 (copie de 0x0689E3AC) |
+| Photocopie | 0x021E6EDC | la dernière capacité lancée au combat (0x021C80B4, champ 0x1F74 du serveur), sauf 0x0689E330 et 0x0689E3AC |
+| Mimique | 0x021E6D4C | sur la cible choisie (sinon celle d'en face), la dernière capacité qu'elle a lancée (+0x14C), si elle a le drapeau 6 |
+| Moi d'Abord | 0x021E6DD8, 0x021E6EB4 | la cible n'a pas encore agi et va attaquer : sa capacité (hors liste 0x0689E31C) part sur elle, puissance x 0x1800 (événement 0x38) |
+| Copie | 0x021E0938 | la dernière capacité choisie par la cible (+0x14A, hors liste 0x0689E2CE) remplace Copie dans la copie « combat » de la capacité (travail 0x25, 0x021D517C : PP de base) ; « X apprend Y ! » (688) |
+| Gribouille | 0x021E0A20 | de même, hors Gribouille, Lutte et Babil, mais dans la copie de l'équipe : pour de bon (691) |
+| Morphing | 0x021E5564, 0x021CA41C | échoue si l'un est déjà transformé ou si la cible a un clone ; 0x021D6BF0 recopie la structure de la cible sauf ses 0xEC premiers octets : types, statistiques sauf les PV, crans, talent, capacités (5 PP chacune) ; nouveau sprite (commande 0x53 du client) ; message à 7 variantes (644) |
+| Saisie | 0x021E3540... | échoue si tous les autres ont déjà agi (0x021C804C) ; « attend que son ennemi agisse » (751) ; jusqu'à la fin du tour, vole la première capacité d'un autre qui a le drapeau 5 (événement 0x1A, 0x021BEAB4) et la lance lui-même (0x021BE4F0 ; 754, à 7 variantes) |
+| Don Naturel | 0x021E32D0... | une baie avec une puissance de Don Naturel (+0x07 des données de l'objet), objets utilisables (ni Maladresse, ni Embargo, ni Zone Magique : 0x021C81EC) ; type (bits 0-4 de +0x08) et puissance de la baie ; elle part à la fin (événement 0x27), même ratée |
+| Dégommage | 0x021E5C74... | un objet avec une puissance de Dégommage (+0x06), pas lié à l'espèce du lanceur ; « lance son objet » (779) avant les dégâts ; consommé ; si son effet de Dégommage (+0x05) n'est pas nul, la cible l'emploie tout de suite |
+| Picore, Piqûre | 0x021E6550 | après les dégâts, la baie de la cible lui est retirée et le lanceur l'emploie tout de suite (776) |
+| Calcination | 0x021E74F4 | la baie de chaque cible touchée brûle (1108) |
+| Sabotage | 0x021E33C0 | l'objet de la cible tombe (1050) |
+| Larcin, Implore | 0x021E3694 | sans objet avant l'attaque, le lanceur prend celui de la cible (travail 0x24 ; 1057) |
+| Tour de Magie, Passe-Passe | 0x021E3760 | échange des objets (682, puis « obtient... », 685, pour chacun) ; échec sans objet, avec une Lettre, un objet lié, ou lancé par un Pokémon sauvage ; Glue : « Ça n'affecte pas X... » (210) |
+| Recyclage | 0x021E3EE4 | sans objet, le lanceur retrouve l'objet qu'il a consommé (733 ; +0x14 de la structure du Pokémon, 0x021D66E0) |
+| Passe-Cadeau | 0x021E7B38 | le lanceur donne son objet à une cible qui n'en a pas (message à 7 variantes, 1111) |
+| Chute Libre | 0x021E7F48... | premier tour (0x021BFE4C) : le lanceur emporte la cible (message à 7 variantes, 1118) ; tous deux dans les airs (état caché 3), la cible ne peut ni agir ni partir (condition 0x21) ; échec sur un allié, une cible K.O., derrière un clone ou hors d'atteinte, « X se protège ! » (523) si elle s'est protégée ; second tour : dégâts, sans effet sur un type Vol (événement 0x2C) ; la cible retombe (0x021BFF00 ; « est lâché en Chute Libre », 1125, si le lanceur ne peut pas finir) ; pas de limite de poids dans ce jeu (le poids n'est lu que par Balayage, Nœud Herbe, Tacle Lourd et Tacle Feu) |
+| Aire d'Eau, de Feu, d'Herbe | 0x021E8360 | si un allié a choisi une autre Aire, le premier l'attend (0x021BE68C : « X attend Y... », 1146) et l'allié agit juste après (0x021BD0E8) ; l'attaque combinée (table 0x021F2C90) : « Les deux capacités se sont combinées ! » (fichier 15, 187), puissance 150, type et animation de l'Aire : Eau + Feu, type Eau, arc-en-ciel sur le côté du lanceur ; Feu + Herbe, Feu, mer de feu en face ; Eau + Herbe, Herbe, marécage en face ; 4 tours (fichier 15 : 164, 168, 172 ; fin 166, 170, 174) |
+| Reflet Magik | 0x021E3454... | échoue si tous les autres ont déjà agi ; « s'entoure du Reflet Magik » (761) ; jusqu'à la fin du tour, renvoie les capacités au drapeau 4 qui le visent (événement 0x2D, 0x021E8738), et Picots, Pics Toxik, Piège de Roc lancés d'en face (événement 0x1F, 0x021E86E4) ; « repousse Y ! Retour à l'envoyeur ! » (764) ; une capacité renvoyée ne l'est pas une seconde fois |
+
+**Capacités qui en lancent une autre** (emploi d'une capacité, 0x021BDE38) : après les conditions
+d'action, l'événement 0x18 (0x021C6278) laisse Métronome, Force-Nature, Blabla Dodo, Assistance,
+Photocopie, Moi d'Abord et Mimique poser la capacité appelée (variable 0x12) et sa cible (0x0D), ou
+l'échec (0x41). Échec : « X utilise Y ! », PP pris, « Mais cela échoue ! ». Sinon « X utilise Y ! »,
+l'animation de l'appelante (commande 0x30 du client), puis la capacité appelée reste soumise à
+Anti-Soin (drapeau 12) et à Gravité (drapeau 9) (0x021BE348), les PP sont pris à l'appelante (avec
+les cibles de l'appelée pour Pression), et l'événement 0x19 (0x021C63F8) donne le message de
+Métronome ou de Force-Nature, sinon « X utilise Z ! ». La cible d'une capacité appelée
+(0x021C7FD0, 0x021D805C) : en combat simple l'adversaire (ou soi) ; à plusieurs, au hasard parmi
+les adversaires voisins (tous en triple pour une capacité à distance), ou parmi les alliés. Chaque
+Pokémon garde la dernière capacité choisie (+0x14A : Métronome ; lue par Encore, Entrave, Dépit,
+Copie, Gribouille et les objets de choix) et la dernière lancée (+0x14C : celle qu'il a appelée ;
+lue par Mimique et l'Écho de l'objet Métronome) ; le serveur garde la dernière lancée au combat
+(0x1F74, Photocopie). Encore échoue sur la liste 0x0689E2DA (Encore, Mimique, Morphing, Copie,
+Gribouille) ou sans PP (0x021D5540) ; il pose 3 tours et Entrave 4, un de plus si le bit 1 des
+indicateurs du tour de la cible est mis (0x021D5B50, rôle non identifié).
+
+**Effets de côté** (overlay 95, table 0x0689D780 de 14 fiches : numéro, gestionnaire, couches au
+plus ; posés par le travail 0x19, 0x06898C10) : 9 Garde Large, 10 Prévention, 11 arc-en-ciel
+(chances des effets secondaires et de l'apeurement doublées pour les attaquants de ce côté), 12 mer
+de feu (fin du tour : 1/8 des PV aux Pokémon qui ne sont pas de type Feu, « est plongé dans un océan
+de feu », 1156), 13 marécage (Vitesse x 0x400).
+
+**Objets qui changent de main** : le travail 0x20 (0x021C9B58) pose un objet ; quand un autre
+Pokémon retire l'objet d'un porteur, l'événement 0x9A laisse Glue l'en empêcher (« L'objet de X ne
+peut pas être volé ! », 493, événement 0x9B). Le travail 0x23 consomme l'objet et le retient pour
+Recyclage (0x021C21F0) ; 0x24 échange deux objets (0x021C9C60). On ne prend pas un objet
+(0x021E8688) quand le lanceur est le Pokémon sauvage (0x021E8668 : combat sauvage de sorte 0, camp
+d'en face), ni un objet lié à une espèce (0x021E85D8 : Orbe Platiné et Giratina, Plaques 298 à 313
+et Arceus, liste 0x0689E38C, Modules 116 à 119 et Genesect, 0x0689E2BC). Lettres : objets 137 à
+148 (liste 0x0209E884 de l'ARM9) ; baies : 149 à 212 (0x0209E900). Le portage ne laisse pas voler
+l'objet d'un dresseur adverse (le jeu le rend-il après le combat ? non vérifié).
+
+**Derniers objets tenus** (gestionnaires de la table 0x021F1E44) : Baie Mepo (0x021DD1D4 : à la fin
+d'une capacité dont la capacité choisie n'a plus de PP, ou en entrant avec une capacité vide) ;
+Herbe Blanche (0x021DE1BC : des crans baissés, après une capacité, en entrant, en fin de tour ;
+1010) ; Rosée Âme (0x021DE818, 0x021DE854 : Attaque et Défense Spéciales x 1,5 de Latias et Latios) ;
+Orbe Adamant (Dialga, Dragon et Acier), Orbe Perlé (Palkia, Dragon et Eau) : x (100 + force) / 100
+(0x021DCFA8), Orbe Platiné (Giratina, Dragon et Spectre) x 0x1333 ; Nœud Destin (0x021DF064 : le
+porteur charmé, celui qui l'a charmé l'est aussi, 330) ; Pièce Rune et Encens Veine (0x021C83A8 :
+tenus au combat par un Pokémon du joueur, la somme gagnée double, Jackpot compris : « X obtient Y $ ! »,
+fichier 15, 59, après un combat sauvage) ; Pierrallégée (poids x 0,5) ; Point de Mire (0x021DFC58 :
+les immunités dues aux types du porteur tombent) ; Carton Rouge (0x021DFBA0 : touché, il renvoie
+l'attaquant, remplacé au hasard, 417 à 7 variantes) ; Bouton Fuite (0x021DFDC8 : touché, le porteur se
+retire, 414, et son dresseur choisit le remplaçant). Il faut un remplaçant pour les deux derniers.
+
+**Objets du sac en combat** (action 2 : 0x021CB6D0) : « X utilise Y ! » (fichier 15, 33 ; 35 pour un
+dresseur), puis la table 0x021EFD84 de 23 effets (paramètre de l'objet, gestionnaire) : soins de
+statut (paramètres 18 à 24 : sommeil, poison, brûlure, gel, paralysie, confusion, amour), Défense
+Spéc. (25 : Brume 5 tours, fichier 15, 136), réanimation (26 : « n'est plus K.O. », fichier 14, 3),
+crans (30 à 36, seulement au combat), PP d'une capacité choisie (39 : Huile, « récupère les PP
+de... », 390 ; 0x7F : tous), de toutes (40 : Élixir, 393), PV (41 : « récupère des PV », 387 ; 0xFD
+un quart, 0xFE la moitié, 0xFF tous) ; les objets 611 à 614 (Appel CapSpé, Jette Objet, Appel
+Objet, Réamorçage) ont leur propre gestionnaire (non repris). Rien n'a agi : « Mais ça n'a aucun
+effet ! » (fichier 15, 68). L'écran demande la capacité d'une Huile (« Laquelle restaurer ? »,
+fichier 18, 104) ; un objet sans effet est refusé dans le menu (« Ça n'aura aucun effet. », 91).
+
+**Objet employé tout de suite** (travail 0x22, 0x021C9DDC : un gestionnaire provisoire de l'objet,
+0x021DCF18, reçoit l'événement 0x73) : les baies (soin, statut, confusion, crans, Lansat, Micle,
+Mepo), Herbe Blanche, Herbe Mental, Roche Royale et Croc Rasoir (apeurement à coup sûr), Balle
+Lumière (paralysie), Orbe Toxique, Orbe Flamme et Pic Venin (statut) ; les autres objets ne font
+rien. Messages des objets (fichier 14, objet dans le mot 1) : PV rendus 908 (Baies Oran, Sitrus et
+de saveur) ; PP 911 (Baie Mepo : la première capacité sans PP, ou, mangée de force, la première qui
+en a perdu) ; statut soigné 917 poison, 920 paralysie, 923 sommeil, 926 gel, 929 brûlure ;
+confusion 932 ; amour 935 ; cran monté par un objet 938 + 21 x (crans - 1) + 3 x statistique ;
+Lansat 1001 ; Herbe Blanche 1010 ; Micle 1028. Herbe Mental arrête l'amour, Tourmente, Entrave,
+Anti-Soin, Encore et Provoc (conditions 0x0689E374) ; Baie Frista monte de 2 une statistique tirée
+parmi celles qui peuvent monter (0x021DD92C).
+
+Corrigés en passant : messages du premier tour de Rebond (544), Piqué (550), Coud'Krâne (556) et
+Revenant (541), qui étaient ceux d'un Pokémon sauvage ; Prélèvement Destin et Rancune s'arrêtent à
+la capacité suivante du lanceur ; Imitation (619) et Copie Type (1089) ont des messages à 7 variantes ;
+Picots, Pics Toxik et Piège de Roc ne posent qu'une couche en combat double ; Hurlement et Cyclone
+choisissent le remplaçant parmi l'équipe du dresseur de la place, qui passe par la sortie
+ordinaire (Médic Nature, Régé-Force) ; messages des baies (Sitrus et Oran : 908, pas 914 qui est
+celui des Restes ; statuts : 917 à 929, pas 1010 qui est celui de l'Herbe Blanche ; crans : messages
+des objets) ; un Pokémon sauvage ne vole plus l'objet du joueur.
+
+### IA des dresseurs (overlay 96, `battle_ai.gd`, `battle_ai_script.gd`)
+
+**Client de l'IA** (overlay 93, 0x021D0710 ; créé par 0x021CD690 pour un client tenu par la console)
+: pour chaque Pokémon au combat, dans l'ordre : K.O. ou action imposée (0x021CF410 : rechargement,
+drapeau 12 ; capacité bloquée, altération 0x19 ; second tour, 0x1A) ; objet du sac (0x021D3D64) ;
+changement (0x021CFB90, seulement contre un dresseur) ; rotation au hasard (0x021D0668 : rester, ou
+faire passer devant un Pokémon en retrait en état de se battre) ; Lutte sans capacité utilisable
+(0x021CF4C4) ; sinon la note des capacités par l'overlay 96. Capacité utilisable (0x021CF7BC) : des
+PP et rien ne l'empêche (0x021CF550).
+
+**Indicateurs** (0x021B9F5C) : contre un dresseur, ceux de sa fiche (+0x0C de `a/0/9/2` ; la ROM
+n'emploie que les bits 0, 1, 2, 4, 5 et 7) ; combat sauvage : 0x800 si le drapeau 8 du combat est mis
+(rôle non identifié, aucun combat du portage ne le pose), 0x80 en double, 0 sinon (toutes les
+capacités utilisables restent à 100 : l'une au hasard).
+
+**Machine de l'overlay 96** (fichier source « tr_ai.c ») : 0x02187EA0 crée sa structure de 0xD8
+octets et une machine des scripts commune (0x0201121C) avec la table de 120 commandes en 0x0218A548 ;
+archive 0xAB = `a/1/7/1`, 14 fichiers, un par bit des indicateurs (cache de 4 fichiers, 0x0218A434).
+- 0x0218805C prépare un Pokémon : note de départ 100 pour une capacité utilisable, 0 sinon (+0x14) ;
+  un tirage rand() >> 24 gardé pour le tour (+0xCC).
+- 0x02187F50 : en combat simple, la cible est la place d'en face (place ^ 1) ; en double et en triple,
+  0x02188224 essaie chaque place sauf la sienne (place vide ou K.O. : -1) ; en rotatif, une place
+  adverse au hasard.
+- Pour une cible (0x021880EC) : sa dernière capacité lancée est notée dans la mémoire du client
+  (+0x4C : 6 places x 4 capacités, jamais effacée) ; pour chaque bit des indicateurs, le script
+  tourne sur chaque capacité (0x0218855C) ; sans PP, ou hors de portée en triple (ni voisine, ni
+  drapeau 11 « à distance »), la note vaut 0. La machine s'arrête après 500 unités de temps et
+  reprend à l'image suivante (+0xD0).
+- Choix : la meilleure note parmi les capacités connues, égalités tirées au sort. En double et en
+  triple : la meilleure note de chaque place ; un allié (même parité de place, 0x021B8C88) ne la
+  garde que si elle atteint 100 ; la meilleure place l'emporte. Une capacité qui vise « un allié ou
+  soi » (cible 1) tournée vers une place paire vise le lanceur ; en triple, une place hors de portée
+  devient le milieu de son camp ((place & 1) + 2). Fuite demandée par un script (0x3D) : action 4.
+
+**Scripts** : commande u16, paramètres u32 (nombre lu dans le code de chaque commande) ; sauts
+relatifs à la fin de la commande ; une liste (0x1B, 0x1C : u32 jusqu'à 0xFFFFFFFF) est relative à la
+fin de son paramètre ; la table de 0x73 (switch sur l'effet de la capacité) contient des décalages
+relatifs à son début. `tools/re/aiscripts.py` les désassemble et vérifie les 14 fichiers : le
+fichier 12 (12 octets) n'est pas un script de cette machine, aucun dresseur n'a ce bit. Fichiers : 0
+(9 120 octets : capacités inutiles, de -1 à -12), 1 (dégâts et K.O.), 2 (23 988 octets, « expert » :
+statuts, soins, préparation selon la situation), 4 (dégâts faibles, premier tour), 5 (Reshiram et
+Zekrom : Flamme Croix et Éclair Croix au premier tour, +10), 7 (8 216 octets, combat double), 11
+(fuite d'un Pokémon sauvage qui n'est pas piégé), 13 (fuite quand la cible a 20 % de ses PV ou moins).
+
+**Commandes** : « qui » (0x0218A100) vaut 0 la cible, 1 le lanceur, 2 l'allié de la cible, 3 celui du
+lanceur (en simple et en rotatif, le Pokémon lui-même ; en double, place ^ 2 ; en triple, le milieu
+pour un bord et la place 2 du camp pour le milieu, 0x021B8BD8). Les lectures vont dans le registre
+de résultat (+0x38) ; les comparaisons (0x0218A094) : 0 <, 1 >, 2 ==, 3 !=, 4 bits communs, 5 aucun,
+6 <=, 7 >=.
+
+| Commandes | Rôle |
+| --- | --- |
+| 00-03 | tirage rand() >> 24 comparé (<, >, ==, !=) |
+| 04 | ajoute à la note (au moins 0) |
+| 05-08 | PV en % comparés (0x021D5BE4 : 100 x PV / PV max en virgule fixe 20.12, arrondi, puis >> 12) |
+| 09, 0A | a un statut ou non (0x021D6248) |
+| 0B, 0C | a l'altération n ou non (0x021D6264) |
+| 0D, 0E | gravement empoisonné ou non (0x021E8A18) |
+| 0F, 10 | drapeau n du Pokémon (0x021D5B7C) |
+| 11, 12 | effet de côté n sur son camp (0x06898CE0) |
+| 13-18, 24, 25 | registre comparé (<, >, ==, !=, bits communs, aucun ; 24 et 25 : ==, !=) |
+| 19, 1A | capacité essayée égale à n ou non |
+| 1B, 1C | registre dans la liste ou non |
+| 1D, 1E | le lanceur a une capacité avec de la puissance, ou aucune |
+| 1F | tour du serveur (0 au premier tour, 0x021C80D8) |
+| 20 | type : 0, 2 de la cible ; 1, 3 du lanceur ; 4 de la capacité ; 5-8 des alliés |
+| 21, 28, 29, 5D | puissance, numéro, effet (séquence, paramètre 0x1C), classe de la capacité |
+| 22 | dégâts estimés : 0 sans dégâts, 1 si une autre capacité du lanceur fait plus, 2 sinon |
+| 23 | dernière capacité lancée (+0x14C) |
+| 26 | vitesse (0x021BC8E8, Distorsion comprise) : 0 plus rapide, 1 plus lent, 2 égale |
+| 27 | membres en retrait en état de se battre |
+| 2A, 53 | talent vu (0x0218A1C0), égal à n |
+| 2C | efficacité de la capacité égale à n (0 sans effet à 5 quadruple) |
+| 2D, 2E | un membre en retrait sans statut, avec un statut |
+| 2F | temps (1 soleil, 2 pluie, 3 grêle, 4 sable) |
+| 30, 31 | effet de la capacité égal à n ou non |
+| 32-35 | cran brut (0 à 12, 6 au neutre) de la statistique n (1 Attaque à 7 Esquive) comparé |
+| 36, 37 | la capacité met K.O. ou non (dégâts estimés au moins égaux aux PV) |
+| 38-3B | capacité (ou effet) connue : 0 dans la mémoire de la place de la cible, 1 du lanceur, 3 de son allié (capacités seulement) |
+| 3D | fuite |
+| 40, 41, 47, 55 | objet tenu, son effet (paramètre 1), objet consommé (+0x14), objet tenu égal à n |
+| 42, 6E | sexe, espèce |
+| 43 | 1 tant qu'il n'a ni attaqué ni pris d'objet depuis son entrée (drapeau 0) |
+| 44 | Stockage (compteur 0) |
+| 45, 46 | type de combat (0 simple à 3 rotatif) ; adversaire (0 sauvage, 1 dresseur) |
+| 49, 4A | puissance, effet de la capacité du registre (0 et -1 sans capacité) |
+| 4B | emplois de suite d'Abri, Détection ou Ténacité (+0x14E), 0 sinon |
+| 4C, 4D | saut, fin |
+| 4E | niveaux comparés, table 0x0218A520 (plus haut, plus bas, égal) |
+| 4F, 50 | la cible est sous Provoc ou non |
+| 51 | la cible est un allié |
+| 52 | a le type n |
+| 54 | Torche active (drapeau 13) |
+| 56 | effet de terrain n (0x021EF8E8) |
+| 57 | couches d'un effet de côté |
+| 58, 59 | il reste un membre en retrait et le Pokémon au combat a perdu des PV, ou a dépensé des PP (le jeu lit le Pokémon au combat, pas le membre) |
+| 5A | puissance de Dégommage de l'objet tenu (paramètre 10), 0 sous Embargo |
+| 5B | PP de la capacité |
+| 5C | toutes ses capacités (au moins deux) ont servi depuis son entrée |
+| 5E | classe de la dernière capacité de la cible |
+| 5F | nombre de Pokémon au combat plus rapides (0x021C8170) |
+| 60 | tours depuis son entrée (+0x146) |
+| 61 | un membre en retrait frapperait plus fort que le lanceur |
+| 62 | le lanceur a une capacité super efficace |
+| 63 | la dernière capacité de « qui » frapperait plus fort que toutes celles du lanceur |
+| 64 | somme des crans au-dessus du neutre |
+| 65 | cran de « qui » moins celui du lanceur |
+| 69 | comme 22, avec les capacités des alliés au combat |
+| 6A, 6B | K.O. ou non |
+| 6C | talent, 0 sous Suc Digestif |
+| 6D | a un clone |
+| 6F-72 | tirage du tour (+0xCC) comparé |
+| 73 | switch sur l'effet de la capacité (fin au-delà du maximum) |
+| 74 | attaque différée déjà prévue sur sa place (effet de place 3) |
+| 75-77 | place (0 à 5) comparée à l'Attaque Spéciale : bug du jeu, la lecture de l'Attaque est écrasée (0x0218A044) |
+| 2B, 3C, 3E, 3F, 48, 66-68 | rien |
+
+**Valeurs** (retrouvées par la capacité dont l'effet mène à chaque test, et par les gestionnaires) :
+altérations (36, de 0 à 0x23, que Relais copie en 0x021D658C) : 1 paralysie, 2 sommeil, 3 gel, 4
+brûlure, 5 poison, 6 confusion, 7 amour, 8 étreinte, 9 Cauchemar, 10 Malédiction, 11 Provoc, 12
+Tourmente, 13 Entrave, 14 Bâillement, 15 Anti-Soin, 16 Suc Digestif, 17 Clairvoyance (et Œil
+Miracle), 18 Vampigraine, 19 Embargo, 20 Requiem, 21 Racines, 22 Regard Noir, 23 Encore, 25 capacité
+bloquée, 26 second tour, 27 objet de choix, 29 Verrouillage (posé sur le lanceur, 0x021E5204), 30 Vol
+Magnétik, 31 Anti-Air, 32 Lévikinésie, 33 Chute Libre, 35 Anneau Hydro. Drapeaux (+0x155, posés par
+0x021D5F84) : 0 a agi depuis son entrée (0x021BCC80, après une attaque ou un objet), 9 Puissance, 10
+Astuce Force, 12 rechargement, 13 Torche. Effets de côté : 0 Protection, 1 Mur Lumière, 2 Rune
+Protect, 3 Brume, 4 Vent Arrière, 5 Air Veinard, 6 Picots, 7 Pics Toxik, 8 Piège de Roc (puis ceux
+déjà notés plus haut). Effets de terrain : 1 Distorsion, 2 Gravité, 3 Possessif, 4 Tourniquet, 5
+Lance-Boue, 6 Zone Étrange, 7 Zone Magique.
+
+**Talent vu** (0x0218A1C0) : le sien et celui de son allié ; pour la cible et son allié, celui que
+sa fenêtre a déjà montré à cette place (table de l'overlay 94, 0x021F8A9C), sinon le vrai s'il piège
+(Marque Ombre, Magnépiège, Piège), sinon l'un des talents de l'espèce (+0x1A à +0x1C) au hasard, à
+chaque lecture ; 0 sous Suc Digestif.
+
+**Dégâts estimés** (0x021C7DB4) : 0 si la capacité n'a pas de puissance (0x0201C330) ; sinon le
+calcul du combat (0x021C1E14) sans critique, multiplicateur 1, avec l'efficacité du combat
+(0x021C7D4C, 0x021C6DDC : le type pour ce lanceur contre les deux types de la cible, capacités de
+statut comprises ; le Sol est sans effet sur un Pokémon qui flotte, 0x021C6EAC) et le tirage minimal
+85 (paramètre 0 ; 1 : un vrai tirage du combat). Une cible sous Illusion est vue sous les traits du
+membre qu'elle imite (0x021B931C).
+
+**Objets du sac** (0x021D3D64) : pas sous Embargo ; cases 0 à 3 dans l'ordre, la case n seulement si
+l'équipe du dresseur compte au plus 6, 4, 2 ou 1 Pokémon (table 0x021EFF14) ; un objet qui rend des
+PV (paramètre 0x29) sert au quart des PV ou moins ; sinon un objet de combat (paramètres 0x1E à 0x23,
+table 0x021EFF34) si la statistique peut monter, Muscle + (0x24) sans cran de critique (0x021D5EB4,
+Puissance comptée), un soin (0x12 à 0x18, table 0x021EFF40) si le Pokémon a l'altération. La case de
+l'objet choisi est vidée.
+
+**Changements** (0x021CFB90, contre un dresseur) : il faut pouvoir partir (0x021CF874 : Carapace
+Mue ; sinon ni Marque Ombre, Piège ou Magnépiège en face, 0x021CF954, ni étreinte, Regard Noir ou
+Racines) et plus de membres en état de se battre que de places au client ; la cible est un adversaire
+tiré au sort (0x021CFCF0). Attaque d'au moins une efficacité donnée (0x021D05E4) : des PP, rien ne
+l'empêche, son type de base sur la table des types ; chez un remplaçant : 0x021D04FC. Raisons, dans
+l'ordre : Requiem au dernier tour (0x021CFD6C) ; Garde
+Mystik en face en combat simple, sans attaque super efficace, avec un remplaçant qui en a une, 2 fois
+sur 3 (0x021CFDA8) ; au moins deux attaques, toutes sans effet (0x021CFE38) ; objet de choix bloqué
+sur une attaque sans effet, ou sur une capacité de statut une fois sur deux (0x021CFF4C) ; pour ces
+deux-là, un remplaçant avec une attaque super efficace : 2 fois sur 3, sinon avec une attaque qui
+porte : une fois sur deux. Puis un remplaçant dont le talent absorbe le type d'un coup reçu au tour
+d'avant (relevé +0x15C, 0x021D68E0 ; table 0x021EFF62 : Eau, Absorb Eau, Lavabo, Peau Sèche ;
+Électrik, Absorb Volt, Motorisé, Paratonnerre ; Feu, Torche ; Plante, Engrais au lieu d'Herbivore
+dans la table du jeu), une fois sur deux, et le Pokémon reste une fois sur trois s'il a une attaque
+super efficace (0x021D00A0) ; Médic Nature endormi ou gelé à la moitié de ses PV ou plus (0x021D01E8)
+; crans (0x021D02A4 : la somme des 7 crans bruts doit valoir 3 ou moins, ce qui n'arrive presque
+jamais). Sans remplaçant désigné : classement 0x021D0980 (meilleure attaque avec des PP : puissance,
+60 sous 10, x efficacité de son type sur la table des types : 0, /4, /2, x1, x2, x4 ; tri par
+sélection), le premier qui n'est pas déjà promis ce tour (+0x10C). Les membres en retrait sont
+parcourus dans l'ordre de l'équipe au combat (les Pokémon au combat en tête, deux places échangées à
+chaque envoi).
+
+**Remplaçant après un K.O.** (0x021D0CF0) : les membres en état de se battre, classés par 0x021D0980
+contre un adversaire tiré au sort.
+
+**Générateurs** : les scripts et les égalités tirent avec rand() de l'ARM9 (0x0203F040), les
+changements et la rotation avec le générateur du client (+0xF4) ; le portage leur donne un générateur
+à part, qui ne touche pas celui du combat. Le compteur d'Abri du jeu (+0x14E, 0x021D66E4) compte les
+emplois réussis de suite d'une même capacité : le portage lit le sien (`protect_streak`) pour les
+trois capacités qu'interroge 0x4B.
+
+### Autour du combat (`battle.gd`, `game_state.gd`)
+
+- **Après un K.O. en combat sauvage** : deux boutons, « UTILISER UN AUTRE POKÉMON » et « FUITE »
+  (fichier 16, 5 et 1). La fuite (0x021BC300) passe par la fuite ordinaire (0x021BD524) avec le
+  Pokémon K.O. de la place 0 : sa Vitesse, sans fuite assurée (0x021BD658 ne la donne qu'à un
+  Pokémon en forme) ; ratée (« Impossible de fuir ! »), il faut en envoyer un autre.
+- **Style de combat** (options, fichier 29 : STYLE DE COMBAT, CHOIX 15 ou DÉFINI 16 ; ANIM. COMBAT,
+  AVEC 13 ou SANS 14) : en « CHOIX », contre un dresseur en combat simple, quand il va envoyer un
+  autre Pokémon, « Y va être envoyé par... Voulez-vous changer de Pokémon ? » (fichier 15, 20) et
+  les boutons CHANGER DE POKÉMON, NE PAS CHANGER (fichier 16, 6 et 7) ; le joueur change d'abord.
+- **Capture, équipe pleine** (après le combat, 0x021B95B4 de l'overlay 92) : le Pokémon va dans le
+  PC (0x020076D0 : la boîte courante, sinon la suivante qui a de la place ; 24 boîtes de 30, noms
+  par défaut BOÎTE 1 à 24 du fichier 9, lignes 6 à 29) ; « X est envoyé dans la BOÎTE n du PC de
+  Boletta ! » (fichier 234, 177), ou « de ??? » (176) tant que le drapeau 0x96D n'est pas mis. Le
+  surnom (« Donner un surnom au Pokémon X capturé ? », fichier 234, 175, overlay 207) attend l'écran
+  du surnom.
+
+- **Paroles du dresseur en plein combat** (0x021CE890, avant les choix du joueur, quand son Pokémon
+  n'a pas d'action imposée) : pour le Pokémon de devant du premier dresseur, dans l'ordre de la table
+  0x021EFF18 (18 moitié des PV, 17 touché une première fois : PV différents du maximum, 19 dernier
+  Pokémon : plus d'un membre et un seul en forme, 20 dernier Pokémon à la moitié de ses PV), chaque
+  genre une seule fois ; un genre sans message est écarté ; si plusieurs conviennent le même tour, le
+  dernier est dit et les autres sont perdus. Le dresseur revient, dit sa ligne (fichier 189), repart.
+- **Temps du terrain** (0x0202C72C) et **au début du combat** : exceptions de l'histoire (0x0202C8CC :
+  zone 337 sous la pluie, temps 6 ou 7, quand le drapeau 0x96F est mis ; zones 289 à 316, temps 10,
+  11, 13, 14 selon des drapeaux, 0x0202C850, sans effet en combat), puis le calendrier `a/0/9/7`
+  (0x021647D4 de l'overlay 10) : fichier 1, 68 paires (zone, position) dès l'octet 2 ; fichier 0, un
+  octet par jour, 366 jours par zone (jour = jours des mois précédents, février compté 29, table
+  0x0216489C, + jour - 1) ; Désert Délassant (157, 326) : sable toute l'année ; zones 96 à 345 : pluie,
+  grêle certains jours ; sinon l'en-tête (bits 0-5 de +0x1C). Au combat (0x021AA63C) : 2, 6, 7 pluie,
+  3 et 12 sable, 4 et 5 grêle ; le combat commence avec ce temps, sans fin (0x021BBB00 : 0x021C3B08
+  avec 0xFF tours), avant les talents d'entrée (« Il commence à pleuvoir ! »...).
+- **Évolution après le combat** (0x021B95B4, étape 4) : après une victoire ou une capture, chaque
+  membre de l'équipe dont le niveau a monté (masque de 0x021B99B4) passe par 0x0201B2CC (cas 0 :
+  lieu du combat, période de la journée) ; une évolution trouvée joue la séquence (`EvolutionScreen`) :
+  fichier 172 (0 « Quoi ? X évolue ! », 1 « Hein ? X n'évolue plus ! » si Annuler l'arrête,
+  2 « Félicitations ! Votre X évolue en Y ! »), musique SEQ_BGM_SHINKA, fanfare SEQ_ME_SHINKAOME,
+  puis les capacités de la nouvelle espèce à ce niveau (fichier 204, comme en combat). Le talent garde
+  sa place (PID, ou le talent caché) ; Munja naît avec Ninjask s'il reste une place et une Poké Ball
+  (prise). Périodes de la journée : table 0x0209DEBC (0x020113F0), 24 heures par saison, 0 matin,
+  1 jour, 2 soir, 3 nuit, 4 fin de nuit ; la nuit des évolutions (0x02011410) : 3 et 4.
 
 ### Formules du combat (`battle_calc.gd`)
 
@@ -1250,7 +1762,7 @@ Les nombres « fx » ont 12 bits après la virgule (0x1000 = 1,0). Arrondi des m
 | partage | 0x021CB274 | moitié au Multi Exp, le reste entre les Pokémon qui ont affronté le vaincu |
 | expérience reçue | 0x021CB4FC | part x (2L + 10)^2,5 / (L + Lj + 10)^2,5 + 1 (racine fx, 0x0207C74C) ; x 1,5 Pokémon échangé, x 1,5 Œuf Chance |
 | capture | 0x021CBAD4 | ((3 PV max - 2 PV) x taux x Ball / 3 PV max) x statut (x 2,5 sommeil et gel, x 1,5 les autres) ; seuil = 0x10000000 / racine4(0xFF000 / valeur), trois tests rand(0x10000) < seuil |
-| Balls | 0x021CBCE8 | Super x 2, Hyper x 1,5, Filet x 3, Scuba x 3,5, Faiblo, Bis x 3, Chrono, Sombre x 3,5, Rapide x 5 |
+| Balls | 0x021CBCE8 | Super x 2, Hyper x 1,5, Filet x 3, Scuba x 3,5 (terrain 6), Faiblo, Bis x 3, Chrono, Sombre x 3,5 (décors 4 et 5, ou décor de la liste 0x0689E308 aux périodes 3 et 4), Rapide x 5 |
 | herbes sombres | 0x021CBC94 | 0,3 à 1 selon les espèces capturées |
 | capture critique | 0x021CBE48 | x 0,5 à 2,5 selon les espèces capturées (plus de 30 à plus de 600), rand(256) < valeur x m / 6 ; un seul test |
 | fuite | 0x021BD5AC | réussie si plus rapide, sinon rand(256) < vitesse x 128 / vitesse adverse + 30 x tentatives |
@@ -1269,6 +1781,15 @@ combat (poches 22-27), 18 équipe en combat (invites 6, 7, 9, 10 ; PP 53 ; noms 
 OUBLIER 68, RETOUR 69), 20 démonstration de capture, 189-191 dresseurs, 204 nouvelle capacité.
 Mots variables : {0102:n} Pokémon, {0100:n} dresseur, {0107:n} capacité, {0109:n} objet, {0106:n}
 talent, {010C:n} surnom, {0200:n} / {0202:n} / {0204:n} nombres.
+
+Variante d'un message du fichier 14 (client, 0x021EEE94 puis 0x021EF16C) : 0x021EEF38 compte les
+noms de Pokémon du texte (balises 0x0101, 0x0102, 0x010C) ; avec deux noms, 7 variantes selon les
+camps des deux premiers mots (0x021EF220), sinon 3 selon le premier (0x021EF1A4). La table
+0x021F3978 (14 messages) passe outre : 0x1B, 0x5A, 0x99, 0xAE, 0x3AA, 0x21 ont leur propre
+fonction ; Coup d'Main (0x414), Boost (0x417), 0x14D, 0x471, 9, 12, 18, 21 ont 3 variantes malgré
+leurs deux noms. Fichier 15 : la table 0x021F3940 (27 messages, ceux d'un côté du terrain : Mur
+Lumière, Garde Large...) prend la ligne suivante quand le Pokémon du premier mot n'est pas du côté
+du joueur (0x021EEE20, test 0x021B8B70).
 
 ### Affichage du combat (overlay 94, `engine/battle/ui/`)
 
@@ -1292,7 +1813,18 @@ socle 32 (`batt_stage24`). Les « brush » du fond sont des nuages translucides 
 
 **Scène** (`battle_stage.gd`) : socles en (0, 0, 5,449) et (0, 0, -12,718) (0x021F67D6 ; rotatif :
 10 et -15). Pokémon (0x021FF39C, table 0x02209FF0 des combats simples) en (0,5 ; 0,4 ; 7) et
-(0,3 ; 0,4 ; -10) ; doubles 0x0220A020, triples 0x0220A0F8, rotatifs 0x0220A140. Caméra
+(0,3 ; 0,4 ; -10) ; doubles 0x0220A020, triples 0x0220A0F8, rotatifs 0x0220A140. La position d'une
+place vient de 0x02201848 : places 0 et 1 en combat simple ; à plusieurs, les Pokémon sont aux places
+2 à 7 (place du combat + 2) et les bits 0 et 1 de [vue+0x510] choisissent la table (rotatif si le
+bit 1, sinon triple si le bit 0, sinon double) ; places 8 à 13 pour les dresseurs (0x0220A0B0). En
+double : place 2 (joueur, gauche) x = -1,69, place 4 (joueur, droite) x = 2,5, place 3 (en face,
+droite) x = 2,43, place 5 (en face, gauche) x = -2,2 ; en triple, le joueur en x = -4, 0,75, 5,19 et
+en face 4,5, 0,74, -4,39. Échelles du mode « monde » (0x022018D4) : 0x02209F70 en double,
+0x02209FD8 en triple, 0x02209FA8 en rotatif. Les jauges des combats triples et rotatifs sont
+plus petites (fonds 171 à 176 au lieu de 165 à 170, 0x022073D0). Le début du combat a une routine
+par type de combat et d'adversaire (0x021EB2CC : sauvage 0x021EB630, dresseur 0x021EB810, double
+sauvage 0x021EBAC0, double contre un ou deux dresseurs 0x021EBD30 et 0x021EBD7C, triple
+0x021EBE74...) ; le portage joue pour l'instant les effets d'envoi une place après l'autre. Caméra
 (0x021F6DDC, créée par 0x020489BC) : perspective, demi-angle vertical 13° (sinus 0x399, cosinus
 0xF97), plans 1 et 512 ; vue par défaut (0x021F71A8) œil (6,7 ; 6,7 ; 17,3), point visé (0 ; 2,6 ;
 0) ; prises de vue (switch 0x021F9C74) : sur le Pokémon du joueur ou d'en face (yeux 0x0220AC88,

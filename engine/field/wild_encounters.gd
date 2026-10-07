@@ -13,6 +13,10 @@ extends RefCounted
 ## 4. test (0x021AA39C) : pas de rencontre si le compteur vaut 0, taux 1 s'il vaut 1 (le premier pas
 ##    après une rencontre), puis rencontre si le tirage « pourcent » (0 à 99) est au plus le taux ;
 ## 5. le Pokémon est tiré dans le groupe (EncounterTable.pick()).
+##
+## Dans les herbes sombres, avant les étapes 3 et 4, un tirage « pourcent » < 40 décide d'un combat
+## double quand le joueur a plus d'un Pokémon en forme (0x021A92F0, bit 0x20 ; deux Pokémon tirés
+## l'un après l'autre par 0x021A94A8).
 
 ## Talents du Pokémon de tête (numéros du jeu).
 const DOUBLING_ABILITIES: Array[int] = [35, 71, 99]
@@ -22,6 +26,8 @@ const COMPOUND_EYES := 14
 const REPELLING_ITEMS: Array[int] = [224, 320]
 const COUNTER_MAX := 0xA000
 const MAX_RATE := 100
+## Combat double dans les herbes sombres : tirage « pourcent » sous cette valeur (0x021A92F0).
+const DOUBLE_CHANCE := 40
 
 var random: GameRandom
 ## Case de référence, compteur de pas et « le héros l'a quittée ».
@@ -41,9 +47,10 @@ func reset(tile: Vector2i) -> void:
 	moved = false
 
 
-## Un pas du héros sur `tile` : le Pokémon rencontré { species, form, level, item, group }, ou {}.
-## `table` = rencontres de la zone (null : aucune), `lead` = premier Pokémon de l'équipe.
-func step(tile: Vector2i, behavior: int, flags: int, table: EncounterTable, lead: Pokemon) -> Dictionary:
+## Un pas du héros sur `tile` : le Pokémon rencontré { species, form, level, item, group }, ou {} ;
+## en combat double, le second Pokémon dans `partner`. `table` = rencontres de la zone (null :
+## aucune), `lead` = premier Pokémon de l'équipe, `able` = Pokémon en forme dans l'équipe.
+func step(tile: Vector2i, behavior: int, flags: int, table: EncounterTable, lead: Pokemon, able := 1) -> Dictionary:
 	_count_step(tile)
 	if table == null:
 		return {}
@@ -55,13 +62,19 @@ func step(tile: Vector2i, behavior: int, flags: int, table: EncounterTable, lead
 		rate = maxi(rate + TileBehaviors.rate_bonus(behavior), 0)
 	if rate == 0:
 		return {}
+	var double := group == TileBehaviors.Encounter.DARK_GRASS and able > 1 and EncounterTable.roll_percent(random) < DOUBLE_CHANCE
 	rate = modified_rate(rate, lead)
 	if not _passes(rate):
 		return {}
-	var wild := table.pick(group, random, lead != null and lead.ability == COMPOUND_EYES)
+	var compound_eyes := lead != null and lead.ability == COMPOUND_EYES
+	var wild := table.pick(group, random, compound_eyes)
 	if wild.is_empty():
 		return {}
 	wild.group = group
+	if double:
+		var partner := table.pick(group, random, compound_eyes)
+		if not partner.is_empty():
+			wild.partner = partner
 	reset(tile)
 	return wild
 

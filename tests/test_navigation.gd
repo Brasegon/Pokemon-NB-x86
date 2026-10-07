@@ -154,7 +154,7 @@ func _initialize() -> void:
 	_press_times("bas", 11)
 	_press("valider")
 	_expect("res://scenes/options/options_menu.tscn")
-	_press_times("bas", 5)
+	_press_times("bas", 7)
 	_press("valider")
 	_expect("res://scenes/options/key_bindings.tscn")
 	_press("annuler")
@@ -263,22 +263,26 @@ func _quit_field() -> void:
 ## Appuie sur Valider toutes les 8 images (messages d'une scène) jusqu'à ce que reached soit vrai,
 ## au plus max_presses fois, puis vérifie check à ce moment-là.
 func _advance_until(reached: Callable, max_presses: int, check: Callable, label: String) -> void:
-	var poll := {"presses": 0}
-	poll.step = func() -> void:
-		if reached.call():
-			_check(check.call(), label)
-			return
-		poll.presses += 1
-		if poll.presses > max_presses:
-			_check(false, label + " (jamais atteint)")
-			return
-		for pressed in [true, false]:
-			var event := InputEventAction.new()
-			event.action = "valider"
-			event.pressed = pressed
-			root.push_input(event)
-		_steps.push_front([poll.step, 8])
-	_steps.append([poll.step, 0])
+	_steps.append([_poll.bind({"presses": 0}, reached, max_presses, check, label), 0])
+
+
+## Une étape de _advance_until() : vérifie, ou appuie sur Valider et se remet en tête de la file. Une
+## méthode liée plutôt qu'une fonction anonyme rangée dans son propre état : ce cycle retenait la
+## fonction, et avec elle ce script, jusqu'à la sortie (fuite signalée par Godot).
+func _poll(state: Dictionary, reached: Callable, max_presses: int, check: Callable, label: String) -> void:
+	if reached.call():
+		_check(check.call(), label)
+		return
+	state.presses += 1
+	if state.presses > max_presses:
+		_check(false, label + " (jamais atteint)")
+		return
+	for pressed in [true, false]:
+		var event := InputEventAction.new()
+		event.action = "valider"
+		event.pressed = pressed
+		root.push_input(event)
+	_steps.push_front([_poll.bind(state, reached, max_presses, check, label), 8])
 
 
 ## Panneau de commandes ou de capacités ouvert dans l'écran de combat, ou null.

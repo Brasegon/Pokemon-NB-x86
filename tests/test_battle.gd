@@ -40,6 +40,25 @@ func _initialize() -> void:
 	_test_backgrounds()
 	_test_wild_encounters()
 	_test_capture_demo()
+	_test_double_wild()
+	_test_double_trainer()
+	_test_triple_adjacency()
+	_test_spread_and_screens()
+	_test_rotation()
+	_test_special_moves()
+	_test_attack_moves()
+	_test_team_moves()
+	_test_call_moves()
+	_test_item_moves()
+	_test_sky_drop_and_pledges()
+	_test_last_abilities()
+	_test_last_items()
+	_test_bag_items()
+	_test_around_battle()
+	_test_evolution_rules()
+	_test_trainer_speech()
+	_test_field_weather()
+	_test_trainer_ai()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -259,7 +278,9 @@ func _transcript(battle: Battle) -> PackedStringArray:
 			texts = [event]
 		elif event.type == "intro":
 			for key: String in ["appeared", "challenge", "sent", "go"]:
-				if event.has(key):
+				if event.has(key) and event[key] is Array:
+					texts.append_array(event[key])
+				elif event.has(key):
 					texts.append(event[key])
 		for text: Dictionary in texts:
 			var file: MsgFile = _rom.text_file(BWFiles.TEXT_SYSTEM, text.file)
@@ -359,6 +380,384 @@ func _test_learn_move() -> void:
 	_check(snivy.knows(74) and not snivy.knows(33), "nouvelle capacité à la place de la première")
 
 
+## Combat sauvage double (herbes sombres) : deux Pokémon de chaque côté, messages du jeu pour deux,
+## Éboulement touche les deux adversaires et nomme ceux pour qui c'est super efficace.
+func _test_double_wild() -> void:
+	var state := _player(74, 30, 50)
+	state.party[0].set_moves([157, 89])
+	var second := Pokemon.create(506, 30, {"random": GameRandom.new(51), "ot_id": state.trainer_id})
+	# Rugissement : une capacité de statut qui vise les deux adversaires (cible 5).
+	second.set_moves([45])
+	state.party.append(second)
+	var first := Pokemon.create(519, 5, {"random": GameRandom.new(52)})
+	var partner := Pokemon.create(554, 5, {"random": GameRandom.new(53)})
+	var battle := Battle.wild(state, first, {"random": GameRandom.new(55), "partner": partner})
+	battle.auto_answer = _auto
+	battle.run()
+	var lines := _transcript(battle)
+	print("   Combat sauvage double : ", " | ".join(lines))
+	_check(battle.format == Battle.Format.DOUBLE and battle.slot_count() == 2, "deux Pokémon sauvages : combat double")
+	_check(lines.size() > 2 and lines[0] == "Un Poichigeon et un Darumarond sauvages apparaissent!", "« Un X et un Y sauvages apparaissent ! » (ligne 2)")
+	_check(lines.has("Racaillou et Ponchiot! Go!"), "« X et Y ! Go ! » (ligne 12)")
+	var named := false
+	var growled := 0
+	for line in lines:
+		named = named or line.begins_with("C'est super efficace sur")
+		growled += 1 if line.contains("Attaque du") and line.contains("baisse") else 0
+	_check(named, "Éboulement : l'efficacité nomme les cibles (fichier 14, 0x021C57E0)")
+	_check(growled >= 2, "Rugissement baisse l'Attaque des deux adversaires")
+	_check(battle.result == Battle.Result.WIN and battle.enemy().all_fainted(), "les deux sauvages sont K.O.")
+
+
+## Combat double contre un dresseur de la ROM (fiche 18, type 1) : deux Pokémon envoyés d'un coup.
+func _test_double_trainer() -> void:
+	var state := _player(497, 60, 55)
+	var second := Pokemon.create(500, 60, {"random": GameRandom.new(56), "ot_id": state.trainer_id})
+	state.party.append(second)
+	var battle := Battle.against_trainer(state, 18, {"random": GameRandom.new(57)})
+	battle.auto_answer = _auto
+	battle.run()
+	var lines := _transcript(battle)
+	print("   Combat double contre un dresseur : ", " | ".join(lines.slice(0, 6)))
+	_check(battle.format == Battle.Format.DOUBLE, "la fiche 18 est un combat double")
+	var sent := false
+	for line in lines:
+		sent = sent or line.contains("sont envoyés par")
+	_check(sent, "« Un X et un Y sont envoyés par... » (ligne 15)")
+	_check(battle.result == Battle.Result.WIN, "combat double gagné (%s)" % Battle.Result.keys()[battle.result])
+
+
+## Combat triple (fiche 506) : les colonnes vont de gauche à droite vue du joueur, la place 0 d'en
+## face est à droite ; les deux bords ne se touchent pas (tables de positions de l'overlay 94).
+func _test_triple_adjacency() -> void:
+	var state := _player(497, 50, 58)
+	for i in 2:
+		state.party.append(Pokemon.create(500 + i, 50, {"random": GameRandom.new(59 + i), "ot_id": state.trainer_id}))
+	var battle := Battle.against_trainer(state, 506, {"random": GameRandom.new(61)})
+	_check(battle.format == Battle.Format.TRIPLE and battle.slot_count() == 3, "la fiche 506 est un combat triple")
+	for slot in 3:
+		battle.send_out(battle.player(), slot, slot)
+		battle.send_out(battle.enemy(), slot, slot)
+	var left := battle.mon_at(BattleSide.PLAYER, 0)
+	var center := battle.mon_at(BattleSide.PLAYER, 1)
+	_check(battle.column(BattleSide.ENEMY, 0) == 2 and battle.column(BattleSide.PLAYER, 0) == 0, "colonnes : place 0 du joueur à gauche, place 0 d'en face à droite")
+	_check(not battle.adjacent(left, battle.mon_at(BattleSide.ENEMY, 0)) and battle.adjacent(left, battle.mon_at(BattleSide.ENEMY, 2)),
+		"le bord gauche ne touche pas le bord droit d'en face")
+	_check(battle.foes_of(center).size() == 3 and battle.foes_of(left).size() == 2, "le milieu touche les trois adversaires, un bord deux")
+	var rock_slide := MoveData.of(157)
+	var targets := battle.moves.resolve_targets(left, rock_slide)
+	_check(targets.size() == 2 and battle.mon_at(BattleSide.ENEMY, 0) not in targets, "Éboulement depuis un bord : les deux adversaires voisins")
+	var earthquake := MoveData.of(89)
+	_check(battle.moves.resolve_targets(center, earthquake).size() == 5, "Séisme depuis le milieu : tous les autres (alliés compris)")
+	# Déplacement (0x021BD388) : le bord gauche passe au milieu, le milieu au bord.
+	battle.shift_to_center(left)
+	_check(left.slot == 1 and center.slot == 0 and battle.mon_at(BattleSide.PLAYER, 1) == left, "DÉPLACER : le Pokémon du bord échange avec celui du milieu")
+	# Rapprochement (0x021C45B4) : un seul Pokémon de chaque côté, aux deux coins opposés.
+	for side in [BattleSide.PLAYER, BattleSide.ENEMY]:
+		for slot in [1, 2]:
+			battle.mon_at(side, slot).pokemon.hp = 0
+	battle._recenter_triple()
+	_check(battle.mon_at(BattleSide.PLAYER, 1) == center and battle.mon_at(BattleSide.ENEMY, 1) != null and battle.mon_at(BattleSide.ENEMY, 1).slot == 1,
+		"un contre un aux coins opposés : les deux glissent au milieu")
+	# Un combat triple joué jusqu'au bout.
+	var full := _player(497, 70, 67)
+	for i in 2:
+		full.party.append(Pokemon.create(500 + i, 70, {"random": GameRandom.new(68 + i), "ot_id": full.trainer_id}))
+	var triple := Battle.against_trainer(full, 506, {"random": GameRandom.new(70)})
+	triple.auto_answer = _auto
+	triple.run()
+	_check(triple.result in [Battle.Result.WIN, Battle.Result.LOSE], "combat triple joué jusqu'au bout (%s)" % Battle.Result.keys()[triple.result])
+
+
+## Capacité qui visait plusieurs Pokémon : x 0,75 après les dégâts de base (0x021C1E14) ; Protection :
+## 1/2 en combat simple, 0xA8F en double (overlay 95, 0x06898E54).
+func _test_spread_and_screens() -> void:
+	var state := _player(74, 40, 62)
+	state.party.append(Pokemon.create(506, 40, {"random": GameRandom.new(63), "ot_id": state.trainer_id}))
+	var foe := Pokemon.create(504, 40, {"random": GameRandom.new(64)})
+	var battle := Battle.wild(state, foe, {"random": GameRandom.new(65), "partner": Pokemon.create(504, 40, {"random": GameRandom.new(66)})})
+	for slot in 2:
+		battle.send_out(battle.player(), slot, slot)
+		battle.send_out(battle.enemy(), slot, slot)
+	var attacker := battle.mon_at(BattleSide.PLAYER, 0)
+	var target := battle.mon_at(BattleSide.ENEMY, 0)
+	var move := MoveData.of(157)
+	var move_type := battle.moves.move_type_of(attacker, move)
+	var effectiveness := battle.moves.effectiveness_against(attacker, target, move, move_type)
+	var single := battle.moves.calc_damage(attacker, target, move, false, move_type, effectiveness, true)
+	var spread := battle.moves.calc_damage(attacker, target, move, false, move_type, effectiveness, true, BattleMoves.SPREAD_RATIO)
+	_check(absi(spread - single * 3 / 4) <= 2 and spread < single, "Éboulement sur deux cibles : x 0,75 (%d -> %d)" % [single, spread])
+	battle.enemy().conditions["reflect"] = 5
+	var screened := battle.moves.calc_damage(attacker, target, move, false, move_type, effectiveness, true)
+	_check(absi(screened - single * 0xA8F / 0x1000) <= 1, "Protection en double : 0xA8F (%d -> %d)" % [single, screened])
+
+
+## Combat rotatif (fiche 513) : trois Pokémon de chaque côté, seul celui de devant combat ; la
+## rotation fait passer devant un Pokémon en retrait (0x021B9BF0) et garde les crans.
+func _test_rotation() -> void:
+	var state := _player(497, 60, 71)
+	for i in 2:
+		state.party.append(Pokemon.create(500 + i, 60, {"random": GameRandom.new(72 + i), "ot_id": state.trainer_id}))
+	var battle := Battle.against_trainer(state, 513, {"random": GameRandom.new(74)})
+	_check(battle.format == Battle.Format.ROTATION, "la fiche 513 est un combat rotatif")
+	for slot in 3:
+		battle.send_out(battle.player(), slot, slot)
+		battle.send_out(battle.enemy(), slot, slot)
+	_check(battle.fighters(BattleSide.PLAYER).size() == 1 and battle.all_active().size() == 2, "seul le Pokémon de devant combat")
+	var front := battle.mon_at(BattleSide.PLAYER, 0)
+	var left := battle.mon_at(BattleSide.PLAYER, 1)
+	var right := battle.mon_at(BattleSide.PLAYER, 2)
+	front.stages[Stats.Stat.ATTACK] = 2
+	battle.rotate(battle.player(), 1)
+	_check(battle.mon_at(BattleSide.PLAYER, 0) == left and battle.mon_at(BattleSide.PLAYER, 1) == right and battle.mon_at(BattleSide.PLAYER, 2) == front,
+		"rotation : la place 1 passe devant, la 2 prend sa place, l'ancien de devant va à l'arrière")
+	_check(front.stage(Stats.Stat.ATTACK) == 2 and not battle.is_on_field(front) and battle.is_on_field(left), "le Pokémon en retrait garde ses crans et ne combat plus")
+	var full := _player(497, 70, 75)
+	for i in 2:
+		full.party.append(Pokemon.create(500 + i, 70, {"random": GameRandom.new(76 + i), "ot_id": full.trainer_id}))
+	var rotation := Battle.against_trainer(full, 513, {"random": GameRandom.new(78)})
+	rotation.auto_answer = func(b: Battle, request: Dictionary) -> Variant:
+		# Le joueur fait tourner au deuxième tour.
+		if request.kind == "action" and b.turn == 2:
+			return {"action": Battle.Action.FIGHT, "move": 0, "rotate": 1}
+		return _auto(b, request)
+	rotation.run()
+	var rotated := false
+	for event in rotation.events:
+		rotated = rotated or event.type == "rotate"
+	_check(rotated and rotation.result in [Battle.Result.WIN, Battle.Result.LOSE], "combat rotatif joué jusqu'au bout, avec une rotation (%s)" % Battle.Result.keys()[rotation.result])
+
+
+## Un contre un préparé pour essayer des capacités : un Gruikui N.50 (capacités données) contre un
+## Ponchiot N.50 sauvage, tous deux au combat.
+func _duel(moves: Array[int], seed: int, foe_species := 506) -> Battle:
+	var state := _player(498, 50, seed)
+	state.party[0].set_moves(moves)
+	var foe := Pokemon.create(foe_species, 50, {"random": GameRandom.new(seed + 1)})
+	var battle := Battle.wild(state, foe, {"random": GameRandom.new(seed + 2)})
+	battle.send_out(battle.player(), 0, 0)
+	battle.send_out(battle.enemy(), 0, 0)
+	return battle
+
+
+func _use(battle: Battle, mon: BattleMon, slot: int) -> void:
+	battle.moves.use_move(mon, {"action": Battle.Action.FIGHT, "move": slot, "mon": mon})
+
+
+## Capacités à part (gestionnaires de la table 0x021F2FD0) : chacune jouée une fois et son effet
+## vérifié.
+func _test_special_moves() -> void:
+	var battle := _duel([212, 244, 391, 471], 80)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	_use(battle, me, 0)
+	_check(battle.moves.is_trapped(foe), "Regard Noir : la cible ne peut plus fuir (état 0x16)")
+	foe.stages[Stats.Stat.ATTACK] = 2
+	_use(battle, me, 1)
+	_check(me.stage(Stats.Stat.ATTACK) == 2, "Boost : les crans de la cible sont copiés")
+	me.stages[Stats.Stat.SPEED] = 1
+	foe.stages[Stats.Stat.DEFENSE] = -1
+	_use(battle, me, 2)
+	_check(me.stage(Stats.Stat.DEFENSE) == -1 and foe.stage(Stats.Stat.SPEED) == 1, "Permucœur : tous les crans échangés")
+	var mine := me.raw_stat(Stats.Stat.ATTACK)
+	var theirs := foe.raw_stat(Stats.Stat.ATTACK)
+	_use(battle, me, 3)
+	_check(me.raw_stat(Stats.Stat.ATTACK) == (mine + theirs) / 2 and foe.raw_stat(Stats.Stat.ATTACK) == (mine + theirs) / 2,
+		"Partage Force : la moyenne des Attaques")
+
+	battle = _duel([487, 234, 380, 388], 84)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	_use(battle, me, 0)
+	_check(foe.types == [Stats.Type.WATER, Stats.Type.WATER], "Détrempage : la cible devient de type Eau")
+	me.pokemon.hp = 1
+	battle.weather = Battle.Weather.SUN
+	_use(battle, me, 1)
+	_check(me.hp() == 1 + BattleCalc.fx_mul(me.max_hp(), 0xAAC), "Aurore au soleil : 0xAAC des PV (0x021E6104)")
+	_use(battle, me, 2)
+	_check(battle.abilities.ability_of(foe) == 0, "Suc Digestif : le talent de la cible ne fait plus effet")
+	foe.clear_effect("gastro_acid")
+	_use(battle, me, 3)
+	_check(foe.ability == BattleAbilities.INSOMNIA, "Soucigraine : la cible prend Insomnia")
+
+	battle = _duel([393, 504, 74, 432], 88)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	_use(battle, me, 0)
+	_check(battle.moves.is_floating(me) and battle.abilities.blocks_move(me, foe, MoveData.of(89), Stats.Type.GROUND),
+		"Vol Magnétik : le Sol ne touche plus le lanceur")
+	_use(battle, me, 1)
+	_check(me.stage(Stats.Stat.ATTACK) == 2 and me.stage(Stats.Stat.DEFENSE) == -1 and me.stage(Stats.Stat.SPEED) == 2,
+		"Exuviation : +2 en Attaque, Attaque Spéciale et Vitesse, -1 en Défense et Défense Spéciale")
+	me.stages = [0, 0, 0, 0, 0, 0, 0, 0]
+	battle.weather = Battle.Weather.SUN
+	_use(battle, me, 2)
+	_check(me.stage(Stats.Stat.ATTACK) == 2 and me.stage(Stats.Stat.SP_ATTACK) == 2, "Croissance au soleil : +2 au lieu de +1")
+	battle.enemy().conditions["reflect"] = 5
+	_use(battle, me, 3)
+	_check(not battle.enemy().has("reflect") and foe.stage(Stats.Stat.EVASION) == -1, "Anti-Brume : Esquive -1, Protection retirée")
+
+	battle = _duel([262, 300, 84, 160], 92)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	var shock := MoveData.of(84)
+	var before := battle.moves.move_power(me, foe, shock, Stats.Type.ELECTRIC)
+	_use(battle, me, 1)
+	_check(battle.moves.move_power(me, foe, shock, Stats.Type.ELECTRIC) == BattleCalc.fx_mul(before, BattleMoves.SPORT_RATIO),
+		"Lance-Boue : l'Électrik x 0x548 (%d)" % before)
+	_use(battle, me, 3)
+	_check(me.types[0] == me.types[1] and me.types[0] in [Stats.Type.DARK, Stats.Type.GROUND, Stats.Type.ELECTRIC], "Adaptation : le type d'une autre capacité du lanceur")
+	_use(battle, me, 0)
+	_check(me.is_fainted() and foe.stage(Stats.Stat.ATTACK) == -2 and foe.stage(Stats.Stat.SP_ATTACK) == -2, "Souvenir : -2 en Attaque et Attaque Spéciale, puis K.O.")
+
+
+## Attaques à part : Faux-Chage, Casse-Brique, Stimulant, Écho, Dernierecour, Ronflement,
+## Synchropeine, Anti-Air, Bain de Smog, Explosion, Triple Pied, Frénésie.
+func _test_attack_moves() -> void:
+	var battle := _duel([206, 280, 265, 497], 96)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.hp = 3
+	_use(battle, me, 0)
+	_check(foe.hp() == 1, "Faux-Chage : la cible garde 1 PV")
+	foe.pokemon.hp = foe.max_hp()
+	battle.enemy().conditions["reflect"] = 5
+	battle.enemy().conditions["light_screen"] = 5
+	_use(battle, me, 1)
+	_check(not battle.enemy().has("reflect") and not battle.enemy().has("light_screen"), "Casse-Brique : Protection et Mur Lumière tombent")
+	foe.pokemon.status = Pokemon.Status.PARALYSIS
+	_check(battle.moves.special_power(me, foe, MoveData.of(265)) == MoveData.of(265).power * 2, "Stimulant : x 2 contre un Pokémon paralysé")
+	foe.pokemon.hp = foe.max_hp()
+	_use(battle, me, 2)
+	_check(foe.status() == Pokemon.Status.NONE, "Stimulant : la paralysie est soignée")
+	battle.turn = 5
+	var first := battle.moves.special_power(me, foe, MoveData.of(497))
+	battle.turn = 6
+	var second := battle.moves.special_power(me, foe, MoveData.of(497))
+	_check(first == 40 and second == 80, "Écho : 40 puis 80 au tour suivant (0x021E7184)")
+
+	battle = _duel([387, 33, 173, 485], 100)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	var full := foe.hp()
+	_use(battle, me, 0)
+	_check(foe.hp() == full, "Dernierecour échoue tant que les autres capacités n'ont pas servi")
+	_use(battle, me, 2)
+	_check(foe.hp() == full, "Ronflement échoue si le lanceur est éveillé")
+	_use(battle, me, 3)
+	_check(foe.hp() == full, "Synchropeine : pas d'effet sans type commun")
+
+	battle = _duel([479, 499, 153, 167], 104, 519)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.hp = foe.max_hp() * 5
+	_use(battle, me, 0)
+	_check(foe.has("smack_down") and battle.moves.effectiveness_against(me, foe, MoveData.of(89), Stats.Type.GROUND) != Stats.Effectiveness.IMMUNE,
+		"Anti-Air : le Pokémon Vol touché tombe au sol, le Sol le touche")
+	foe.stages[Stats.Stat.ATTACK] = 3
+	_use(battle, me, 1)
+	_check(foe.stage(Stats.Stat.ATTACK) == 0, "Bain de Smog : les crans de la cible reviennent à 0")
+	var powers := []
+	for i in 3:
+		me.set_effect("hit_index", i)
+		powers.append(battle.moves.special_power(me, foe, MoveData.of(167)))
+	_check(powers == [10, 20, 30], "Triple Pied : 10, 20 puis 30")
+	me.set_effect("rage")
+	battle.moves._deal_damage(foe, me, MoveData.of(33), 1, false)
+	_check(me.stage(Stats.Stat.ATTACK) == 1, "Frénésie : touché, le lanceur gagne un cran d'Attaque")
+	_use(battle, me, 2)
+	_check(me.is_fainted(), "Explosion : le lanceur est K.O.")
+
+
+## Combat double préparé : Gruikui et Ponchiot N.50 (capacités données au premier) contre deux
+## Ratentif N.50 sauvages, une réserve dans l'équipe du joueur.
+func _double_duel(moves: Array[int], seed: int) -> Battle:
+	var state := _player(498, 50, seed)
+	state.party[0].set_moves(moves)
+	state.party.append(Pokemon.create(506, 50, {"random": GameRandom.new(seed + 1), "ot_id": state.trainer_id}))
+	state.party.append(Pokemon.create(495, 50, {"random": GameRandom.new(seed + 2), "ot_id": state.trainer_id}))
+	var first := Pokemon.create(504, 50, {"random": GameRandom.new(seed + 3)})
+	var battle := Battle.wild(state, first, {"random": GameRandom.new(seed + 4), "partner": Pokemon.create(504, 50, {"random": GameRandom.new(seed + 5)})})
+	for slot in 2:
+		battle.send_out(battle.player(), slot, slot)
+		battle.send_out(battle.enemy(), slot, slot)
+	battle.auto_answer = _auto
+	return battle
+
+
+## Capacités du combat à plusieurs et effets à retardement.
+func _test_team_moves() -> void:
+	var battle := _double_duel([270, 266, 469, 495], 110)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var ally := battle.mon_at(BattleSide.PLAYER, 1)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	var other_foe := battle.mon_at(BattleSide.ENEMY, 1)
+	var tackle := MoveData.of(33)
+	var plain := battle.moves.move_power(ally, foe, tackle, Stats.Type.NORMAL)
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 0, "mon": me, "target": ally.position()})
+	_check(battle.moves.move_power(ally, foe, tackle, Stats.Type.NORMAL) == BattleCalc.fx_mul(plain, 0x1800), "Coup d'Main : l'allié frappe x 1,5")
+	_use(battle, me, 1)
+	_check(battle.abilities.redirect(foe, ally, tackle, Stats.Type.NORMAL) == me, "Par Ici : les attaques d'en face vont sur le lanceur")
+	_use(battle, me, 2)
+	var quake := MoveData.of(89)
+	_check(not battle.moves._passes_protection(foe, me, quake), "Garde Large : Séisme ne touche pas le côté protégé")
+	battle.queue = [{"action": Battle.Action.FIGHT, "mon": foe, "move": 0}, {"action": Battle.Action.FIGHT, "mon": other_foe, "move": 0}]
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 3, "mon": me, "target": other_foe.position()})
+	_check(battle.queue[0].mon == other_foe, "Après Vous : la cible agit juste après")
+	battle.queue.clear()
+
+	battle = _double_duel([502, 472, 286, 375], 114)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	ally = battle.mon_at(BattleSide.PLAYER, 1)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	_use(battle, me, 0)
+	_check(me.slot == 1 and ally.slot == 0 and battle.mon_at(BattleSide.PLAYER, 1) == me, "Interversion : le lanceur et l'allié échangent leurs places")
+	_use(battle, me, 1)
+	_check(battle.field.has("wonder_room"), "Zone Étrange : effet de terrain posé")
+	_use(battle, me, 2)
+	foe.pokemon.set_moves([502, 33])
+	_check(not battle.moves.move_blocked(foe, 502).is_empty() and battle.moves.move_blocked(foe, 33).is_empty(),
+		"Possessif : l'adversaire ne peut plus utiliser une capacité que le lanceur connaît")
+	me.pokemon.status = Pokemon.Status.BURN
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 3, "mon": me, "target": foe.position()})
+	_check(me.status() == Pokemon.Status.NONE and foe.status() == Pokemon.Status.BURN, "Échange Psy : la brûlure passe à la cible")
+
+	battle = _double_duel([254, 255, 256, 248], 118)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	_use(battle, me, 0)
+	_use(battle, me, 0)
+	_check(int(me.get_effect("stockpile", 0)) == 2 and me.stage(Stats.Stat.DEFENSE) == 2, "Stockage : deux fois, Défense +2")
+	_check(battle.moves.special_power(me, foe, MoveData.of(255)) == 200, "Relâche : 100 par Stockage")
+	me.pokemon.hp = 1
+	_use(battle, me, 2)
+	_check(me.hp() == 1 + me.max_hp() / 2 and me.stage(Stats.Stat.DEFENSE) == 0 and not me.has("stockpile"), "Avale : la moitié des PV après deux Stockage, qui se dissipent")
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 3, "mon": me, "target": foe.position()})
+	var before := foe.hp()
+	battle.moves.side_conditions_end_of_turn()
+	battle.moves.side_conditions_end_of_turn()
+	var waiting := foe.hp() == before
+	battle.moves.side_conditions_end_of_turn()
+	_check(waiting and foe.hp() < before, "Prescience : l'attaque arrive deux tours plus tard")
+
+	battle = _double_duel([361, 226, 33, 33], 122)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	var reserve := battle.player().party[2]
+	reserve.hp = 1
+	reserve.status = Pokemon.Status.POISON
+	_use(battle, me, 0)
+	_check(me.is_fainted(), "Vœu Soin : le lanceur est K.O.")
+	battle.switch_in_replacement(battle.player(), 2, 0)
+	_check(reserve.hp == reserve.max_hp() and reserve.status == Pokemon.Status.NONE, "Vœu Soin : le remplaçant est soigné en arrivant")
+	var passer := battle.mon_at(BattleSide.PLAYER, 0)
+	passer.pokemon.set_moves([226])
+	battle.player().party[0].hp = 1
+	passer.stages[Stats.Stat.SPEED] = 2
+	battle.moves.use_move(passer, {"action": Battle.Action.FIGHT, "move": 0, "mon": passer})
+	var incoming := battle.mon_at(BattleSide.PLAYER, 0)
+	_check(incoming != passer and incoming.stage(Stats.Stat.SPEED) == 2, "Relais : le remplaçant garde les crans")
+
+
 ## Décor (a/1/5/2) : la Route 1 en herbe, au printemps et en été, et un décor qui change avec les
 ## saisons.
 func _test_backgrounds() -> void:
@@ -404,6 +803,32 @@ func _test_wild_encounters() -> void:
 	_check(WildEncounters.modified_rate(8, illuminate) == 16 and WildEncounters.modified_rate(8, stench) == 4
 		and WildEncounters.modified_rate(9, cleanse) == 6 and WildEncounters.modified_rate(70, illuminate) == 100,
 		"taux : Lumiattirance x2, Puanteur / 2, Rune Purifiante 2/3, plafond 100")
+	# Herbes sombres (comportement 0x06) d'une zone qui en a : 40 % de combats doubles avec deux
+	# Pokémon en forme (0x021A92F0), jamais avec un seul.
+	var dark_table: EncounterTable = null
+	for zone_id in zones.count():
+		var candidate := EncounterTable.for_zone(zones.get_zone(zone_id), 0)
+		if candidate and candidate.rate(TileBehaviors.Encounter.DARK_GRASS) > 0:
+			dark_table = candidate
+			break
+	if dark_table == null:
+		_check(false, "une zone avec des herbes sombres")
+		return
+	var doubles := [0, 0]
+	var singles := [0, 0]
+	for able in [1, 2]:
+		var walker := WildEncounters.new(GameRandom.new(70 + able))
+		for i in 3000:
+			var met_wild := walker.step(Vector2i(20, 20 + (i % 2)), 0x06, wild_flag, dark_table, lead, able)
+			if met_wild.is_empty():
+				continue
+			if met_wild.has("partner"):
+				doubles[able - 1] += 1
+			else:
+				singles[able - 1] += 1
+	var share: int = doubles[1] * 100 / maxi(doubles[1] + singles[1], 1)
+	_check(doubles[0] == 0 and share > 30 and share < 50,
+		"herbes sombres : environ 40 %% de combats doubles avec deux Pokémon (%d %%), aucun avec un seul" % share)
 
 
 ## Démonstration de la professeure : jouée seule, capture réussie, partie du joueur intacte.
@@ -421,6 +846,16 @@ func _test_capture_demo() -> void:
 ## L'écran de combat piloté comme un joueur : victoire avec expérience, capture, défaite.
 func _test_screen() -> void:
 	Engine.time_scale = SCREEN_TIME_SCALE
+	# Séquence d'évolution (réponses automatiques) : Gruikui niveau 17 devient Grotichon.
+	var evolving := _player(498, 17, 244)
+	var pig := evolving.party[0]
+	var evolution := EvolutionScreen.create(pig, Evolutions.check_level_up(pig, evolving.party, 0, false), evolving)
+	evolution.auto = true
+	root.add_child(evolution)
+	var evolved: bool = await evolution.play()
+	_check(evolved and pig.species == 499 and evolving.caught.has(499), "écran d'évolution : Gruikui évolue en Grotichon")
+	evolution.queue_free()
+	await process_frame
 	# Victoire : ATTAQUE puis la première capacité à chaque tour.
 	var state := _player(498, 12, 31)
 	var battle := Battle.wild(state, Pokemon.create(504, 3, {"random": GameRandom.new(32)}), {"random": GameRandom.new(33)})
@@ -503,6 +938,688 @@ func _play_screen(battle: Battle, command: int) -> Dictionary:
 	screen.queue_free()
 	await process_frame
 	return {"panels": seen.keys(), "trainer": trainer}
+
+
+## Le message (fichier, ligne) a-t-il été produit par le combat ?
+static func _said(battle: Battle, file: int, line: int) -> bool:
+	for event in battle.events:
+		if event.type == "message" and event.file == file and event.line == line:
+			return true
+	return false
+
+
+## Capacités qui en lancent une autre (événement 0x18), qui copient (Copie, Gribouille, Morphing),
+## Saisie et Reflet Magik.
+func _test_call_moves() -> void:
+	var battle := _duel([118, 267, 383, 119], 120)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	var pp := me.pp(0)
+	_use(battle, me, 0)
+	_check(me.last_selected == 118 and me.last_move != 118 and me.last_move not in BattleMoves.METRONOME_EXCLUDED
+		and battle.last_move_used == me.last_move and me.pp(0) == pp - 1 and _said(battle, BWFiles.TEXT_BATTLE, 120),
+		"Métronome : une capacité au hasard hors liste, « Métronome lance Y ! », PP pris à Métronome")
+	battle.terrain = 10
+	_use(battle, me, 1)
+	_check(me.last_move == 157 and _said(battle, BWFiles.TEXT_BATTLE, 121), "Force-Nature : Éboulement sur le terrain 10")
+	battle.last_move_used = 33
+	var before := foe.hp()
+	_use(battle, me, 2)
+	_check(me.last_move == 33 and foe.hp() < before, "Photocopie : la dernière capacité lancée au combat")
+	foe.last_move = 52
+	_use(battle, me, 3)
+	_check(me.last_move == 52, "Mimique : la dernière capacité lancée par la cible")
+	foe.last_move = 14
+	me.last_move = 0
+	_use(battle, me, 3)
+	_check(me.last_move == 119, "Mimique échoue sur une capacité qui ne se copie pas (drapeau 6)")
+
+	battle = _duel([214, 33, 76, 118], 124)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	me.pokemon.status = Pokemon.Status.SLEEP
+	me.pokemon.sleep_turns = 3
+	_use(battle, me, 0)
+	_check(me.last_move == 33, "Blabla Dodo : endormi, une autre de ses capacités (ni Lance-Soleil ni Métronome)")
+	me.pokemon.status = Pokemon.Status.NONE
+	_use(battle, me, 0)
+	_check(me.last_move == 214, "Blabla Dodo échoue s'il n'est pas endormi")
+
+	battle = _duel([274, 382, 102, 166], 128)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	var friend := Pokemon.create(506, 50, {"random": GameRandom.new(129)})
+	friend.set_moves([52, 118])
+	battle.player().party.append(friend)
+	_use(battle, me, 0)
+	_check(me.last_move == 52, "Assistance : une capacité d'un autre Pokémon de l'équipe (hors liste)")
+	foe.pokemon.set_moves([52])
+	battle.queue = [{"action": Battle.Action.FIGHT, "mon": foe, "move": 0}]
+	_use(battle, me, 1)
+	_check(me.last_move == 52 and not me.has("me_first"), "Moi d'Abord : l'attaque que la cible va lancer")
+	var plain := battle.moves.move_power(me, foe, MoveData.of(52), Stats.Type.FIRE)
+	me.set_effect("me_first")
+	_check(battle.moves.move_power(me, foe, MoveData.of(52), Stats.Type.FIRE) == BattleCalc.fx_mul(plain, 0x1800),
+		"Moi d'Abord : puissance x 1,5 (0x1800)")
+	me.clear_effect("me_first")
+	battle.queue.clear()
+	foe.last_selected = 33
+	_use(battle, me, 2)
+	_check(me.pokemon.moves[2].id == 33 and me.pp(2) == MoveData.max_pp(33, 0), "Copie : la capacité de la cible remplace Copie, PP de base")
+	_use(battle, me, 3)
+	_check(me.pokemon.moves[3].id == 166, "Gribouille échoue sur une capacité déjà connue")
+	foe.last_selected = 45
+	me.pokemon.moves[3] = {"id": 166, "pp": 1, "pp_ups": 0}
+	_use(battle, me, 3)
+	_check(me.pokemon.moves[3].id == 45, "Gribouille : la capacité de la cible pour de bon")
+	me.restore_moves()
+	_check(me.pokemon.moves[2].id == 102 and me.pokemon.moves[3].id == 45, "Copie rendue en quittant le terrain, Gribouille gardé")
+
+	battle = _duel([144, 289, 277, 33], 132)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.set_moves([14, 45, 191, 105])
+	var own_moves := me.pokemon.move_ids()
+	_use(battle, me, 0)
+	_check(me.has("transformed") and me.types == foe.types and me.ability == foe.ability and me.pokemon.move_ids() == foe.pokemon.move_ids()
+		and me.pp(0) == 5 and me.raw_stat(Stats.Stat.ATTACK) == foe.raw_stat(Stats.Stat.ATTACK), "Morphing : types, talent, statistiques et capacités (5 PP)")
+	battle._finish()
+	_check(me.pokemon.move_ids() == own_moves, "Morphing : les capacités reviennent après le combat")
+
+	battle = _duel([144, 289, 277, 33], 136)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.set_moves([14, 45, 191, 105])
+	battle.queue.clear()
+	_use(battle, me, 1)
+	_check(not me.has("snatch"), "Saisie échoue si tous les autres ont déjà agi")
+	battle.queue = [{"action": Battle.Action.FIGHT, "mon": foe, "move": 0}]
+	_use(battle, me, 1)
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
+	_check(me.stage(Stats.Stat.ATTACK) == 2 and foe.stage(Stats.Stat.ATTACK) == 0 and not me.has("snatch"),
+		"Saisie : Danse-Lames est volée par le lanceur")
+	_use(battle, me, 2)
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 1, "mon": foe})
+	_check(foe.stage(Stats.Stat.ATTACK) == -1 and me.stage(Stats.Stat.ATTACK) == 2 and _said(battle, BWFiles.TEXT_BATTLE_SET, 764),
+		"Reflet Magik : Rugissement renvoyé au lanceur")
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 2, "mon": foe})
+	_check(battle.enemy().conditions.get("spikes", 0) == 1 and battle.player().conditions.get("spikes", 0) == 0,
+		"Reflet Magik : Picots renvoyés sur le côté du lanceur")
+	battle.queue.clear()
+	me.clear_effect("magic_coat")
+	me.ability = BattleAbilities.MAGIC_BOUNCE
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 1, "mon": foe})
+	_check(foe.stage(Stats.Stat.ATTACK) == -2, "Miroir Magik : renvoie aussi Rugissement")
+
+	battle = _double_duel([191, 227, 50, 33], 140)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	_use(battle, me, 0)
+	_check(battle.enemy().conditions.get("spikes", 0) == 1, "Picots en double : une seule couche")
+	foe.pokemon.set_moves([118, 119])
+	foe.last_selected = 118
+	foe.last_move = 33
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 1, "mon": me, "target": foe.position()})
+	_check(foe.has("encore") and foe.get_effect("encore").move == 118, "Encore : la capacité choisie (Métronome), pas celle qu'il a appelée")
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 2, "mon": me, "target": foe.position()})
+	_check(foe.has("disable") and foe.get_effect("disable").move == 118, "Entrave : la capacité choisie")
+
+
+## Capacités qui jouent avec les objets tenus, et effets des objets employés tout de suite.
+func _test_item_moves() -> void:
+	var battle := _duel([363, 374, 365, 510], 150)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.held_item = 0
+	me.pokemon.held_item = 158
+	_check(battle.moves.move_type_of(me, MoveData.of(363)) == ItemData.of(158).natural_gift_type, "Don Naturel : le type de la baie tenue")
+	var before := foe.hp()
+	_use(battle, me, 0)
+	_check(foe.hp() < before and me.pokemon.held_item == 0 and battle.player().consumed.get(0, 0) == 158,
+		"Don Naturel : la baie part et Recyclage la retient")
+	before = foe.hp()
+	_use(battle, me, 0)
+	_check(foe.hp() == before, "Don Naturel échoue sans baie")
+	foe.pokemon.hp = foe.max_hp()
+	me.pokemon.held_item = 273
+	_use(battle, me, 1)
+	_check(foe.status() == Pokemon.Status.BURN and me.pokemon.held_item == 0 and _said(battle, BWFiles.TEXT_BATTLE_SET, 779),
+		"Dégommage : Orbe Flamme lancé brûle la cible")
+	foe.pokemon.held_item = 158
+	foe.pokemon.hp = foe.max_hp()
+	me.pokemon.hp = me.max_hp() / 2
+	var half := me.hp()
+	_use(battle, me, 2)
+	_check(foe.pokemon.held_item == 0 and me.hp() == half + me.max_hp() * 25 / 100 and _said(battle, BWFiles.TEXT_BATTLE_SET, 776),
+		"Picore : la Baie Sitrus de la cible est mangée par le lanceur")
+	foe.pokemon.held_item = 155
+	foe.pokemon.hp = foe.max_hp()
+	foe.ability = BattleAbilities.STICKY_HOLD
+	_use(battle, me, 2)
+	_check(foe.pokemon.held_item == 155 and _said(battle, BWFiles.TEXT_BATTLE_SET, 493 + 1), "Glue : la baie ne peut pas être volée (variante « sauvage »)")
+	foe.ability = 0
+	foe.pokemon.hp = foe.max_hp()
+	_use(battle, me, 3)
+	_check(foe.pokemon.held_item == 0 and _said(battle, BWFiles.TEXT_BATTLE_SET, 1108 + 1), "Calcination : la baie de la cible brûle")
+
+	battle = _duel([282, 271, 278, 516], 154)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.held_item = 234
+	me.pokemon.held_item = 0
+	_use(battle, me, 0)
+	_check(foe.pokemon.held_item == 0 and foe.has("unburden"), "Sabotage : l'objet de la cible tombe")
+	foe.pokemon.set_moves([282, 271, 168])
+	me.pokemon.held_item = 234
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 2, "mon": foe})
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 1, "mon": foe})
+	_check(me.pokemon.held_item == 234 and foe.pokemon.held_item == 0, "un Pokémon sauvage ne prend pas l'objet du joueur (0x021E8668)")
+	me.pokemon.held_item = 287
+	foe.pokemon.held_item = 155
+	_use(battle, me, 1)
+	_check(me.pokemon.held_item == 155 and foe.pokemon.held_item == 287 and _said(battle, BWFiles.TEXT_BATTLE_SET, 682),
+		"Tour de Magie : les objets s'échangent")
+	battle.player().consumed[0] = 158
+	me.pokemon.held_item = 0
+	_use(battle, me, 2)
+	_check(me.pokemon.held_item == 158 and not battle.player().consumed.has(0), "Recyclage : la baie consommée revient")
+	foe.pokemon.held_item = 0
+	_use(battle, me, 3)
+	_check(foe.pokemon.held_item == 158 and me.pokemon.held_item == 0, "Passe-Cadeau : la cible reçoit l'objet du lanceur")
+	_check(BattleItems.bound_to(493, 300) and BattleItems.bound_to(487, 112) and not BattleItems.bound_to(25, 112),
+		"objets liés : Plaques d'Arceus, Orbe Platiné de Giratina (0x021E85D8)")
+
+	battle = _duel([33], 158)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	me.pokemon.held_item = 201
+	me.pokemon.hp = me.max_hp() / 4
+	battle.items.check_hp_berries(me)
+	_check(me.stage(Stats.Stat.ATTACK) == 1 and _said(battle, BWFiles.TEXT_BATTLE_SET, 938), "Baie Lichii : « fait augmenter son Attaque » (938)")
+	me.pokemon.held_item = 149
+	battle.moves.set_status(me, battle.mon_at(BattleSide.ENEMY, 0), Pokemon.Status.PARALYSIS)
+	_check(me.status() == Pokemon.Status.NONE and _said(battle, BWFiles.TEXT_BATTLE_SET, 920), "Baie Ceriz : « le sort de sa paralysie » (920)")
+
+
+## Chute Libre (deux tours, la cible emportée) et Aires (attaques combinées, effets de côté).
+func _test_sky_drop_and_pledges() -> void:
+	var battle := _duel([507], 160)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.set_moves([33])
+	_use(battle, me, 0)
+	_check(me.has("charging") and foe.has("sky_dropped") and foe.has("flying") and _said(battle, BWFiles.TEXT_BATTLE_SET, 1118 + 1),
+		"Chute Libre : le lanceur emporte la cible dans les airs (1118)")
+	var mine := me.hp()
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
+	_check(me.hp() == mine and battle.moves.is_trapped(foe), "Chute Libre : la cible emportée ne peut ni agir ni partir")
+	var before := foe.hp()
+	battle.moves.use_move(me, battle.moves.forced_action(me))
+	_check(foe.hp() < before and not foe.has("sky_dropped") and not foe.has("flying") and not me.has("flying"),
+		"Chute Libre : second tour, la cible tombe et prend les dégâts")
+	foe.set_effect("substitute", 10)
+	_use(battle, me, 0)
+	_check(not me.has("charging"), "Chute Libre échoue contre un clone")
+
+	battle = _double_duel([518, 520], 164)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	var ally := battle.mon_at(BattleSide.PLAYER, 1)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	ally.pokemon.set_moves([519])
+	var ally_action := {"action": Battle.Action.FIGHT, "mon": ally, "move": 0, "target": foe.position()}
+	battle.queue = [{"action": Battle.Action.FIGHT, "mon": foe, "move": 0}, ally_action]
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 0, "mon": me, "target": foe.position()})
+	_check(battle.queue[0] == ally_action and ally.has("pledge_combo") and _said(battle, BWFiles.TEXT_BATTLE_SET, 1146),
+		"Aires : le premier attend son allié (1146), qui agit juste après")
+	_check(battle.moves.move_type_of(ally, MoveData.of(519)) == Stats.Type.WATER and battle.moves.special_power(ally, foe, MoveData.of(519)) == 150,
+		"Aire de Feu + Aire d'Eau : attaque combinée de type Eau, puissance 150")
+	battle.queue.pop_front()
+	battle.moves.use_move(ally, ally_action)
+	_check(battle.player().conditions.get("rainbow", 0) == 4 and _said(battle, BWFiles.TEXT_BATTLE, 187) and _said(battle, BWFiles.TEXT_BATTLE, 164),
+		"Aires combinées : « Les deux capacités se sont combinées ! » et arc-en-ciel sur le côté du lanceur")
+	battle.queue.clear()
+	var plain := battle.speed_of(foe)
+	battle.enemy().conditions["swamp"] = 4
+	_check(battle.speed_of(foe) == BattleCalc.fx_mul(plain, 0x400), "Marécage : Vitesse x 1/4 (0x400)")
+	battle.enemy().conditions.erase("swamp")
+	battle.enemy().conditions["sea_of_fire"] = 1
+	before = foe.hp()
+	battle.moves.side_conditions_end_of_turn()
+	_check(foe.hp() == before - maxi(foe.max_hp() / 8, 1) and not battle.enemy().has("sea_of_fire") and _said(battle, BWFiles.TEXT_BATTLE, 171),
+		"Mer de feu : 1/8 des PV en fin de tour, puis elle disparaît (171)")
+
+
+## Derniers talents : Plus, Minus, Garde Amie, Heavy Metal, Télépathe, Pickpocket, Cœur Soin, Récolte,
+## Ramassage, Mode Transe, Météo, Illusion, Imposteur.
+func _test_last_abilities() -> void:
+	var battle := _double_duel([33, 52], 170)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var ally := battle.mon_at(BattleSide.PLAYER, 1)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	var ember := MoveData.of(52)
+	var tackle := MoveData.of(33)
+	me.ability = BattleAbilities.PLUS
+	ally.ability = BattleAbilities.MINUS
+	_check(battle.abilities.attack_ratio(me, foe, ember, false, Stats.Type.FIRE, BattleCalc.FX_ONE) == 0x1800,
+		"Plus : Attaque Spéciale x 1,5 avec un allié Minus")
+	ally.ability = BattleAbilities.FRIEND_GUARD
+	_check(battle.abilities.final_ratio(foe, me, tackle, Stats.Effectiveness.NORMAL, false, BattleCalc.FX_ONE) == 0xC00,
+		"Garde Amie : l'allié prend x 0,75")
+	me.ability = BattleAbilities.HEAVY_METAL
+	_check(battle.weight_of(me) == me.weight() * 2, "Heavy Metal : poids x 2")
+	me.ability = BattleAbilities.TELEPATHY
+	_check(battle.abilities.blocks_move(me, ally, tackle) and not battle.abilities.blocks_move(me, foe, tackle),
+		"Télépathe : les attaques des alliés ne le touchent pas")
+	me.ability = BattleAbilities.PICKPOCKET
+	me.pokemon.held_item = 0
+	foe.pokemon.held_item = 234
+	foe.pokemon.set_moves([33])
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe, "target": me.position()})
+	_check(me.pokemon.held_item == 234 and foe.pokemon.held_item == 0, "Pickpocket : prend l'objet de l'attaquant au contact")
+	me.ability = BattleAbilities.HEALER
+	var cured := false
+	for i in 30:
+		ally.pokemon.status = Pokemon.Status.POISON
+		battle.abilities.on_turn_end(me)
+		if ally.status() == Pokemon.Status.NONE:
+			cured = true
+			break
+	_check(cured, "Cœur Soin : l'allié voisin guérit de son statut (30 %)")
+	me.ability = BattleAbilities.HARVEST
+	me.pokemon.held_item = 0
+	battle.player().consumed[me.party_index] = 158
+	battle.weather = Battle.Weather.SUN
+	battle.abilities.on_turn_end_late(me)
+	_check(me.pokemon.held_item == 158 and _said(battle, BWFiles.TEXT_BATTLE_SET, 475), "Récolte : la baie revient au soleil")
+	battle.weather = Battle.Weather.NONE
+	me.ability = BattleAbilities.PICKUP
+	me.pokemon.held_item = 0
+	foe.pokemon.held_item = 155
+	battle.items.consume(foe)
+	battle.abilities.on_turn_end_late(me)
+	_check(me.pokemon.held_item == 155 and not battle.enemy().consumed.has(foe.party_index), "Ramassage : l'objet consommé ce tour par un voisin")
+
+	battle = _duel([33], 174, 555)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.ability = BattleAbilities.ZEN_MODE
+	foe.pokemon.hp = foe.max_hp() / 2
+	battle.abilities.on_turn_end_late(foe)
+	_check(foe.pokemon.form == 1 and foe.has_type(Stats.Type.PSYCHIC) and _said(battle, BWFiles.TEXT_BATTLE, 185),
+		"Mode Transe : Darumacho change de forme à la moitié de ses PV (185)")
+	foe.pokemon.hp = foe.max_hp()
+	battle.abilities.on_turn_end_late(foe)
+	_check(foe.pokemon.form == 0 and _said(battle, BWFiles.TEXT_BATTLE, 186), "Mode Transe : retour au Mode Normal (186)")
+	foe.pokemon.hp = foe.max_hp() / 2
+	battle.abilities.on_turn_end_late(foe)
+	battle._finish()
+	_check(foe.pokemon.form == 0, "les formes de combat reviennent à la fin du combat")
+
+	battle = _duel([241], 178, 351)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.ability = BattleAbilities.FORECAST
+	_use(battle, me, 0)
+	_check(foe.pokemon.form == 1 and foe.has_type(Stats.Type.FIRE), "Météo : Morphéo prend la forme du soleil")
+
+	var state := _player(571, 50, 182)
+	state.party[0].ability = BattleAbilities.ILLUSION
+	state.party.append(Pokemon.create(506, 50, {"random": GameRandom.new(183), "ot_id": state.trainer_id}))
+	battle = Battle.wild(state, Pokemon.create(504, 50, {"random": GameRandom.new(184)}), {"random": GameRandom.new(185)})
+	me = battle.send_out(battle.player(), 0, 0)
+	foe = battle.send_out(battle.enemy(), 0, 0)
+	_check(me.illusion == state.party[1] and me.name() == state.party[1].name(), "Illusion : il prend l'apparence du dernier de l'équipe")
+	foe.pokemon.set_moves([33])
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
+	_check(me.illusion == null and _said(battle, BWFiles.TEXT_BATTLE_SET, 478), "Illusion : un coup la brise (478)")
+
+	state = _player(132, 50, 186)
+	state.party[0].ability = BattleAbilities.IMPOSTER
+	battle = Battle.wild(state, Pokemon.create(504, 50, {"random": GameRandom.new(187)}), {"random": GameRandom.new(188)})
+	foe = battle.send_out(battle.enemy(), 0, 0)
+	me = battle.send_out(battle.player(), 0, 0)
+	battle.abilities.on_switch_in(me)
+	_check(me.has("transformed") and me.pokemon.move_ids() == foe.pokemon.move_ids(), "Imposteur : Morphing sur l'adversaire en entrant")
+	battle._finish()
+
+
+## Derniers objets tenus : Baie Mepo, Herbe Blanche, Rosée Âme, Orbes, Nœud Destin, Pièce Rune,
+## Pierrallégée, Point de Mire, Carton Rouge, Bouton Fuite.
+func _test_last_items() -> void:
+	var battle := _duel([33, 213], 190)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	me.pokemon.held_item = 154
+	me.pokemon.moves[0].pp = 1
+	_use(battle, me, 0)
+	_check(me.pp(0) == 10 and me.pokemon.held_item == 0 and _said(battle, BWFiles.TEXT_BATTLE_SET, 911),
+		"Baie Mepo : 10 PP à la capacité qui n'en a plus (911)")
+	me.pokemon.held_item = 214
+	foe.pokemon.set_moves([45, 213])
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
+	_check(me.stage(Stats.Stat.ATTACK) == 0 and me.pokemon.held_item == 0 and _said(battle, BWFiles.TEXT_BATTLE_SET, 1010),
+		"Herbe Blanche : le cran baissé revient (1010)")
+	me.pokemon.gender = Pokemon.Gender.MALE
+	foe.pokemon.gender = Pokemon.Gender.FEMALE
+	me.pokemon.held_item = 280
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 1, "mon": foe})
+	_check(me.has("attract") and foe.has("attract") and _said(battle, BWFiles.TEXT_BATTLE_SET, 330 + 1),
+		"Nœud Destin : celui qui charme tombe amoureux aussi (330)")
+	me.pokemon.held_item = 223
+	battle.items.on_switch_in(me)
+	_check(battle.money_doubled, "Pièce Rune : la somme gagnée double")
+	me.pokemon.held_item = 539
+	_check(battle.weight_of(me) == maxi(BattleCalc.fx_mul(me.weight(), 0x800), 1), "Pierrallégée : poids x 0,5")
+
+	battle = _duel([33], 194, 380)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.held_item = 225
+	_check(battle.items.attack_ratio(foe, false, BattleCalc.FX_ONE) == 0x1800 and battle.items.defense_ratio(foe, Stats.Stat.SP_DEFENSE, BattleCalc.FX_ONE) == 0x1800,
+		"Rosée Âme : Attaque et Défense Spéciales x 1,5 de Latias")
+	battle = _duel([33], 196, 483)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.held_item = 135
+	_check(battle.items.power_ratio(foe, MoveData.of(337), Stats.Type.DRAGON, BattleCalc.FX_ONE) == 0x1333,
+		"Orbe Adamant : capacités Dragon de Dialga x 1,2")
+	battle = _duel([33], 198, 92)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.held_item = 543
+	_check(battle.moves.effectiveness_against(me, foe, MoveData.of(33), Stats.Type.NORMAL) == Stats.Effectiveness.NORMAL,
+		"Point de Mire : le type Spectre ne protège plus des attaques Normal")
+
+	battle = _duel([33], 200)
+	battle.auto_answer = _auto
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	battle.player().party.append(Pokemon.create(506, 50, {"random": GameRandom.new(201)}))
+	foe.pokemon.held_item = 542
+	_use(battle, me, 0)
+	_check(battle.mon_at(BattleSide.PLAYER, 0).party_index == 1 and _said(battle, BWFiles.TEXT_BATTLE_SET, 417 + 3),
+		"Carton Rouge : l'attaquant est renvoyé (417, variante sauvage / joueur)")
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	me.pokemon.held_item = 547
+	foe.pokemon.set_moves([33])
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
+	_check(battle.mon_at(BattleSide.PLAYER, 0).party_index == 0 and _said(battle, BWFiles.TEXT_BATTLE_SET, 414),
+		"Bouton Fuite : le porteur se retire (414)")
+
+
+## Objets du sac en combat (0x021CB6D0) : messages du jeu, Huile sur une seule capacité.
+func _test_bag_items() -> void:
+	var battle := _duel([33, 52], 210)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	me.pokemon.hp = 1
+	_check(battle.items.apply_item(ItemData.of(17), me.pokemon, me) and me.hp() == 21 and _said(battle, BWFiles.TEXT_BATTLE_SET, 387),
+		"Potion : 20 PV, « X récupère des PV ! » (387)")
+	me.pokemon.moves[0].pp = 0
+	me.pokemon.moves[1].pp = 0
+	battle.items.apply_item(ItemData.of(38), me.pokemon, me, 1)
+	_check(me.pp(0) == 0 and me.pp(1) == 10 and _said(battle, BWFiles.TEXT_BATTLE_SET, 390), "Huile : 10 PP à la capacité choisie seulement (390)")
+	battle.items.apply_item(ItemData.of(40), me.pokemon, me)
+	_check(me.pp(0) == 10 and _said(battle, BWFiles.TEXT_BATTLE_SET, 393), "Élixir : toutes les capacités (393)")
+	_check(not battle.items.apply_item(ItemData.of(28), me.pokemon, me) and _said(battle, BWFiles.TEXT_BATTLE, 68),
+		"Rappel sur un Pokémon en forme : « Mais ça n'a aucun effet ! » (68)")
+	var friend := Pokemon.create(506, 50, {"random": GameRandom.new(211)})
+	friend.hp = 0
+	battle.player().party.append(friend)
+	_check(battle.items.apply_item(ItemData.of(28), friend, null) and friend.hp == friend.max_hp() / 2 and _said(battle, BWFiles.TEXT_BATTLE_SET, 3),
+		"Rappel : la moitié des PV, « n'est plus K.O. ! » (3)")
+	battle.state.add_item(38, 1)
+	me.pokemon.moves[0].pp = MoveData.max_pp(33, me.pokemon.moves[0].get("pp_ups", 0))
+	_check(battle.items.bag_problem({"item": 38, "target": 0, "move": 0}).get("line", -1) == 91
+		and battle.items.bag_problem({"item": 38, "target": 0, "move": 1}).is_empty(),
+		"Huile : « Ça n'aura aucun effet. » si la capacité choisie a tous ses PP (fichier 18, 91)")
+
+
+## Autour du combat : PC quand l'équipe est pleine, invites après un K.O. (fuite en combat sauvage,
+## style « CHOIX » contre un dresseur).
+func _test_around_battle() -> void:
+	var state := _player(498, 50, 220)
+	for i in 5:
+		state.party.append(Pokemon.create(506, 5, {"random": GameRandom.new(221 + i), "ot_id": state.trainer_id}))
+	var battle := Battle.wild(state, Pokemon.create(504, 2, {"random": GameRandom.new(230)}), {"random": GameRandom.new(231)})
+	battle.send_out(battle.player(), 0, 0)
+	var wild := battle.send_out(battle.enemy(), 0, 0)
+	state.add_item(4, 1)
+	wild.pokemon.hp = 1
+	for i in 20:
+		battle.items.throw_ball(battle.mon_at(BattleSide.PLAYER, 0), 4)
+		if battle.result == Battle.Result.CAUGHT:
+			break
+	_check(battle.result == Battle.Result.CAUGHT and state.party.size() == 6 and (state.boxes[0] as Array).size() == 1
+		and _said(battle, 234, 176), "capture avec l'équipe pleine : la BOÎTE 1 du PC (fichier 234, 176)")
+	var saved := GameState.from_dict(state.to_dict())
+	_check((saved.boxes[0] as Array).size() == 1 and (saved.boxes[0] as Array)[0].species == 504, "le PC est sauvegardé")
+
+	state = _player(498, 50, 232)
+	state.party.append(Pokemon.create(506, 5, {"random": GameRandom.new(233), "ot_id": state.trainer_id}))
+	battle = Battle.wild(state, Pokemon.create(504, 50, {"random": GameRandom.new(234)}), {"random": GameRandom.new(235)})
+	battle.auto_answer = func(b: Battle, request: Dictionary) -> Variant:
+		return 1 if request.kind == "faint_choice" else _auto(b, request)
+	var me := battle.send_out(battle.player(), 0, 0)
+	battle.send_out(battle.enemy(), 0, 0)
+	me.pokemon.hp = 0
+	me.pokemon.stats[Stats.Stat.SPEED] = 999
+	battle._replace_fainted()
+	_check(battle.result == Battle.Result.RUN, "K.O. en combat sauvage : « FUITE » (fichier 16, 1) avec la Vitesse du Pokémon K.O.")
+
+	state = _player(498, 50, 236)
+	state.party.append(Pokemon.create(506, 50, {"random": GameRandom.new(237), "ot_id": state.trainer_id}))
+	battle = Battle.against_trainer(state, 18, {"random": GameRandom.new(238), "format": Battle.Format.SINGLE})
+	battle.auto_answer = func(b: Battle, request: Dictionary) -> Variant:
+		return 0 if request.kind == "shift_choice" else _auto(b, request)
+	me = battle.send_out(battle.player(), 0, 0)
+	var foe := battle.send_out(battle.enemy(), 0, 0)
+	foe.pokemon.hp = 0
+	if battle.enemy().reserves(0).is_empty():
+		_check(false, "style « CHOIX » : le dresseur 18 doit avoir un second Pokémon")
+	else:
+		battle._replace_fainted()
+		_check(battle.mon_at(BattleSide.PLAYER, 0).party_index == 1 and _said(battle, BWFiles.TEXT_BATTLE, Battle.SHIFT_PROMPT),
+			"style « CHOIX » : changer de Pokémon avant que le dresseur envoie le sien (fichier 15, 20)")
+	battle._finish()
+
+
+## Règles d'évolution en montant de niveau (0x0201B2CC, cas 0).
+func _test_evolution_rules() -> void:
+	var party: Array[Pokemon] = []
+	var tepig := Pokemon.create(498, 17, {"random": GameRandom.new(240)})
+	_check(Evolutions.check_level_up(tepig, party, 0, false).get("species", 0) == 499, "Gruikui évolue au niveau 17 (méthode 4)")
+	tepig.held_item = 229
+	_check(Evolutions.check_level_up(tepig, party, 0, false).is_empty(), "Pierre Stase : pas d'évolution")
+	var eevee := Pokemon.create(133, 20, {"random": GameRandom.new(241)})
+	eevee.friendship = 220
+	_check(Evolutions.check_level_up(eevee, party, 0, false).get("species", 0) == 196
+		and Evolutions.check_level_up(eevee, party, 0, true).get("species", 0) == 197, "Évoli : Mentali de jour, Noctali de nuit (bonheur 220)")
+	eevee.friendship = 0
+	_check(Evolutions.check_level_up(eevee, party, 155, false).get("species", 0) == 470
+		and Evolutions.check_level_up(eevee, party, 203, false).get("species", 0) == 471, "Évoli : Phyllali près de la Pierre Mousse, Givrali près de la Pierre Glacée")
+	var nincada := Pokemon.create(290, 20, {"random": GameRandom.new(242)})
+	var ninjask := Evolutions.check_level_up(nincada, party, 0, false)
+	_check(ninjask.get("species", 0) == 291 and ninjask.get("shedinja", 0) == 292, "Ningale : Ninjask, et Munja avec lui (méthodes 14 et 15)")
+	var wurmple := Pokemon.create(265, 7, {"random": GameRandom.new(243), "pid": 3 << 16})
+	_check(Evolutions.check_level_up(wurmple, party, 0, false).get("species", 0) == 266, "Chenipotte : Armulys si (PID >> 16) % 10 < 5")
+	wurmple.pid = 7 << 16
+	_check(Evolutions.check_level_up(wurmple, party, 0, false).get("species", 0) == 268, "Chenipotte : Blindalys sinon")
+	_check(Evolutions.day_period(0, 22) == 3 and Evolutions.day_period(3, 6) == 4 and Evolutions.day_period(1, 4) == 0,
+		"périodes de la journée par saison (table 0x0209DEBC)")
+	var old_hp := tepig.max_hp() - tepig.hp
+	tepig.held_item = 0
+	tepig.evolve_into(499)
+	_check(tepig.species == 499 and tepig.max_hp() - tepig.hp == old_hp, "évolution : les PV perdus restent perdus")
+
+
+## Paroles d'un champion en plein combat (0x021CE890) : touché une première fois, puis son dernier
+## Pokémon, une fois chacune.
+func _test_trainer_speech() -> void:
+	var state := _player(498, 50, 250)
+	var battle := Battle.against_trainer(state, 11, {"random": GameRandom.new(251)})
+	battle.send_out(battle.player(), 0, 0)
+	var foe := battle.send_out(battle.enemy(), 0, 0)
+	var first_damage := TrainerSpeech.line_of(11, TrainerSpeech.Kind.FIRST_DAMAGE)
+	var last := TrainerSpeech.line_of(11, TrainerSpeech.Kind.LAST_POKEMON)
+	battle._trainer_speech()
+	_check(not _said(battle, BWFiles.TEXT_TRAINER_SPEECH, first_damage), "paroles : rien tant que son Pokémon n'est pas touché")
+	foe.pokemon.hp -= 1
+	battle._trainer_speech()
+	var count := battle.events.filter(func(e: Dictionary) -> bool: return e.type == "message" and e.file == BWFiles.TEXT_TRAINER_SPEECH).size()
+	battle._trainer_speech()
+	var again := battle.events.filter(func(e: Dictionary) -> bool: return e.type == "message" and e.file == BWFiles.TEXT_TRAINER_SPEECH).size()
+	_check(_said(battle, BWFiles.TEXT_TRAINER_SPEECH, first_damage) and count == 1 and again == 1, "paroles : « touché une première fois » (genre 17), une seule fois")
+	foe.pokemon.hp = 0
+	battle.send_out(battle.enemy(), 1, 0)
+	battle._trainer_speech()
+	_check(_said(battle, BWFiles.TEXT_TRAINER_SPEECH, last), "paroles : son dernier Pokémon (genre 19)")
+
+
+## Temps du terrain (calendrier a/0/9/7, en-tête des zones) et temps au début du combat.
+func _test_field_weather() -> void:
+	_check(FieldWeather.day_index(1, 1) == 0 and FieldWeather.day_index(3, 1) == 60 and FieldWeather.day_index(12, 31) == 365,
+		"calendrier : 366 jours, février en compte 29")
+	_check(FieldWeather.of(157, {}, 6, 15) == 3 and FieldWeather.battle_weather(3) == Battle.Weather.SAND,
+		"Désert Délassant (zone 157) : tempête de sable toute l'année")
+	_check(FieldWeather.of(389, {"weather": 0}, 6, 15) == 0 and FieldWeather.of(233, {"weather": 4}, 6, 15) == 4
+		and FieldWeather.battle_weather(4) == Battle.Weather.HAIL, "sans calendrier : le temps de l'en-tête (bits 0-5 de +0x1C)")
+	var state := _player(498, 20, 260)
+	var battle := Battle.wild(state, Pokemon.create(504, 20, {"random": GameRandom.new(261)}), {"random": GameRandom.new(262)})
+	battle.start_weather = Battle.Weather.SAND
+	battle._start()
+	_check(battle.weather == Battle.Weather.SAND and battle.weather_turns == 0 and _said(battle, BWFiles.TEXT_BATTLE, BattleText.SAND_STARTED),
+		"le combat commence sous le temps du terrain, sans fin")
+	battle._finish()
+
+
+## Commandes des scripts d'IA dont le dernier paramètre est un saut (tools/re/aiscripts.py).
+const AI_JUMPS: Array[int] = [0x00, 0x01, 0x02, 0x03, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
+	0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E,
+	0x24, 0x25, 0x26, 0x2C, 0x2D, 0x2E, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A,
+	0x3B, 0x4C, 0x4E, 0x4F, 0x50, 0x51, 0x54, 0x55, 0x56, 0x58, 0x59, 0x5C, 0x61, 0x62, 0x63, 0x6A, 0x6B,
+	0x6D, 0x6F, 0x70, 0x71, 0x72, 0x74, 0x75, 0x76, 0x77]
+
+
+## Parcours d'un script d'IA en suivant les sauts : chaque commande atteinte est connue, chaque saut
+## et chaque case de switch restent dans le fichier.
+func _ai_script_ok(code: PackedByteArray) -> bool:
+	if code.is_empty():
+		return false
+	var seen := {}
+	var todo: Array[int] = [0]
+	while not todo.is_empty():
+		var pc: int = todo.pop_back()
+		while not seen.has(pc):
+			if pc < 0 or pc + 2 > code.size():
+				return false
+			seen[pc] = true
+			var op := code.decode_u16(pc)
+			if op >= BattleAIScript.PARAM_COUNTS.size():
+				return false
+			var next := pc + 2 + 4 * BattleAIScript.PARAM_COUNTS[op]
+			if next > code.size():
+				return false
+			if op == 0x73:
+				var table := next + BattleAIScript._s32(code.decode_u32(next - 4))
+				for i in code.decode_u32(pc + 6) + 1:
+					todo.append(table + BattleAIScript._s32(code.decode_u32(table + 4 * i)))
+				break
+			if op in AI_JUMPS:
+				todo.append(next + BattleAIScript._s32(code.decode_u32(next - 4)))
+			if op == 0x4C or op == 0x4D:
+				break
+			pc = next
+	return true
+
+
+## IA des dresseurs : scripts de l'overlay 96 (a/1/7/1), objets du sac, changements, remplaçant.
+func _test_trainer_ai() -> void:
+	var readable := true
+	for bit in 14:
+		# Le fichier 12 n'est pas un script de cette machine (aucun dresseur n'a ce bit).
+		if bit != 12:
+			readable = readable and _ai_script_ok(BattleAIScript.script_of(bit))
+	_check(readable, "scripts d'IA (a/1/7/1) : les 13 fichiers utiles se lisent avec la table des 120 commandes")
+
+	# Script de base (bit 0) : Cage-Éclair, Séisme, Abîme, Charge du Ponchiot contre Gruikui.
+	var battle := _duel([33], 300)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.set_moves([86, 89, 90, 33])
+	me.pokemon.status = Pokemon.Status.PARALYSIS
+	me.pokemon.level = 60
+	me.pokemon.calc_stats()
+	var base: Array[int] = [100, 100, 100, 100]
+	var ctx := battle.ai.evaluate(foe, me.position(), 1, base, 0)
+	_check(ctx.scores == [90, 100, 90, 100], "IA de base : statut sur une cible déjà paralysée -10, Abîme contre plus haut niveau -10")
+	me.ability = BattleAbilities.LEVITATE
+	battle.abilities.announce(me)
+	ctx = battle.ai.evaluate(foe, me.position(), 1, base, 0)
+	_check(ctx.scores[1] == 90 and me.revealed_ability == BattleAbilities.LEVITATE, "IA de base : Séisme contre Lévitation (talent montré) -10")
+	_check(battle.ai.choose_move(foe, 1, [true, true, true, true] as Array[bool]).slot == 3,
+		"la meilleure note l'emporte (Charge, seule à 100)")
+
+	# Évaluation des attaques (bit 1) : Charge met K.O. : +4 ; sinon -1 si une autre frappe plus fort.
+	me.ability = 66
+	me.revealed_ability = 0
+	me.pokemon.status = Pokemon.Status.NONE
+	ctx = battle.ai.evaluate(foe, me.position(), 2, base, 0)
+	_check(ctx.scores[3] == 99 and ctx.scores[1] == 100, "évaluation : une attaque moins forte qu'une autre -1")
+	me.pokemon.hp = 1
+	me.last_move = 89
+	ctx = battle.ai.evaluate(foe, me.position(), 2, base, 0)
+	_check(ctx.scores[3] == 104, "évaluation : une attaque qui met K.O. +4")
+	_check(battle.ai.knows_move(ctx, 0, 89) and not battle.ai.knows_move(ctx, 0, 33), "mémoire des capacités vues de la cible (+0x4C)")
+	_check(battle.ai.flags_of(foe) == 0, "Pokémon sauvage en combat simple : aucun indicateur, capacité au hasard")
+
+	# Objets du sac (0x021D3D64) : Potion au quart des PV, case vidée ; cases selon la taille de l'équipe.
+	battle = _duel([33], 310)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	battle.kind = Battle.Kind.TRAINER
+	var trainer := TrainerData.new()
+	trainer.ai_flags = 1
+	battle.enemy().trainer = trainer
+	battle.enemy().items = [17, 0, 0, 0] as Array[int]
+	foe.pokemon.hp = foe.max_hp() / 4 + 1
+	_check(battle.ai.choose_action(foe).action == Battle.Action.FIGHT, "objet : pas de Potion au-dessus du quart des PV")
+	foe.pokemon.hp = foe.max_hp() / 4
+	var action := battle.ai.choose_action(foe)
+	_check(action.action == Battle.Action.BAG and action.item == 17 and battle.enemy().items[0] == 0,
+		"objet : Potion au quart des PV, sa case est vidée")
+	foe.pokemon.hp = foe.max_hp()
+	foe.pokemon.status = Pokemon.Status.PARALYSIS
+	for i in 2:
+		var member := Pokemon.create(504, 50, {"random": GameRandom.new(311 + i)})
+		member.set_moves([33])
+		battle.enemy().party.append(member)
+	battle.enemy().items = [0, 0, 22, 0] as Array[int]
+	_check(battle.ai.choose_action(foe).action == Battle.Action.FIGHT, "objet : la case 3 ne sert qu'à 2 Pokémon au plus (table 0x021EFF14)")
+	battle.enemy().items = [0, 22, 0, 0] as Array[int]
+	action = battle.ai.choose_action(foe)
+	_check(action.action == Battle.Action.BAG and action.item == 22, "objet : Anti-Para sur un Pokémon paralysé")
+	foe.pokemon.status = Pokemon.Status.NONE
+	battle.enemy().items = [57, 0, 0, 0] as Array[int]
+	foe.stages[Stats.Stat.ATTACK] = BattleMon.MAX_STAGE
+	_check(battle.ai.choose_action(foe).action != Battle.Action.BAG, "objet : pas d'Attaque + quand l'Attaque est au plus haut")
+	foe.stages[Stats.Stat.ATTACK] = 0
+	battle.turn += 1
+	_check(battle.ai.choose_action(foe).action == Battle.Action.BAG, "objet : Attaque + quand l'Attaque peut monter")
+
+	# Changements (0x021CFB90) : Requiem au dernier tour, vers le remplaçant qui frappe le plus fort.
+	battle.enemy().items = [0, 0, 0, 0] as Array[int]
+	var panpour := Pokemon.create(515, 50, {"random": GameRandom.new(313)})
+	panpour.set_moves([55])
+	battle.enemy().party.append(panpour)
+	foe.set_effect("perish", 1)
+	battle.turn += 1
+	action = battle.ai.choose_action(foe)
+	_check(action.action == Battle.Action.SWITCH and action.party == 3, "changement : Requiem au dernier tour, vers Flotajou (Pistolet à O contre un Feu)")
+	foe.clear_effect("perish")
+	battle.turn += 1
+	_check(battle.ai.choose_action(foe).action != Battle.Action.SWITCH, "changement : rien ne pousse à partir")
+	_check(battle.ai.choose_replacement(battle.enemy(), 0) == 3, "remplaçant après un K.O. : le plus fort contre l'adversaire (0x021D0980)")
+	foe.set_effect("trapped", me)
+	foe.set_effect("perish", 1)
+	battle.turn += 1
+	_check(battle.ai.choose_action(foe).action != Battle.Action.SWITCH, "changement : impossible quand il est piégé")
 
 
 ## Vérification qui ne s'affiche qu'en cas d'échec (boucles).

@@ -57,11 +57,13 @@ const FLAME_BODY := 49
 const RUN_AWAY := 50
 const KEEN_EYE := 51
 const HYPER_CUTTER := 52
+const PICKUP := 53
 const TRUANT := 54
 const HUSTLE := 55
 const CUTE_CHARM := 56
 const PLUS := 57
 const MINUS := 58
+const FORECAST := 59
 const STICKY_HOLD := 60
 const SHED_SKIN := 61
 const GUTS := 62
@@ -121,18 +123,26 @@ const SOLID_ROCK := 116
 const SNOW_WARNING := 117
 const FRISK := 119
 const RECKLESS := 120
+const MULTITYPE := 121
 const FLOWER_GIFT := 122
 const BAD_DREAMS := 123
+const PICKPOCKET := 124
 const SHEER_FORCE := 125
 const CONTRARY := 126
 const UNNERVE := 127
 const DEFIANT := 128
 const DEFEATIST := 129
 const CURSED_BODY := 130
+const HEALER := 131
+const FRIEND_GUARD := 132
 const WEAK_ARMOR := 133
+const HEAVY_METAL := 134
+const LIGHT_METAL := 135
 const MULTISCALE := 136
 const TOXIC_BOOST := 137
 const FLARE_BOOST := 138
+const HARVEST := 139
+const TELEPATHY := 140
 const MOODY := 141
 const OVERCOAT := 142
 const POISON_TOUCH := 143
@@ -141,27 +151,36 @@ const BIG_PECKS := 145
 const SAND_RUSH := 146
 const WONDER_SKIN := 147
 const ANALYTIC := 148
+const ILLUSION := 149
+const IMPOSTER := 150
 const INFILTRATOR := 151
 const MUMMY := 152
 const MOXIE := 153
 const JUSTIFIED := 154
 const RATTLED := 155
+const MAGIC_BOUNCE := 156
 const SAP_SIPPER := 157
 const PRANKSTER := 158
 const SAND_FORCE := 159
 const IRON_BARBS := 160
+const ZEN_MODE := 161
 const VICTORY_STAR := 162
 const TURBOBLAZE := 163
 const TERAVOLT := 164
+## Espèces des talents qui changent de forme : Morphéo (Météo), Darumacho (Mode Transe).
+const CASTFORM := 351
+const DARMANITAN := 555
 ## Talents qui ignorent ceux de la cible (Brise Moule, TurboBrasier, Téra-Voltage).
 const BREAKERS: Array[int] = [MOLD_BREAKER, TURBOBLAZE, TERAVOLT]
-## Talents qu'un Brise Moule ignore (ceux qui protègent la cible).
+## Talents qu'un Brise Moule ignore (liste 0x0689E450 de l'overlay 95, lue par le filtre 0x021DB148
+## qu'il pose pendant sa capacité).
 const BREAKABLE: Array[int] = [STURDY, DAMP, LIMBER, SAND_VEIL, VOLT_ABSORB, WATER_ABSORB, OBLIVIOUS,
 	INSOMNIA, IMMUNITY, FLASH_FIRE, SHIELD_DUST, OWN_TEMPO, SUCTION_CUPS, WONDER_GUARD, LEVITATE,
 	CLEAR_BODY, LIGHTNING_ROD, INNER_FOCUS, MAGMA_ARMOR, WATER_VEIL, SOUNDPROOF, THICK_FAT, KEEN_EYE,
-	HYPER_CUTTER, MARVEL_SCALE, VITAL_SPIRIT, WHITE_SMOKE, SHELL_ARMOR, BATTLE_ARMOR, TANGLED_FEET,
-	MOTOR_DRIVE, SNOW_CLOAK, HEATPROOF, SIMPLE, DRY_SKIN, LEAF_GUARD, UNAWARE, FILTER, STORM_DRAIN,
-	SOLID_ROCK, FLOWER_GIFT, CONTRARY, MULTISCALE, BIG_PECKS, WONDER_SKIN, SAP_SIPPER]
+	HYPER_CUTTER, STICKY_HOLD, MARVEL_SCALE, VITAL_SPIRIT, WHITE_SMOKE, SHELL_ARMOR, BATTLE_ARMOR,
+	TANGLED_FEET, MOTOR_DRIVE, SNOW_CLOAK, HEATPROOF, SIMPLE, DRY_SKIN, LEAF_GUARD, UNAWARE, FILTER,
+	STORM_DRAIN, SOLID_ROCK, FLOWER_GIFT, CONTRARY, FRIEND_GUARD, HEAVY_METAL, LIGHT_METAL, MULTISCALE,
+	TELEPATHY, BIG_PECKS, WONDER_SKIN, MAGIC_BOUNCE, SAP_SIPPER]
 ## Talents écrits dans ce fichier (pour le décompte de la documentation).
 const HANDLED := [STENCH, DRIZZLE, SPEED_BOOST, BATTLE_ARMOR, STURDY, DAMP, LIMBER, SAND_VEIL, STATIC,
 	VOLT_ABSORB, WATER_ABSORB, OBLIVIOUS, CLOUD_NINE, COMPOUND_EYES, INSOMNIA, COLOR_CHANGE, IMMUNITY,
@@ -179,7 +198,9 @@ const HANDLED := [STENCH, DRIZZLE, SPEED_BOOST, BATTLE_ARMOR, STURDY, DAMP, LIMB
 	FLOWER_GIFT, BAD_DREAMS, SHEER_FORCE, CONTRARY, UNNERVE, DEFIANT, DEFEATIST, CURSED_BODY, WEAK_ARMOR,
 	MULTISCALE, TOXIC_BOOST, FLARE_BOOST, MOODY, OVERCOAT, POISON_TOUCH, REGENERATOR, BIG_PECKS,
 	SAND_RUSH, WONDER_SKIN, ANALYTIC, INFILTRATOR, MUMMY, MOXIE, JUSTIFIED, RATTLED, SAP_SIPPER,
-	PRANKSTER, SAND_FORCE, IRON_BARBS, VICTORY_STAR, TURBOBLAZE, TERAVOLT]
+	PRANKSTER, SAND_FORCE, IRON_BARBS, VICTORY_STAR, TURBOBLAZE, TERAVOLT, STICKY_HOLD, MAGIC_BOUNCE, PICKUP,
+	PLUS, MINUS, FORECAST, PICKPOCKET, HEALER, FRIEND_GUARD, HEAVY_METAL, LIGHT_METAL, HARVEST, TELEPATHY,
+	ILLUSION, IMPOSTER, ZEN_MODE]
 
 ## Le combat, gardé par une référence faible : il possède ce module (pas de cycle de références).
 var battle: Battle:
@@ -211,9 +232,10 @@ func _target_ability(target: BattleMon, attacker: BattleMon) -> int:
 	return ability
 
 
-## Montre le nom du talent (fenêtre du jeu).
+## Montre le nom du talent (fenêtre du jeu) ; l'IA le connaît désormais (0x021F8A9C).
 func announce(mon: BattleMon) -> void:
-	battle.push({"type": "ability", "side": mon.side, "ability": mon.ability, "name": mon.name()})
+	mon.revealed_ability = mon.ability
+	battle.push({"type": "ability", "side": mon.side, "slot": mon.slot, "ability": mon.ability, "name": mon.name()})
 
 
 func _boost(mon: BattleMon, stat: int, amount: int) -> void:
@@ -223,13 +245,22 @@ func _boost(mon: BattleMon, stat: int, amount: int) -> void:
 
 # --- Entrée et sortie ---------------------------------------------------------------------------
 
+## Talents d'entrée. En combat à plusieurs, ils regardent tous les adversaires : Intimidation
+## touche chaque adversaire voisin, Télécharge compare la somme de leurs Défenses, Fouille et Calque
+## en prennent un au hasard.
 func on_switch_in(mon: BattleMon) -> void:
-	var foe := battle.foe_of(mon)
+	var foes := battle.foes_of(mon, false)
+	var foe: BattleMon = foes[battle.random.range_of(foes.size())] if foes.size() > 1 else (foes[0] if not foes.is_empty() else null)
 	match ability_of(mon):
 		INTIMIDATE:
-			if foe and not foe.is_fainted() and not foe.has("substitute"):
+			var touched: Array[BattleMon] = []
+			for each in battle.foes_of(mon):
+				if not each.has("substitute"):
+					touched.append(each)
+			if not touched.is_empty():
 				announce(mon)
-				battle.moves.change_stat(foe, mon, Stats.Stat.ATTACK, -1, false)
+				for each in touched:
+					battle.moves.change_stat(each, mon, Stats.Stat.ATTACK, -1, false)
 		DRIZZLE, DROUGHT, SAND_STREAM, SNOW_WARNING:
 			var weather: Battle.Weather = {DRIZZLE: Battle.Weather.RAIN, DROUGHT: Battle.Weather.SUN,
 				SAND_STREAM: Battle.Weather.SAND, SNOW_WARNING: Battle.Weather.HAIL}[ability_of(mon)]
@@ -239,10 +270,14 @@ func on_switch_in(mon: BattleMon) -> void:
 				battle.weather_turns = 0
 				battle.push({"type": "weather", "weather": weather})
 				battle.say([0, BattleText.SUN_STARTED, BattleText.RAIN_STARTED, BattleText.HAIL_STARTED, BattleText.SAND_STARTED][weather])
+				battle.weather_changed()
 		DOWNLOAD:
-			if foe:
-				var defense := BattleMon.apply_stage(foe.raw_stat(Stats.Stat.DEFENSE), foe.stage(Stats.Stat.DEFENSE))
-				var sp_defense := BattleMon.apply_stage(foe.raw_stat(Stats.Stat.SP_DEFENSE), foe.stage(Stats.Stat.SP_DEFENSE))
+			if not foes.is_empty():
+				var defense := 0
+				var sp_defense := 0
+				for each in foes:
+					defense += BattleMon.apply_stage(each.raw_stat(Stats.Stat.DEFENSE), each.stage(Stats.Stat.DEFENSE))
+					sp_defense += BattleMon.apply_stage(each.raw_stat(Stats.Stat.SP_DEFENSE), each.stage(Stats.Stat.SP_DEFENSE))
 				_boost(mon, Stats.Stat.SP_ATTACK if sp_defense > defense else Stats.Stat.ATTACK, 1)
 		PRESSURE:
 			announce(mon)
@@ -260,34 +295,50 @@ func on_switch_in(mon: BattleMon) -> void:
 			announce(mon)
 			battle.say(176 + (0 if mon.side == BattleSide.ENEMY else 1))
 		ANTICIPATION:
-			if foe and _foe_has_dangerous_move(mon, foe):
-				announce(mon)
-				battle.say_mon(436, mon)
+			for each in foes:
+				if _foe_has_dangerous_move(mon, each):
+					announce(mon)
+					battle.say_mon(436, mon)
+					break
 		FRISK:
 			if foe and foe.pokemon.held_item != 0:
 				announce(mon)
 				battle.say_mon(439, mon, {1: Autoloads.rom().text(BWFiles.TEXT_ITEM_NAMES, foe.pokemon.held_item)})
 		FOREWARN:
-			if foe and not foe.pokemon.moves.is_empty():
-				var best := 0
-				var best_power := -1
-				for move in foe.pokemon.moves:
+			var best := 0
+			var best_power := -1
+			for each in foes:
+				for move in each.pokemon.moves:
 					var data := MoveData.of(move.id)
 					if data and data.power > best_power:
 						best = move.id
 						best_power = data.power
+			if best > 0:
 				announce(mon)
 				battle.say_mon(433, mon, {1: Autoloads.rom().text(BWFiles.TEXT_MOVE_NAMES, best)})
 		TRACE:
-			if foe and ability_of(foe) not in [0, TRACE, 121, 149, 150, 161]:
-				mon.ability = foe.ability
+			var traceable: Array[BattleMon] = []
+			for each in battle.foes_of(mon):
+				if ability_of(each) not in [0, TRACE, 121, 149, 150, 161]:
+					traceable.append(each)
+			if not traceable.is_empty():
+				var copied: BattleMon = traceable[battle.random.range_of(traceable.size())] if traceable.size() > 1 else traceable[0]
+				mon.ability = copied.ability
 				announce(mon)
-				battle.say_mon(381, mon, {1: Autoloads.rom().text(BWFiles.TEXT_ABILITY_NAMES, foe.ability)})
+				battle.say_mon(381, mon, {1: Autoloads.rom().text(BWFiles.TEXT_ABILITY_NAMES, copied.ability)})
 				on_switch_in(mon)
 		SLOW_START:
 			mon.set_effect("slow_start", 5)
 			announce(mon)
 			battle.say_mon(496, mon)
+		IMPOSTER:
+			# Imposteur (0x021DCCC0) : Morphing sur l'adversaire d'en face (travail 0x33, 644).
+			var facing := battle.foe_of(mon)
+			if facing and not facing.is_fainted() and battle.moves.can_transform(mon, facing):
+				announce(mon)
+				battle.moves.transform(mon, facing)
+		FORECAST:
+			update_forecast(mon)
 
 
 func _foe_has_dangerous_move(mon: BattleMon, foe: BattleMon) -> bool:
@@ -319,6 +370,12 @@ func on_faint(mon: BattleMon) -> void:
 	if mon.has("destiny_bond") and attacker.side != mon.side:
 		battle.say_mon(629, mon)
 		battle.damage(attacker, attacker.hp(), "destiny_bond")
+	# Rancune : la capacité qui a mis le Pokémon K.O. perd tous ses PP (message 635).
+	if mon.has("grudge") and attacker.side != mon.side and mon.last_hit_by_move > 0:
+		var slot := attacker.move_index(mon.last_hit_by_move)
+		if slot >= 0 and attacker.pp(slot) > 0:
+			attacker.pokemon.moves[slot].pp = 0
+			battle.say_mon(635, attacker, {1: Autoloads.rom().text(BWFiles.TEXT_MOVE_NAMES, mon.last_hit_by_move)})
 	if has_ability(mon, AFTERMATH) and MoveData.of(mon.last_hit_by_move) and MoveData.of(mon.last_hit_by_move).has_flag(MoveData.Flag.CONTACT):
 		if not _magic_guard(attacker):
 			announce(mon)
@@ -378,11 +435,11 @@ func on_turn_end(mon: BattleMon) -> void:
 				if not lowerable.is_empty():
 					battle.moves.change_stat(mon, mon, lowerable[battle.random.range_of(lowerable.size())], -1, false)
 		BAD_DREAMS:
-			var foe := battle.foe_of(mon)
-			if foe and foe.status() == Pokemon.Status.SLEEP and not _magic_guard(foe):
-				announce(mon)
-				battle.say_mon(BattleText.HURT, foe)
-				battle.damage(foe, maxi(foe.max_hp() / 8, 1), "bad_dreams")
+			for foe in battle.foes_of(mon, false):
+				if foe.status() == Pokemon.Status.SLEEP and not _magic_guard(foe):
+					announce(mon)
+					battle.say_mon(BattleText.HURT, foe)
+					battle.damage(foe, maxi(foe.max_hp() / 8, 1), "bad_dreams")
 		SLOW_START:
 			if mon.has("slow_start"):
 				var turns: int = mon.get_effect("slow_start") - 1
@@ -392,6 +449,109 @@ func on_turn_end(mon: BattleMon) -> void:
 					battle.say_mon(499, mon)
 				else:
 					mon.set_effect("slow_start", turns)
+		HEALER:
+			# Cœur Soin (0x021DC110) : chaque allié voisin qui a un statut a 30 % de chances d'en guérir.
+			for ally in battle.allies_of(mon):
+				if ally.status() != Pokemon.Status.NONE and battle.random.range_of(100) < 30:
+					announce(mon)
+					_cure(ally)
+
+
+## Fin du tour, après les effets ordinaires (événements 0x77 et 0x78) : Récolte, Ramassage, Mode
+## Transe, Météo.
+func on_turn_end_late(mon: BattleMon) -> void:
+	match ability_of(mon):
+		HARVEST:
+			# Récolte (0x021DCAD8) : la baie consommée revient, au soleil ou une fois sur deux (475).
+			var side := battle.sides[mon.side]
+			var berry: int = side.consumed.get(mon.party_index, 0)
+			if mon.pokemon.held_item == 0 and BattleItems.is_berry(berry) and (_weather() == Battle.Weather.SUN or battle.random.range_of(100) < 50):
+				side.consumed.erase(mon.party_index)
+				announce(mon)
+				battle.say_mon(475, mon, {1: Autoloads.rom().text(BWFiles.TEXT_ITEM_NAMES, berry)})
+				battle.items.change_item(mon, berry)
+		PICKUP:
+			# Ramassage (0x021DBB78) : sans objet, ramasse l'objet qu'un voisin a consommé ce tour, tiré
+			# au sort (« trouve un objet », 490).
+			if mon.pokemon.held_item != 0:
+				return
+			var givers: Array[BattleMon] = []
+			for each in battle.foes_of(mon) + battle.allies_of(mon):
+				if each.consumed_turn == battle.turn and battle.sides[each.side].consumed.get(each.party_index, 0) != 0:
+					givers.append(each)
+			if givers.is_empty():
+				return
+			var giver: BattleMon = givers[battle.random.range_of(givers.size())] if givers.size() > 1 else givers[0]
+			var found: int = battle.sides[giver.side].consumed[giver.party_index]
+			battle.sides[giver.side].consumed.erase(giver.party_index)
+			announce(mon)
+			battle.say_mon(490, mon, {1: Autoloads.rom().text(BWFiles.TEXT_ITEM_NAMES, found)})
+			battle.items.change_item(mon, found)
+		ZEN_MODE:
+			# Mode Transe (0x021DC6D8) : Darumacho (555) passe en Mode Transe à la moitié de ses PV ou
+			# moins, et en revient au-dessus (« Mode Transe ! », « Mode Normal ! », fichier 15, 185 et 186).
+			if mon.pokemon.species == DARMANITAN and not mon.has("transformed"):
+				var zen := 1 if mon.hp() <= mon.max_hp() / 2 else 0
+				if zen != mon.pokemon.form:
+					announce(mon)
+					battle.moves.change_form(mon, zen)
+					battle.say(185 if zen == 1 else 186)
+		FORECAST:
+			update_forecast(mon)
+
+
+## Météo (0x021DB314) : Morphéo prend la forme du temps qu'il fait (soleil 1, pluie 2, grêle 3,
+## sinon 0) ; « X se transforme ! » (222).
+func update_forecast(mon: BattleMon) -> void:
+	if mon.pokemon.species != CASTFORM or mon.is_fainted() or mon.has("transformed"):
+		return
+	var form := 0
+	if ability_of(mon) == FORECAST:
+		match _weather():
+			Battle.Weather.SUN: form = 1
+			Battle.Weather.RAIN: form = 2
+			Battle.Weather.HAIL: form = 3
+	if form != mon.pokemon.form:
+		announce(mon)
+		battle.moves.change_form(mon, form)
+		battle.say_mon(222, mon)
+
+
+## Le talent change ou ne fait plus effet (événements 0x6A et 0x89) : Illusion se brise, Morphéo et
+## Darumacho reprennent leur forme ordinaire.
+func on_ability_lost(mon: BattleMon) -> void:
+	if mon.illusion:
+		break_illusion(mon)
+	if mon.pokemon.species == CASTFORM and mon.pokemon.form != 0:
+		battle.moves.change_form(mon, 0)
+		battle.say_mon(222, mon)
+	if mon.pokemon.species == DARMANITAN and mon.pokemon.form != 0:
+		battle.moves.change_form(mon, 0)
+		battle.say(186)
+
+
+## Illusion (0x021B9CB0) : en entrant, le porteur prend l'apparence et le nom du dernier membre de son
+## équipe en état de se battre (sauf s'il est lui-même ce dernier).
+func set_illusion(mon: BattleMon) -> void:
+	mon.illusion = null
+	if ability_of(mon) != ILLUSION:
+		return
+	var party := battle.sides[mon.side].party
+	for i in range(party.size() - 1, -1, -1):
+		if not party[i].is_fainted():
+			if i != mon.party_index:
+				mon.illusion = party[i]
+			return
+
+
+## L'Illusion se brise (0x021DCDE8 : travail 0x34) : le vrai Pokémon apparaît (« L'Illusion de X se
+## brise ! », 478).
+func break_illusion(mon: BattleMon) -> void:
+	if mon.illusion == null:
+		return
+	mon.illusion = null
+	battle.push({"type": "illusion_end", "side": mon.side, "slot": mon.slot, "mon": mon})
+	battle.say_mon(478, mon)
 
 
 func _cure(mon: BattleMon) -> void:
@@ -401,7 +561,7 @@ func _cure(mon: BattleMon) -> void:
 	mon.pokemon.status = Pokemon.Status.NONE
 	mon.pokemon.sleep_turns = 0
 	mon.badly_poisoned = false
-	battle.push({"type": "status", "side": mon.side, "status": 0})
+	battle.push({"type": "status", "side": mon.side, "slot": mon.slot, "status": 0})
 	battle.say_mon(message, mon)
 
 
@@ -528,6 +688,35 @@ func traps(holder: BattleMon, target: BattleMon) -> bool:
 
 # --- Immunités et protections ---------------------------------------------------------------------
 
+## Cible d'une capacité à une seule cible, attirée ailleurs en combat à plusieurs : Par Ici et Poudre
+## Fureur (effet « follow_me » posé sur un Pokémon du camp visé), puis Paratonnerre et Lavabo pour
+## les capacités Électrik et Eau (le plus rapide des porteurs, hors le lanceur).
+func redirect(mon: BattleMon, target: BattleMon, data: MoveData, move_type: int) -> BattleMon:
+	if not battle.is_multi() or data.target not in [MoveData.Target.OTHER, MoveData.Target.ENEMY, MoveData.Target.RANDOM_ENEMY]:
+		return target
+	for each in battle.sides[target.side].on_field():
+		if each.has("follow_me"):
+			return each
+	var drawing := {Stats.Type.ELECTRIC: LIGHTNING_ROD, Stats.Type.WATER: STORM_DRAIN}
+	if not drawing.has(move_type) or ability_of(target) == drawing[move_type]:
+		return target
+	for each in battle.by_speed(battle.all_active()):
+		if each != mon and _target_ability(each, mon) == drawing[move_type]:
+			return each
+	return target
+
+
+## Glue (0x021DB870) : un autre Pokémon ne peut pas lui retirer son objet (sauf un Brise Moule).
+func holds_item(holder: BattleMon, other: BattleMon) -> bool:
+	return _target_ability(holder, other) == STICKY_HOLD
+
+
+## Miroir Magik (0x021DCACC) : renvoie les capacités que Reflet Magik renvoie (sauf face à un
+## Brise Moule).
+func bounces(holder: BattleMon, attacker: BattleMon) -> bool:
+	return _target_ability(holder, attacker) == MAGIC_BOUNCE
+
+
 ## Le talent de la cible arrête la capacité (Lévitation, Absorb Volt...) ; vrai si elle est arrêtée.
 func blocks_move(target: BattleMon, attacker: BattleMon, data: MoveData, move_type := -1) -> bool:
 	if move_type < 0:
@@ -536,6 +725,12 @@ func blocks_move(target: BattleMon, attacker: BattleMon, data: MoveData, move_ty
 	if target == attacker:
 		return false
 	match ability:
+		TELEPATHY:
+			# Télépathe (0x021DC240) : les attaques des alliés ne le touchent pas (469).
+			if attacker.side == target.side and data.is_damaging():
+				announce(target)
+				battle.say_mon(469, target)
+				return true
 		LEVITATE:
 			if move_type == Stats.Type.GROUND and data.is_damaging() and not battle.field.has("gravity") and not target.has("ingrain"):
 				announce(target)
@@ -579,7 +774,8 @@ func blocks_move(target: BattleMon, attacker: BattleMon, data: MoveData, move_ty
 				announce(target)
 				battle.say(BattleText.BUT_IT_FAILED)
 				return true
-	if move_type == Stats.Type.GROUND and data.is_damaging() and battle.items.floats(target) and not battle.field.has("gravity"):
+	# Ballon, Vol Magnétik, Lévikinésie : le Sol ne touche pas (sauf Gravité, Racines, Balle Fer).
+	if move_type == Stats.Type.GROUND and data.is_damaging() and battle.moves.is_floating(target, false):
 		battle.say_mon(BattleText.NO_EFFECT_ON, target)
 		return true
 	return false
@@ -733,6 +929,14 @@ func on_contact(target: BattleMon, attacker: BattleMon) -> void:
 	if has_ability(attacker, POISON_TOUCH) and battle.random.range_of(100) < 30:
 		announce(attacker)
 		battle.moves.set_status(target, attacker, Pokemon.Status.POISON, true)
+	# Pickpocket (0x021DBC8C) : sans objet, le porteur prend celui de l'attaquant (Glue l'en empêche ;
+	# « X s'est fait voler l'objet... », 460).
+	var stolen := attacker.pokemon.held_item
+	if has_ability(target, PICKPOCKET) and not target.is_fainted() and target.pokemon.held_item == 0 and stolen != 0 \
+			and not battle.moves.item_locked(target, attacker) and battle.items.change_item(attacker, 0, target):
+		announce(target)
+		battle.say_mon(460, attacker, {1: Autoloads.rom().text(BWFiles.TEXT_ITEM_NAMES, stolen)})
+		battle.items.change_item(target, stolen)
 
 
 ## La cible touchée : Déguisement, Armurouillée, Cœur Noble, Phobique, Colérique, Corps Maudit.
@@ -831,6 +1035,13 @@ func attack_ratio(mon: BattleMon, target: BattleMon, data: MoveData, physical: b
 			if mon.hp() * 2 <= mon.max_hp(): ratio = BattleCalc.fx_mul(ratio, 0x800)
 		SLOW_START:
 			if physical and mon.has("slow_start"): ratio = BattleCalc.fx_mul(ratio, 0x800)
+		PLUS, MINUS:
+			# Plus, Minus (0x021D8CE0) : Attaque Spéciale x 1,5 si un allié a Plus ou Minus.
+			if not physical:
+				for ally in battle.allies_of(mon, false):
+					if ability_of(ally) in [PLUS, MINUS]:
+						ratio = BattleCalc.fx_mul(ratio, 0x1800)
+						break
 	if mon.has("flash_fire") and move_type == Stats.Type.FIRE:
 		ratio = BattleCalc.fx_mul(ratio, 0x1800)
 	if _target_ability(target, mon) == THICK_FAT and move_type in [Stats.Type.FIRE, Stats.Type.ICE]:
@@ -858,4 +1069,19 @@ func final_ratio(mon: BattleMon, target: BattleMon, data: MoveData, effectivenes
 			if effectiveness > Stats.Effectiveness.NORMAL: ratio = BattleCalc.fx_mul(ratio, 0xC00)
 		MULTISCALE:
 			if target.hp() == target.max_hp(): ratio = BattleCalc.fx_mul(ratio, 0x800)
+	# Garde Amie (0x021DC0DC) : les alliés du porteur prennent x 0,75.
+	for ally in battle.allies_of(target, false):
+		if _target_ability(ally, mon) == FRIEND_GUARD:
+			ratio = BattleCalc.fx_mul(ratio, 0xC00)
 	return ratio
+
+
+## Heavy Metal et Light Metal (événement 0x7B du poids, 0x021C8340) : poids x 2 ou x 0,5 ; un Brise
+## Moule qui attaque les ignore.
+func weight_ratio(mon: BattleMon, attacker: BattleMon = null) -> int:
+	match _target_ability(mon, attacker) if attacker else ability_of(mon):
+		HEAVY_METAL:
+			return 0x2000
+		LIGHT_METAL:
+			return 0x800
+	return BattleCalc.FX_ONE

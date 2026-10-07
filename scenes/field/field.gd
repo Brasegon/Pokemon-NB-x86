@@ -478,11 +478,19 @@ func _check_encounter(tile: Vector2i) -> void:
 	if state.able_pokemon().is_empty():
 		return
 	var height := player.position.y
-	var wild := encounters.step(tile, field.behavior(tile, height), field.tile_flags(tile, height), _zone_encounters(), state.party[0])
+	var able := 0
+	for member in state.party:
+		able += 0 if member.is_fainted() else 1
+	var wild := encounters.step(tile, field.behavior(tile, height), field.tile_flags(tile, height), _zone_encounters(), state.party[0], able)
 	if wild.is_empty():
 		return
 	var pokemon := Pokemon.create(wild.species, wild.level, {"form": wild.form, "item": wild.item, "random": encounters.random})
-	var battle := Battle.wild(state, pokemon, {"random": encounters.random, "dark_grass": wild.group == TileBehaviors.Encounter.DARK_GRASS})
+	var options := {"random": encounters.random, "dark_grass": wild.group == TileBehaviors.Encounter.DARK_GRASS}
+	if wild.has("partner"):
+		# Herbes sombres : un second Pokémon sauvage, combat double.
+		var partner: Dictionary = wild.partner
+		options.partner = Pokemon.create(partner.species, partner.level, {"form": partner.form, "item": partner.item, "random": encounters.random})
+	var battle := Battle.wild(state, pokemon, options)
 	var result: Battle.Result = await _play_battle(battle)
 	if result == Battle.Result.LOSE:
 		_black_out()
@@ -520,12 +528,36 @@ func _play_battle(battle: Battle) -> Battle.Result:
 	var result: Battle.Result = await _battle.finished
 	_battle.queue_free()
 	_battle = null
+	await _evolve_after_battle(battle, result)
 	field.visible = true
 	player.visible = true
 	_play_zone_music()
 	await _fade_to(0.0)
 	player.controllable = not scripts.is_running()
 	return result
+
+
+## Après une victoire ou une capture (0x021B95B4 de l'overlay 92) : chaque Pokémon de l'équipe qui a
+## monté de niveau pendant le combat et qu'une règle d'évolution accepte (0x0201B2CC : lieu, heure de
+## la saison) joue sa séquence d'évolution, dans l'ordre de l'équipe.
+func _evolve_after_battle(battle: Battle, result: Battle.Result) -> void:
+	if result != Battle.Result.WIN and result != Battle.Result.CAUGHT:
+		return
+	var state: GameState = Game.state
+	var night := Evolutions.is_night(field.season, Time.get_datetime_dict_from_system().hour)
+	for member in state.party.duplicate():
+		if member not in battle.leveled_up:
+			continue
+		var evolution := Evolutions.check_level_up(member, state.party, zone, night)
+		if evolution.is_empty():
+			continue
+		var screen := EvolutionScreen.create(member, evolution, state)
+		_battle_layer.add_child(screen)
+		await _fade_to(0.0)
+		await screen.play()
+		await _fade_to(1.0)
+		screen.queue_free()
+		Sound.stop_music()
 
 
 ## Effet de rencontre (0x021CF428) jusqu'à l'écran noir : la coupure « VS » des rivaux, des champions...
@@ -562,6 +594,10 @@ func _battle_options(battle: Battle) -> Dictionary:
 		attribute = 5
 	battle.background = background
 	battle.terrain = attribute
+	battle.season = field.season
+	if not battle.demo:
+		var date := Time.get_date_dict_from_system()
+		battle.start_weather = FieldWeather.battle_weather(FieldWeather.of(zone, header, date.month, date.day, Game.state.work))
 	var light: Array = field.light.get("colors", [])
 	return {"zone_background": background, "attribute": attribute, "season": field.season,
 		"light_color": light[0] if not light.is_empty() else Color.WHITE}

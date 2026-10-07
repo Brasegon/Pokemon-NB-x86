@@ -1,8 +1,9 @@
 class_name Battle
 extends RefCounted
-## Le moteur de combat : il fait se dérouler un combat simple (un Pokémon de chaque côté), sauvage
-## ou contre un dresseur, avec les règles et les formules du moteur du jeu (overlay 93 ; voir
-## docs/FORMATS.md, « Le moteur de combat »).
+## Le moteur de combat : il fait se dérouler un combat, sauvage ou contre un ou deux dresseurs,
+## avec les règles et les formules du moteur du jeu (overlay 93 ; voir docs/FORMATS.md, « Le
+## moteur de combat »). Combat simple, double, triple ou rotatif : chaque camp a une, deux ou
+## trois places (BattleMon.slot).
 ##
 ## Il ne dessine rien : il produit une file d'événements (messages du jeu, PV, K.O., expérience...)
 ## que l'interface joue à son rythme, et quand il lui faut une décision du joueur (action, Pokémon
@@ -15,12 +16,20 @@ signal answered(value: Variant)
 signal event_added
 
 enum Kind { WILD, TRAINER }
+## Type de combat, numéroté comme la règle du jeu (0x021C80FC) et le champ des dresseurs.
+enum Format { SINGLE, DOUBLE, TRIPLE, ROTATION }
 enum Result { NONE, WIN, LOSE, RUN, CAUGHT, ENEMY_FLED }
-enum Action { FIGHT, BAG, SWITCH, RUN }
+## Actions ; le jeu les code sur 4 bits (0x021BCC80) : 1 attaque, 2 objet, 3 changement, 4 fuite,
+## 5 déplacement au milieu (combat triple), 6 rotation, 7 rechargement.
+enum Action { FIGHT, BAG, SWITCH, RUN, SHIFT, ROTATE }
 enum Weather { NONE, SUN, RAIN, HAIL, SAND }
 
-## Rang des actions avant leur priorité (bits 22-24 de la clé triée par 0x021BC814).
-const ACTION_RANK := {Action.FIGHT: 0, Action.BAG: 1, Action.SWITCH: 1, Action.RUN: 2}
+## Rang des actions avant leur priorité (bits 22-24 de la clé, 0x021BC5B0) : fuite 4, changement 3,
+## objet 2, rotation 1, attaque et déplacement 0. Un Pokémon sauvage qui fuit agit au rang 0 avec la
+## priorité la plus basse, après toutes les capacités.
+const ACTION_RANK := {Action.FIGHT: 0, Action.BAG: 2, Action.SWITCH: 3, Action.RUN: 4, Action.SHIFT: 0, Action.ROTATE: 1}
+## « X s'est déplacé au milieu ! » (fichier 14, 0x021BD388).
+const SHIFT_MESSAGE := 231
 ## Musiques (numéros de séquences du SDAT).
 const MUSIC_WILD := 1128
 const MUSIC_WILD_VICTORY := 1148
@@ -42,8 +51,11 @@ const STRUGGLE := 165
 const TOXIC_MAX := 15
 ## Garde-fou : un combat ne dure jamais autant (le moteur s'arrête plutôt que de boucler).
 const TURN_LIMIT := 1000
+## Mélangé à la graine du combat pour le générateur des natures des dresseurs.
+const NATURE_SEED := 0x6E617475
 
 var kind := Kind.WILD
+var format := Format.SINGLE
 var sides: Array[BattleSide] = []
 var random: GameRandom
 var state: GameState
@@ -67,6 +79,10 @@ var escape_attempts := 0
 var money_won := 0
 ## Pièces ramassées après Jackpot (niveau x 5 à chaque emploi), gagnées si le joueur gagne.
 var pay_day := 0
+## Style de combat « CHOIX » (options) : proposer de changer quand le dresseur envoie un Pokémon.
+var shift_style := true
+## Pièce Rune ou Encens Veine tenu au combat par un Pokémon du joueur : la somme gagnée double.
+var money_doubled := false
 ## Pokémon capturé (et ajouté à l'équipe ou non).
 var caught_pokemon: Pokemon
 ## Le combat a commencé dans des herbes sombres (pénalité de capture 0x021CBC94).
@@ -76,11 +92,28 @@ var music := MUSIC_WILD
 var victory_music := MUSIC_WILD_VICTORY
 ## Décor (champ 1E bits 5-9 de la zone) et genre de la case.
 var background := 0
+## Saison du combat (0 printemps à 3 hiver : la nuit de la Sombre Ball en dépend).
+var season := 0
+## Paroles du dresseur déjà dites (ou écartées) pendant ce combat : genre -> vrai.
+var speech_used := {}
+## Temps du terrain au début du combat (FieldWeather) : il dure tout le combat.
+var start_weather := Weather.NONE
 var terrain := 0
 ## Démonstration de capture de la professeure (commande 0x17D) : elle joue toute seule.
 var demo := false
 ## Pokémon qui ont gagné un niveau pendant le combat (évolutions à vérifier après).
 var leveled_up: Array[Pokemon] = []
+## Membres de l'équipe déjà choisis ce tour pour remplacer un Pokémon du joueur (combat à plusieurs).
+var _chosen_switches: Array[int] = []
+## Actions du tour qui restent à jouer, dans l'ordre (voir _play_turn()).
+var queue: Array[Dictionary] = []
+## Capacités parties ce tour, dans l'ordre : { mon, move } (Chant Canon, Flamme Croix...).
+var moves_this_turn: Array[Dictionary] = []
+## Écho : dernier tour où il a été utilisé et nombre de tours de suite (0x021E7184).
+var echoed_voice := {"turn": -1, "count": 0}
+## Dernière capacité lancée au combat, par n'importe qui (Photocopie : champ 0x1F74 du serveur, lu
+## par 0x021C80B4).
+var last_move_used := 0
 
 var moves: BattleMoves
 var abilities: BattleAbilities
@@ -88,30 +121,53 @@ var items: BattleItems
 var ai: BattleAI
 
 
-## Combat contre un Pokémon sauvage.
+## Combat contre un Pokémon sauvage ; avec options.partner, contre deux Pokémon sauvages à la fois
+## (herbes sombres : combat double).
 static func wild(game: GameState, wild_pokemon: Pokemon, options := {}) -> Battle:
 	var battle := Battle.new()
-	battle._setup(game, options)
+	var second: Pokemon = options.get("partner")
+	var settings := options.duplicate()
+	if second and not settings.has("format"):
+		settings.format = Format.DOUBLE
+	battle._setup(game, settings)
 	battle.kind = Kind.WILD
-	battle.sides[BattleSide.ENEMY].party = [wild_pokemon]
+	var wild_party: Array[Pokemon] = [wild_pokemon]
+	if second:
+		wild_party.append(second)
+	battle.sides[BattleSide.ENEMY].party = wild_party
 	battle.dark_grass = options.get("dark_grass", false)
 	battle.music = options.get("music", MUSIC_WILD)
 	return battle
 
 
-## Combat contre un dresseur (a/0/9/2) : son équipe est créée comme le jeu.
+## Combat contre un dresseur (a/0/9/2) : son équipe est créée comme le jeu, et le type de combat
+## est celui de sa fiche. Avec options.partner (le « dresseur 2 » de la commande 0x85), deux
+## dresseurs se battent ensemble en double, chacun avec son équipe.
 static func against_trainer(game: GameState, trainer_id: int, options := {}) -> Battle:
 	var battle := Battle.new()
-	battle._setup(game, options)
-	battle.kind = Kind.TRAINER
 	var trainer := TrainerData.load(trainer_id)
+	var partner_id: int = options.get("partner", 0)
+	var partner := TrainerData.load(partner_id) if partner_id > 0 and partner_id != trainer_id else null
+	var settings := options.duplicate()
+	if not settings.has("format"):
+		settings.format = Format.DOUBLE if partner else (trainer.battle_type if trainer else Format.SINGLE)
+	battle._setup(game, settings)
+	battle.kind = Kind.TRAINER
 	var enemy := battle.sides[BattleSide.ENEMY]
 	enemy.trainer = trainer
+	# Natures des Pokémon des dresseurs : un générateur tiré de la graine du combat, sans toucher
+	# celui du combat.
+	var natures := GameRandom.new(battle.random.lo ^ NATURE_SEED, battle.random.hi)
 	if trainer:
-		enemy.party = trainer.create_party()
+		enemy.party = trainer.create_party(natures)
 		enemy.items = trainer.items.duplicate()
 		battle.music = trainer.battle_music()
 		battle.victory_music = trainer.victory_music()
+	if partner:
+		enemy.partner = partner
+		enemy.partner_first = enemy.party.size()
+		enemy.party.append_array(partner.create_party(natures))
+		enemy.partner_items = partner.items.duplicate()
 	return battle
 
 
@@ -144,9 +200,11 @@ func _setup(game: GameState, options: Dictionary) -> void:
 	random = options.get("random", GameRandom.from_time())
 	background = options.get("background", 0)
 	terrain = options.get("terrain", 0)
+	format = int(options.get("format", Format.SINGLE)) as Format
 	for id in [BattleSide.PLAYER, BattleSide.ENEMY]:
 		var side := BattleSide.new()
 		side.id = id
+		side.active.resize(slot_count())
 		sides.append(side)
 	sides[BattleSide.PLAYER].party = game.party
 	moves = BattleMoves.new(self)
@@ -168,15 +226,102 @@ func is_wild() -> bool:
 	return kind == Kind.WILD
 
 
+## Places de chaque camp : 1 en simple, 2 en double, 3 en triple et en rotatif.
+func slot_count() -> int:
+	return [1, 2, 3, 3][format]
+
+
+## Plus d'un Pokémon par camp (double, triple, rotatif).
+func is_multi() -> bool:
+	return format != Format.SINGLE
+
+
+func mon_at(side: int, slot: int) -> BattleMon:
+	return sides[side].mon(slot)
+
+
+## Le Pokémon est encore à sa place sur le terrain et y combat (pas remplacé ni K.O. ; en combat
+## rotatif, seulement celui de devant).
+func is_on_field(mon: BattleMon) -> bool:
+	return mon != null and not mon.is_fainted() and sides[mon.side].mon(mon.slot) == mon and (format != Format.ROTATION or mon.slot == 0)
+
+
+## Les Pokémon qui combattent d'un camp, dans l'ordre des places : tous ceux en forme sur le
+## terrain, sauf en combat rotatif où seul celui de devant (place 0) combat ; les deux autres
+## attendent en retrait (ni visés, ni touchés par la fin du tour).
+func fighters(side: int) -> Array[BattleMon]:
+	var list := sides[side].on_field()
+	if format != Format.ROTATION:
+		return list
+	var front: Array[BattleMon] = []
+	for each in list:
+		if each.slot == 0:
+			front.append(each)
+	return front
+
+
+## Colonne d'une place, de gauche à droite vue du joueur (tables de positions de l'overlay 94) :
+## la place n du joueur est la colonne n ; en face, l'ordre est inversé (la place 0 d'en face est
+## à droite). En combat rotatif, les deux Pokémon de devant se font face.
+func column(side: int, slot: int) -> int:
+	if format == Format.ROTATION:
+		return 0
+	return slot if side == BattleSide.PLAYER else slot_count() - 1 - slot
+
+
+## Deux Pokémon sont voisins s'ils sont dans la même colonne ou deux colonnes qui se touchent :
+## toujours en simple et en double ; en triple, les deux bords ne se touchent pas.
+func adjacent(a: BattleMon, b: BattleMon) -> bool:
+	if a == null or b == null:
+		return false
+	return absi(column(a.side, a.slot) - column(b.side, b.slot)) <= 1
+
+
+## Adversaires au combat (voisins seulement, sauf `adjacent_only` faux), dans l'ordre des places.
+func foes_of(mon: BattleMon, adjacent_only := true) -> Array[BattleMon]:
+	var list: Array[BattleMon] = []
+	for foe in fighters(1 - mon.side):
+		if not adjacent_only or adjacent(mon, foe):
+			list.append(foe)
+	return list
+
+
+## Alliés au combat (sans le Pokémon lui-même).
+func allies_of(mon: BattleMon, adjacent_only := true) -> Array[BattleMon]:
+	var list: Array[BattleMon] = []
+	for ally in fighters(mon.side):
+		if ally != mon and (not adjacent_only or adjacent(mon, ally)):
+			list.append(ally)
+	return list
+
+
+## L'adversaire « en face » : celui de la même colonne s'il est là, sinon le premier adversaire
+## voisin (en combat simple, le seul adversaire).
 func foe_of(mon: BattleMon) -> BattleMon:
-	return sides[1 - mon.side].mon(0)
+	var foes := foes_of(mon)
+	if foes.is_empty():
+		return sides[1 - mon.side].mon(0) if not is_multi() else null
+	for foe in foes:
+		if column(foe.side, foe.slot) == column(mon.side, mon.slot):
+			return foe
+	return foes[0]
 
 
+## Tous les Pokémon qui combattent (voir fighters()).
 func all_active() -> Array[BattleMon]:
 	var list: Array[BattleMon] = []
 	for side in sides:
-		for mon in side.active:
-			if mon and not mon.is_fainted():
+		list.append_array(fighters(side.id))
+	return list
+
+
+## Les Pokémon au combat dans l'ordre des places du jeu (0 joueur, 1 en face, 2 joueur...).
+func in_position_order() -> Array[BattleMon]:
+	var list: Array[BattleMon] = []
+	for slot in slot_count():
+		for side in sides:
+			var mon := side.mon(slot)
+			if mon:
 				list.append(mon)
 	return list
 
@@ -253,6 +398,9 @@ func _ask(request: Dictionary) -> Variant:
 
 ## Joue tout le combat (coroutine).
 func run() -> void:
+	var settings := Autoloads.settings()
+	if settings:
+		shift_style = settings.get_value("jeu", "style_combat", STYLE_SHIFT) == STYLE_SHIFT
 	await _start()
 	while result == Result.NONE:
 		await _play_turn()
@@ -265,56 +413,118 @@ func run() -> void:
 func _start() -> void:
 	push({"type": "music", "id": music})
 	var foe_side := enemy()
-	var foe := _send_out(foe_side, 0 if is_wild() else _first_able(foe_side))
-	state.register_seen(foe.pokemon.species)
-	var lead := _send_out(player(), _first_able(player()))
+	var foes: Array[BattleMon] = []
+	var leads: Array[BattleMon] = []
+	for slot in slot_count():
+		var foe_index := _first_able(foe_side, slot)
+		if foe_index >= 0:
+			foes.append(send_out(foe_side, foe_index, slot))
+		var lead_index := _first_able(player(), slot)
+		if lead_index >= 0:
+			leads.append(send_out(player(), lead_index, slot))
+	for foe in foes:
+		state.register_seen(foe.pokemon.species)
 	# Le début du combat est joué d'un bloc par l'écran, comme le client du jeu (0x021EB630 en combat
-	# sauvage, 0x021EB810 contre un dresseur) : effets, messages, jauges et rangées de Balls.
-	var intro := {"type": "intro", "trainer": not is_wild(), "enemy": _send_out_event(foe, true),
-		"player": _send_out_event(lead, true), "go": _text(BattleText.GO, {0: lead.name()})}
+	# sauvage, 0x021EB810 contre un dresseur) : effets, messages, jauges et rangées de Balls. Les
+	# messages existent pour un, deux et trois Pokémon (ligne de base + nombre - 1).
+	var intro := {"type": "intro", "trainer": not is_wild(), "enemy": [], "player": [],
+		"go": _text(BattleText.GO + leads.size() - 1, _names(leads))}
+	for foe in foes:
+		intro.enemy.append(_send_out_event(foe, true))
+	for lead in leads:
+		intro.player.append(_send_out_event(lead, true))
 	if is_wild():
-		intro.appeared = _text(BattleText.WILD_APPEARED, {0: foe.name()})
+		intro.appeared = _text(BattleText.WILD_APPEARED if foes.size() == 1 else BattleText.WILD_PAIR_APPEARED, _names(foes))
 	else:
-		var trainer_words := {0: foe_side.trainer.class_name_text(), 1: foe_side.trainer.name()}
-		intro.challenge = _text(BattleText.TRAINER_CHALLENGE, trainer_words)
-		var sent_words := trainer_words.duplicate()
-		sent_words[2] = foe.name()
-		intro.sent = _text(BattleText.TRAINER_SENT, sent_words)
+		var trainer := foe_side.trainer
+		var trainer_words := {0: trainer.class_name_text(), 1: trainer.name()}
+		if foe_side.partner:
+			var both := trainer_words.duplicate()
+			both[2] = foe_side.partner.class_name_text()
+			both[3] = foe_side.partner.name()
+			intro.challenge = _text(BattleText.TRAINERS_CHALLENGE, both)
+		else:
+			intro.challenge = _text(BattleText.TRAINER_CHALLENGE, trainer_words)
+		# Chaque dresseur annonce les Pokémon qu'il envoie (mots 2 à 4).
+		intro.sent = []
+		for owner: TrainerData in ([trainer] if foe_side.partner == null else [trainer, foe_side.partner]):
+			var sent: Array[BattleMon] = []
+			for foe in foes:
+				if foe_side.trainer_of_slot(foe.slot) == owner:
+					sent.append(foe)
+			if sent.is_empty():
+				continue
+			var words := {0: owner.class_name_text(), 1: owner.name()}
+			for i in sent.size():
+				words[2 + i] = sent[i].name()
+			intro.sent.append(_text(BattleText.TRAINER_SENT + sent.size() - 1, words))
 		intro.parties = [player().party.duplicate(), foe_side.party.duplicate()]
 	push(intro)
 	_mark_opponents()
+	# Le temps du terrain (0x021BBB00 : 0x021C3B08 avec 0xFF tours), avant les talents d'entrée.
+	if start_weather != Weather.NONE:
+		weather = start_weather
+		weather_turns = 0
+		push({"type": "weather", "weather": weather})
+		say([0, BattleText.SUN_STARTED, BattleText.RAIN_STARTED, BattleText.HAIL_STARTED, BattleText.SAND_STARTED][weather])
+		weather_changed()
 	# Talents d'entrée : du plus rapide au plus lent.
-	for mon in _by_speed(all_active()):
+	for mon in by_speed(all_active()):
 		abilities.on_switch_in(mon)
 
 
-func _first_able(side: BattleSide) -> int:
-	for i in side.party.size():
-		if not side.party[i].is_fainted():
-			return i
-	return 0
+## Noms des Pokémon (mots 0, 1, 2 des messages d'envoi).
+static func _names(list: Array[BattleMon]) -> Dictionary:
+	var words := {}
+	for i in list.size():
+		words[i] = list[i].name()
+	return words
 
 
-## Met le Pokémon n° index de l'équipe au combat (place 0) ; l'écran l'apprend par
-## _push_send_out(), après l'annonce.
-func _send_out(side: BattleSide, index: int) -> BattleMon:
-	var mon := BattleMon.create(side.party[index], side.id, index)
-	if side.active.is_empty():
-		side.active.append(mon)
-	else:
-		side.active[0] = mon
+## Le premier membre en forme de l'équipe que la place peut envoyer et qui n'est pas déjà au
+## combat (-1 : personne).
+func _first_able(side: BattleSide, slot := 0) -> int:
+	var reserves := side.reserves(slot)
+	return reserves[0] if not reserves.is_empty() else -1
+
+
+## Met le Pokémon n° index de l'équipe au combat à une place ; l'écran l'apprend par
+## push_send_out(), après l'annonce. Celui qui était là retrouve ses capacités (Copie, Morphing) et
+## sa forme ; celui qui arrive prend son Illusion.
+func send_out(side: BattleSide, index: int, slot := 0) -> BattleMon:
+	var mon := BattleMon.create(side.party[index], side.id, index, slot)
+	if side.active.size() <= slot:
+		side.active.resize(slot + 1)
+	elif side.active[slot]:
+		side.active[slot].leave_field()
+	side.active[slot] = mon
+	side.note_sent_out(index, slot)
+	abilities.set_illusion(mon)
 	return mon
+
+
+## Poids au combat (0x021C8340) : poids de l'espèce moins Allègement, x Heavy Metal ou Light Metal
+## (que le Brise Moule de l'attaquant ignore), 0,1 kg au moins.
+func weight_of(mon: BattleMon, attacker: BattleMon = null) -> int:
+	var ratio := BattleCalc.fx_mul(abilities.weight_ratio(mon, attacker), items.weight_ratio(mon))
+	return maxi(BattleCalc.fx_mul(mon.weight(), ratio), 1)
+
+
+## Le temps a changé (ou un talent qui l'annule est arrivé, parti) : Météo de chaque Morphéo.
+func weather_changed() -> void:
+	for mon in all_active():
+		abilities.update_forecast(mon)
 
 
 ## Le Pokémon arrive à l'écran (`intro` : au début du combat). Le moteur joue tout le tour
 ## d'avance : l'interface reçoit les PV et le niveau de ce moment.
-func _push_send_out(mon: BattleMon, intro := false) -> void:
+func push_send_out(mon: BattleMon, intro := false) -> void:
 	push(_send_out_event(mon, intro))
 
 
 func _send_out_event(mon: BattleMon, intro := false) -> Dictionary:
-	return {"type": "send_out", "side": mon.side, "slot": 0, "mon": mon, "intro": intro, "hp": mon.hp(), "max": mon.max_hp(),
-		"level": mon.level(), "status": mon.status()}
+	return {"type": "send_out", "side": mon.side, "slot": mon.slot, "mon": mon, "shown": mon.shown(), "intro": intro, "hp": mon.hp(),
+		"max": mon.max_hp(), "level": mon.level(), "status": mon.status()}
 
 
 ## Un message à montrer plus tard (fichier, ligne, mots des tampons), comme say().
@@ -325,46 +535,71 @@ static func _text(line: int, words := {}, file := BWFiles.TEXT_BATTLE) -> Dictio
 ## Chaque Pokémon du joueur au combat a affronté chaque adversaire au combat (partage de
 ## l'expérience).
 func _mark_opponents() -> void:
-	for mine in player().active:
-		for theirs in enemy().active:
-			if mine and theirs and not mine.is_fainted() and not theirs.is_fainted():
-				theirs.opponents_faced[mine.party_index] = true
+	for mine in fighters(BattleSide.PLAYER):
+		for theirs in fighters(BattleSide.ENEMY):
+			theirs.opponents_faced[mine.party_index] = true
 
 
 func _play_turn() -> void:
 	turn += 1
 	var actions: Array[Dictionary] = []
-	for mon in player().active:
-		if mon == null or mon.is_fainted():
-			continue
+	_chosen_switches.clear()
+	# Relevé des coups reçus : celui du tour fini devient celui « du tour d'avant ».
+	for mon in all_active():
+		mon.hits_last_turn = mon.hits_this_turn
+		mon.hits_this_turn = []
+	_trainer_speech()
+	for mon in fighters(BattleSide.PLAYER):
 		var action: Dictionary = await _choose_player_action(mon)
-		if action.is_empty():
-			continue
-		actions.append(action)
 		if result != Result.NONE:
 			return
-	for mon in enemy().active:
-		if mon and not mon.is_fainted():
-			actions.append(ai.choose_action(mon))
+		if action.is_empty():
+			continue
+		if action.action == Action.SWITCH:
+			_chosen_switches.append(action.party)
+		actions.append_array(_with_rotation(mon, action))
+	for mon in fighters(BattleSide.ENEMY):
+		actions.append_array(_with_rotation(mon, ai.choose_action(mon)))
 	for mon in all_active():
 		mon.acted = false
 		mon.hit_this_turn = false
-	for action in _order(actions):
+	# File des actions du tour : certaines capacités la réordonnent (Poursuite, Chant Canon, Après
+	# Vous, À la Queue).
+	queue = _order(actions)
+	moves_this_turn.clear()
+	moves.announce_focus(queue)
+	while not queue.is_empty():
 		if result != Result.NONE:
 			break
+		var action: Dictionary = queue.pop_front()
 		var mon: BattleMon = action.mon
-		if mon.is_fainted() or sides[mon.side].mon(0) != mon:
+		if not is_on_field(mon):
 			continue
 		await _execute(action)
 		await _check_faints()
+	queue.clear()
 	if result == Result.NONE:
 		await _end_of_turn()
 	if result == Result.NONE:
 		await _replace_fainted()
+	if result == Result.NONE:
+		_recenter_triple()
+
+
+## Combat rotatif : une action avec « rotate » (place 1 ou 2 du Pokémon qui passe devant) devient
+## deux actions, la rotation (rang 1) puis l'action du nouveau Pokémon de devant.
+func _with_rotation(front: BattleMon, action: Dictionary) -> Array[Dictionary]:
+	var list: Array[Dictionary] = []
+	var incoming: int = action.get("rotate", 0)
+	if format == Format.ROTATION and incoming in [1, 2]:
+		list.append({"action": Action.ROTATE, "mon": front, "incoming": incoming})
+	list.append(action)
+	return list
 
 
 ## L'action du joueur pour un Pokémon : celle qu'il impose (rechargement, capacité qui dure), sinon
-## la demande, recommencée tant qu'elle n'est pas permise.
+## la demande, recommencée tant qu'elle n'est pas permise. En combat rotatif, la réponse peut faire
+## passer devant un Pokémon en retrait (« rotate ») : l'action est alors la sienne.
 func _choose_player_action(mon: BattleMon) -> Dictionary:
 	var forced := moves.forced_action(mon)
 	if not forced.is_empty():
@@ -375,6 +610,13 @@ func _choose_player_action(mon: BattleMon) -> Dictionary:
 			continue
 		var action := (choice as Dictionary).duplicate()
 		action.mon = mon
+		var incoming: int = action.get("rotate", 0)
+		if format == Format.ROTATION and incoming in [1, 2]:
+			var back := player().mon(incoming)
+			if back == null or back.is_fainted():
+				action.erase("rotate")
+			else:
+				action.mon = back
 		var problem := _action_problem(action)
 		if problem.is_empty():
 			if action.action == Action.RUN and await _try_escape(mon):
@@ -407,15 +649,22 @@ func _action_problem(action: Dictionary) -> Dictionary:
 			var side := sides[mon.side]
 			if index < 0 or index >= side.party.size():
 				return {"line": BattleText.BUT_IT_FAILED}
+			var words := {0: side.party[index].name()}
 			if side.party[index].is_fainted():
-				return {"line": BattleText.PARTY_FAINTED, "file": BWFiles.TEXT_BATTLE_PARTY, "words": {0: side.party[index].name()}}
-			if index == mon.party_index:
-				return {"line": BattleText.PARTY_ALREADY_OUT, "file": BWFiles.TEXT_BATTLE_PARTY, "words": {0: side.party[index].name()}}
+				return {"line": BattleText.PARTY_FAINTED, "file": BWFiles.TEXT_BATTLE_PARTY, "words": words}
+			if index == mon.party_index or index not in side.reserves():
+				return {"line": BattleText.PARTY_ALREADY_OUT, "file": BWFiles.TEXT_BATTLE_PARTY, "words": words}
+			if index in _chosen_switches:
+				return {"line": BattleText.PARTY_ALREADY_SELECTED, "file": BWFiles.TEXT_BATTLE_PARTY, "words": words}
 			if moves.is_trapped(mon):
 				return {"line": BattleText.CANT_ESCAPE + BattleText.variant(mon, is_wild()), "file": BWFiles.TEXT_BATTLE_SET, "words": {0: mon.name()}}
 		Action.RUN:
 			if not is_wild():
 				return {"line": BattleText.NO_RUNNING_TRAINER}
+		Action.SHIFT:
+			# Seulement en combat triple, depuis un bord (0x021BD388).
+			if format != Format.TRIPLE or mon.slot == 1:
+				return {"line": BattleText.BUT_IT_FAILED}
 		Action.BAG:
 			var problem := items.bag_problem(action)
 			if not problem.is_empty():
@@ -423,11 +672,12 @@ func _action_problem(action: Dictionary) -> Dictionary:
 	return {}
 
 
-## Fuite d'un combat sauvage (0x021BD5AC), tentée dès le choix : vrai si le combat s'arrête.
+## Fuite d'un combat sauvage (0x021BD5AC), tentée dès le choix : vrai si le combat s'arrête. Un
+## Pokémon K.O. ne fuit pas sans tirage (0x021BD658) et n'est pas retenu.
 func _try_escape(mon: BattleMon) -> bool:
 	var foe := foe_of(mon)
-	var free := abilities.always_escapes(mon) or items.always_escapes(mon)
-	if not free and moves.is_trapped(mon):
+	var free := not mon.is_fainted() and (abilities.always_escapes(mon) or items.always_escapes(mon))
+	if not free and not mon.is_fainted() and moves.is_trapped(mon):
 		say_mon(BattleText.CANT_ESCAPE, mon)
 		return false
 	var speed := mon.raw_stat(Stats.Stat.SPEED)
@@ -453,6 +703,9 @@ func _order(actions: Array[Dictionary]) -> Array[Dictionary]:
 			priority = moves.priority(mon, action)
 		var special := 1 + items.special_priority(mon) + abilities.special_priority(mon, action)
 		var rank: int = ACTION_RANK[action.action]
+		if action.action == Action.RUN and mon.side == BattleSide.ENEMY and is_wild():
+			rank = 0
+			priority = -7
 		var key: int = (rank << 22) | ((priority + 7) << 16) | (clampi(special, 0, 7) << 13) | speed_of(mon)
 		keyed.append([key, action])
 	# Tri par sélection, comme le jeu : la plus grande clé d'abord, égalité tirée à pile ou face.
@@ -480,6 +733,9 @@ func speed_of(mon: BattleMon) -> int:
 	ratio = items.speed_ratio(mon, ratio)
 	if sides[mon.side].has("tailwind"):
 		ratio = BattleCalc.fx_mul(ratio, 0x2000)
+	# Marécage (effet de côté 13 des Aires, overlay 95) : Vitesse x 1/4.
+	if sides[mon.side].has("swamp"):
+		ratio = BattleCalc.fx_mul(ratio, 0x400)
 	speed = BattleCalc.fx_mul(speed, clampi(ratio, BattleCalc.RATIO_MIN, BattleCalc.RATIO_MAX))
 	if mon.status() == Pokemon.Status.PARALYSIS and not abilities.ignores_paralysis_speed(mon):
 		speed = speed * 25 / 100
@@ -489,7 +745,7 @@ func speed_of(mon: BattleMon) -> int:
 	return speed
 
 
-func _by_speed(list: Array[BattleMon]) -> Array[BattleMon]:
+func by_speed(list: Array[BattleMon]) -> Array[BattleMon]:
 	var sorted := list.duplicate()
 	sorted.sort_custom(func(a: BattleMon, b: BattleMon) -> bool: return speed_of(a) > speed_of(b))
 	return sorted
@@ -508,27 +764,94 @@ func _execute(action: Dictionary) -> void:
 			if mon.side == BattleSide.ENEMY:
 				say(BattleText.WILD_FLED, {0: mon.name()})
 				result = Result.ENEMY_FLED
+		Action.SHIFT:
+			shift_to_center(mon)
+		Action.ROTATE:
+			rotate(sides[mon.side], action.incoming)
+			return
 	mon.acted = true
+	# Drapeau 0 du jeu (0x021BCC80) : posé après une attaque ou un objet, pas après un rechargement.
+	if action.action == Action.BAG or (action.action == Action.FIGHT and not action.get("recharge", false)):
+		mon.has_acted = true
+
+
+## Combat rotatif (0x021BC3B8, places tournées par 0x021B9BF0) : le Pokémon de la place `incoming`
+## (1 ou 2) passe devant, l'autre Pokémon en retrait prend sa place, et celui qui était devant va à
+## l'arrière. Celui qui part passe par la sortie ordinaire (0x021C50A8 : Médic Nature, Régé-Force),
+## mais garde ses changements de statistiques ; celui qui arrive ne déclenche pas les talents
+## d'entrée.
+func rotate(side: BattleSide, incoming: int) -> void:
+	var other := 3 - incoming
+	var front := side.mon(0)
+	var coming := side.mon(incoming)
+	if coming == null or coming.is_fainted():
+		return
+	side.active[0] = coming
+	side.active[incoming] = side.mon(other)
+	side.active[other] = front
+	for slot in 3:
+		if side.mon(slot):
+			side.mon(slot).slot = slot
+	if front and not front.is_fainted():
+		abilities.on_switch_out(front)
+	push({"type": "rotate", "side": side.id, "incoming": incoming})
+	_mark_opponents()
+
+
+## Combat triple : le Pokémon d'un bord échange sa place avec celui du milieu (0x021BD388).
+func shift_to_center(mon: BattleMon, message := true) -> void:
+	var side := sides[mon.side]
+	var from := mon.slot
+	var other := side.mon(1)
+	side.active[1] = mon
+	side.active[from] = other
+	mon.slot = 1
+	if other:
+		other.slot = from
+	push({"type": "shift", "side": mon.side, "from": from, "to": 1})
+	if message:
+		say_mon(SHIFT_MESSAGE, mon)
+
+
+## Fin du tour d'un combat triple (0x021C45B4) : s'il ne reste qu'un Pokémon de chaque côté, à la
+## même place d'un bord (deux coins opposés, qui ne se touchent pas), tous deux glissent au milieu,
+## sans message.
+func _recenter_triple() -> void:
+	if format != Format.TRIPLE:
+		return
+	var mine := player().on_field()
+	var theirs := enemy().on_field()
+	if mine.size() != 1 or theirs.size() != 1:
+		return
+	if mine[0].slot != theirs[0].slot or mine[0].slot == 1:
+		return
+	shift_to_center(mine[0], false)
+	shift_to_center(theirs[0], false)
 
 
 ## Retire un Pokémon et en envoie un autre (choix du joueur, Demi-Tour, Relais...).
 func switch_mon(mon: BattleMon, index: int, keep := {}) -> void:
 	var side := sides[mon.side]
+	# Poursuite (0x021E1CC0) : un adversaire qui l'a choisie frappe avant le changement, puissance x 2.
+	await moves.pursue(mon)
+	if mon.is_fainted() or result != Result.NONE:
+		return
 	abilities.on_switch_out(mon)
 	if side.is_player():
 		say(BattleText.COME_BACK, {0: mon.name()})
-	elif side.trainer:
-		say(BattleText.TRAINER_WITHDREW, {0: side.trainer.class_name_text(), 1: side.trainer.name(), 2: mon.name()})
-	push({"type": "withdraw", "side": side.id, "slot": 0})
+	elif side.trainer_of_slot(mon.slot):
+		var owner := side.trainer_of_slot(mon.slot)
+		say(BattleText.TRAINER_WITHDREW, {0: owner.class_name_text(), 1: owner.name(), 2: mon.name()})
+	push({"type": "withdraw", "side": side.id, "slot": mon.slot})
 	if mon.badly_poisoned and mon.status() == Pokemon.Status.POISON:
 		mon.toxic_counter = 0
-	var incoming := _send_out(side, index)
+	var incoming := send_out(side, index, mon.slot)
 	for key: String in keep:
 		incoming.volatile[key] = keep[key]
 	if keep.has("stages"):
 		incoming.stages = keep.stages
 	_announce_send(side, incoming)
-	_push_send_out(incoming)
+	push_send_out(incoming)
 	_mark_opponents()
 	await on_entry(incoming)
 
@@ -541,16 +864,30 @@ func _announce_send(side: BattleSide, mon: BattleMon) -> void:
 			var ratio := foe.hp() * 100 / maxi(foe.max_hp(), 1)
 			line = BattleText.GO_ENEMY_WEAK if ratio < 10 else (BattleText.GO_EN_AVANT if ratio < 40 else (BattleText.GO_FONCE if ratio < 70 else BattleText.GO))
 		say(line, {0: mon.name()})
-	elif side.trainer:
-		say(BattleText.TRAINER_SENT, {0: side.trainer.class_name_text(), 1: side.trainer.name(), 2: mon.name()})
+	elif side.trainer_of_slot(mon.slot):
+		var owner := side.trainer_of_slot(mon.slot)
+		say(BattleText.TRAINER_SENT, {0: owner.class_name_text(), 1: owner.name(), 2: mon.name()})
 	else:
 		say(BattleText.WILD_APPEARED, {0: mon.name()})
 
 
-## Arrivée au combat : pièges posés sur le côté (Picots, Piège de Roc, Pics Toxik), talent.
+## Arrivée au combat : soin de Vœu Soin ou Danse-Lune, pièges posés sur le côté (Picots, Piège de
+## Roc, Pics Toxik), talent.
 func on_entry(mon: BattleMon) -> void:
 	if mon.side == BattleSide.ENEMY:
 		state.register_seen(mon.pokemon.species)
+	var wish_key := "healing_wish_" + str(mon.slot)
+	if sides[mon.side].has(wish_key):
+		var wished: int = sides[mon.side].conditions[wish_key]
+		sides[mon.side].conditions.erase(wish_key)
+		mon.pokemon.status = Pokemon.Status.NONE
+		mon.pokemon.sleep_turns = 0
+		heal(mon, mon.max_hp())
+		push({"type": "status", "side": mon.side, "slot": mon.slot, "status": 0})
+		if wished == 461:
+			for move in mon.pokemon.moves:
+				move.pp = MoveData.max_pp(move.id, move.get("pp_ups", 0))
+		say_mon(694 if wished == 461 else 697, mon)
 	moves.apply_entry_hazards(mon)
 	if not mon.is_fainted():
 		abilities.on_switch_in(mon)
@@ -567,7 +904,7 @@ func damage(mon: BattleMon, amount: int, cause := "") -> int:
 	var before := mon.hp()
 	var lost := mini(amount, before)
 	mon.pokemon.hp = before - lost
-	push({"type": "hp", "side": mon.side, "slot": 0, "from": before, "to": mon.hp(), "max": mon.max_hp(), "cause": cause})
+	push({"type": "hp", "side": mon.side, "slot": mon.slot, "from": before, "to": mon.hp(), "max": mon.max_hp(), "cause": cause})
 	return lost
 
 
@@ -578,18 +915,24 @@ func heal(mon: BattleMon, amount: int) -> int:
 	var before := mon.hp()
 	mon.pokemon.hp = mini(before + amount, mon.max_hp())
 	if mon.hp() != before:
-		push({"type": "hp", "side": mon.side, "slot": 0, "from": before, "to": mon.hp(), "max": mon.max_hp(), "cause": "heal"})
+		push({"type": "hp", "side": mon.side, "slot": mon.slot, "from": before, "to": mon.hp(), "max": mon.max_hp(), "cause": "heal"})
 	return mon.hp() - before
+
+
+## Les K.O. à traiter tout de suite (après une capacité jouée hors de la file : Poursuite).
+func check_faints() -> void:
+	await _check_faints()
 
 
 ## Les Pokémon tombés K.O. : message, expérience pour le joueur, fin du combat si un camp n'a plus
 ## personne.
 func _check_faints() -> void:
-	for mon in [player().mon(0), enemy().mon(0)]:
+	for mon in in_position_order():
 		if mon == null or not mon.is_fainted() or mon.has("fainted"):
 			continue
 		mon.set_effect("fainted")
-		push({"type": "faint", "side": mon.side, "slot": 0})
+		sides[mon.side].last_faint_turn = turn
+		push({"type": "faint", "side": mon.side, "slot": mon.slot})
 		push({"type": "cry", "species": mon.pokemon.species, "faint": true})
 		say_mon(BattleText.FAINTED, mon)
 		mon.pokemon.status = Pokemon.Status.NONE
@@ -669,13 +1012,12 @@ func _award_exp(index: int, amount: int, boosted: bool) -> void:
 		var old_level := pokemon.level
 		var gained_levels := pokemon.gain_exp(step)
 		left -= step
-		var active := player().mon(0)
+		var slot := player_slot_of(index)
 		push({"type": "exp", "party": index, "from": before, "to": pokemon.experience, "level": old_level,
-			"on_field": active != null and active.party_index == index})
+			"on_field": slot >= 0, "slot": maxi(slot, 0)})
 		if gained_levels > 0:
-			var on_field := active != null and active.party_index == index
 			push({"type": "level_up", "party": index, "level": pokemon.level, "old_stats": old_stats, "stats": pokemon.stats.duplicate(),
-				"hp": pokemon.hp, "max": pokemon.max_hp(), "on_field": on_field})
+				"hp": pokemon.hp, "max": pokemon.max_hp(), "on_field": slot >= 0, "slot": maxi(slot, 0)})
 			push({"type": "sound", "name": "SEQ_ME_LVUP", "fanfare": true})
 			say(BattleText.GREW_TO_LEVEL, {0: pokemon.name(), 1: str(pokemon.level)})
 			# Tableau des statistiques (gains, puis nouvelles valeurs), après le message.
@@ -714,49 +1056,160 @@ func learn_move(pokemon: Pokemon, move: int) -> void:
 
 
 const LEARN_TEXT := 204
+## « Y va être envoyé par... Voulez-vous changer de Pokémon ? » (fichier 15).
+const SHIFT_PROMPT := 20
+## Style de combat des options : « CHOIX » (le jeu le propose) ou « DÉFINI ».
+const STYLE_SHIFT := "choix"
+const STYLE_SET := "defini"
 
 
-## Remplace les Pokémon K.O. à la fin du tour : le dresseur envoie le suivant, le joueur choisit.
+## Place d'un membre de l'équipe du joueur au combat (-1 : pas au combat).
+func player_slot_of(index: int) -> int:
+	for mon in player().active:
+		if mon and mon.party_index == index:
+			return mon.slot
+	return -1
+
+
+## Remplace les Pokémon K.O. à la fin du tour, place par place : le dresseur envoie le suivant, le
+## joueur choisit ; une place reste vide quand il n'y a plus personne à envoyer.
 func _replace_fainted() -> void:
 	var foe_side := enemy()
-	var foe := foe_side.mon(0)
-	if foe and foe.is_fainted() and not foe_side.all_fainted():
-		var next := ai.choose_replacement(foe_side)
-		await switch_in_replacement(foe_side, next)
-	var mine := player().mon(0)
-	if mine and mine.is_fainted() and not player().all_fainted():
-		var index: int = await _ask_switch(true)
-		await switch_in_replacement(player(), index)
+	for slot in slot_count():
+		var foe := foe_side.mon(slot)
+		if foe and foe.is_fainted() and not foe_side.reserves(slot).is_empty():
+			var next := ai.choose_replacement(foe_side, slot)
+			await _offer_shift(foe_side, next, slot)
+			await switch_in_replacement(foe_side, next, slot)
+	for slot in slot_count():
+		var mine := player().mon(slot)
+		if mine and mine.is_fainted() and not player().reserves(slot).is_empty():
+			# Combat sauvage : « UTILISER UN AUTRE POKÉMON » ou « FUITE » (fichier 16, 5 et 1). La fuite
+			# (0x021BC300) se tente avec le Pokémon K.O. ; ratée, il faut en envoyer un autre.
+			if is_wild() and not demo:
+				var choice: Variant = await _ask({"kind": "faint_choice", "slot": slot})
+				if choice is int and choice == 1 and _try_escape(mine):
+					return
+			var index: int = await _ask_switch(true, slot)
+			await switch_in_replacement(player(), index, slot)
+	if format == Format.ROTATION:
+		for side in sides:
+			await _rotate_after_faint(side)
 
 
-## Le joueur choisit un Pokémon de l'équipe (forcé : il ne peut pas renoncer).
-func ask_switch(forced: bool) -> int:
-	return await _ask_switch(forced)
+## Combat rotatif : le Pokémon de devant est K.O. et personne ne peut le remplacer depuis l'équipe ;
+## un Pokémon en retrait passe devant (le joueur choisit lequel, l'adversaire prend le premier).
+func _rotate_after_faint(side: BattleSide) -> void:
+	var front := side.mon(0)
+	if front and not front.is_fainted():
+		return
+	var choices: Array[int] = []
+	for slot in [1, 2]:
+		var back := side.mon(slot)
+		if back and not back.is_fainted():
+			choices.append(slot)
+	if choices.is_empty():
+		return
+	var incoming := choices[0]
+	if side.is_player() and choices.size() > 1:
+		var choice: Variant = await _ask({"kind": "rotate", "choices": choices})
+		if choice is int and choice in choices:
+			incoming = choice
+	rotate(side, incoming)
 
 
-func _ask_switch(forced: bool) -> int:
+## Style de combat « CHOIX » (options, fichier 29) : contre un dresseur en combat simple, quand il va
+## envoyer un autre Pokémon, le joueur peut changer le sien d'abord (fichier 15, 20 ; « CHANGER DE
+## POKÉMON » ou « NE PAS CHANGER », fichier 16, 6 et 7).
+func _offer_shift(foe_side: BattleSide, next: int, slot: int) -> void:
+	if is_wild() or format != Format.SINGLE or demo or not shift_style:
+		return
+	var mine := player().mon(slot)
+	if mine == null or mine.is_fainted() or player().reserves(slot).is_empty() or result != Result.NONE:
+		return
+	var owner := foe_side.trainer_of_slot(slot)
+	say(SHIFT_PROMPT, {0: owner.class_name_text(), 1: owner.name(), 2: foe_side.party[next].name()})
+	var choice: Variant = await _ask({"kind": "shift_choice", "slot": slot})
+	if not (choice is int and choice == 0):
+		return
+	var index: int = await _ask_switch(false, slot)
+	if index >= 0:
+		await switch_mon(mine, index)
+
+
+## Paroles du dresseur en plein combat (0x021CE890), avant les choix du joueur : pour son Pokémon de
+## devant, dans l'ordre de la table 0x021EFF18 (18 à la moitié des PV, 17 touché une première fois,
+## 19 son dernier Pokémon, 20 son dernier Pokémon à la moitié de ses PV), chaque genre ne sert qu'une
+## fois ; un genre sans message est écarté, et quand plusieurs conviennent, le dernier l'emporte
+## (les autres sont perdus).
+func _trainer_speech() -> void:
+	var trainer := enemy().trainer
+	if is_wild() or trainer == null or demo:
+		return
+	var mon: BattleMon = null
+	for slot in slot_count():
+		var each := enemy().mon(slot)
+		if each and not each.is_fainted():
+			mon = each
+			break
+	if mon == null:
+		return
+	var party_size := enemy().partner_first if enemy().partner else enemy().party.size()
+	var able := 0
+	for i in party_size:
+		able += 0 if enemy().party[i].is_fainted() else 1
+	var last := party_size > 1 and able == 1
+	var half := mon.hp() <= mon.max_hp() / 2
+	var chosen := -1
+	for kind: int in TrainerSpeech.BATTLE_KINDS:
+		if speech_used.has(kind):
+			continue
+		var line := TrainerSpeech.line_of(trainer.id, kind)
+		var fits := false
+		match kind:
+			TrainerSpeech.Kind.FIRST_DAMAGE: fits = mon.hp() != mon.max_hp()
+			TrainerSpeech.Kind.HALF_HP: fits = half
+			TrainerSpeech.Kind.LAST_POKEMON: fits = last
+			TrainerSpeech.Kind.LAST_HALF_HP: fits = last and half
+		if line < 0:
+			speech_used[kind] = true
+		elif fits:
+			speech_used[kind] = true
+			chosen = line
+	if chosen < 0:
+		return
+	push({"type": "trainer", "side": BattleSide.ENEMY, "show": true})
+	push({"type": "message", "file": BWFiles.TEXT_TRAINER_SPEECH, "line": chosen, "words": {}})
+	push({"type": "trainer", "side": BattleSide.ENEMY, "show": false})
+
+
+## Le joueur choisit un Pokémon de l'équipe pour une place (forcé : il ne peut pas renoncer).
+func ask_switch(forced: bool, slot := 0) -> int:
+	return await _ask_switch(forced, slot)
+
+
+func _ask_switch(forced: bool, slot := 0) -> int:
 	while not aborted:
-		var choice: Variant = await _ask({"kind": "switch", "forced": forced})
+		var choice: Variant = await _ask({"kind": "switch", "forced": forced, "slot": slot})
 		if not forced and (choice == null or (choice is int and choice < 0)):
 			return -1
 		if choice is int and choice >= 0 and choice < player().party.size():
 			var pokemon: Pokemon = player().party[choice]
-			var active := player().mon(0)
 			if pokemon.is_fainted():
 				say(BattleText.PARTY_FAINTED, {0: pokemon.name()}, BWFiles.TEXT_BATTLE_PARTY)
-			elif active and active.party_index == choice and not active.is_fainted():
+			elif choice not in player().reserves():
 				say(BattleText.PARTY_ALREADY_OUT, {0: pokemon.name()}, BWFiles.TEXT_BATTLE_PARTY)
 			else:
 				return choice
 	return -1
 
 
-func switch_in_replacement(side: BattleSide, index: int) -> void:
+func switch_in_replacement(side: BattleSide, index: int, slot := 0) -> void:
 	if index < 0:
 		return
-	var incoming := _send_out(side, index)
+	var incoming := send_out(side, index, slot)
 	_announce_send(side, incoming)
-	_push_send_out(incoming)
+	push_send_out(incoming)
 	_mark_opponents()
 	await on_entry(incoming)
 
@@ -771,7 +1224,7 @@ func _end_of_turn() -> void:
 	await _check_faints()
 	if result != Result.NONE:
 		return
-	for mon in _by_speed(all_active()):
+	for mon in by_speed(all_active()):
 		if mon.is_fainted():
 			continue
 		abilities.on_turn_end(mon)
@@ -790,6 +1243,9 @@ func _end_of_turn() -> void:
 		if result != Result.NONE:
 			return
 	moves.side_conditions_end_of_turn()
+	for mon in by_speed(all_active()):
+		if not mon.is_fainted():
+			abilities.on_turn_end_late(mon)
 	for mon in all_active():
 		mon.turns_active += 1
 
@@ -803,10 +1259,11 @@ func _weather_end_of_turn() -> void:
 			say([0, BattleText.SUN_ENDED, BattleText.RAIN_ENDED, BattleText.HAIL_ENDED, BattleText.SAND_ENDED][weather])
 			weather = Weather.NONE
 			push({"type": "weather", "weather": weather})
+			weather_changed()
 			return
 	if weather == Weather.SAND or weather == Weather.HAIL:
 		say(BattleText.SAND_RAGES if weather == Weather.SAND else BattleText.HAIL_CONTINUES)
-		for mon in _by_speed(all_active()):
+		for mon in by_speed(all_active()):
 			if abilities.weather_immune(mon, weather) or items.weather_immune(mon):
 				continue
 			if weather == Weather.SAND and (mon.has_type(Stats.Type.ROCK) or mon.has_type(Stats.Type.STEEL) or mon.has_type(Stats.Type.GROUND)):
@@ -848,15 +1305,31 @@ func _victory() -> void:
 	var foe_side := enemy()
 	if foe_side.trainer:
 		push({"type": "trainer", "side": BattleSide.ENEMY, "show": true})
-		say(BattleText.DEFEATED_TRAINER, {0: foe_side.trainer.class_name_text(), 1: foe_side.trainer.name()})
-		var speech := TrainerSpeech.lose_message(foe_side.trainer.id)
-		if not speech.is_empty():
-			push({"type": "message", "file": BWFiles.TEXT_TRAINER_SPEECH, "line": speech.line, "words": {}})
-		var last := foe_side.party[foe_side.party.size() - 1]
-		money_won = BattleCalc.prize_money(foe_side.trainer, last.level) + pay_day
+		var trainers: Array[TrainerData] = [foe_side.trainer]
+		if foe_side.partner:
+			trainers.append(foe_side.partner)
+			say(BattleText.DEFEATED_TRAINERS, {0: foe_side.trainer.class_name_text(), 1: foe_side.trainer.name(),
+				2: foe_side.partner.class_name_text(), 3: foe_side.partner.name()})
+		else:
+			say(BattleText.DEFEATED_TRAINER, {0: foe_side.trainer.class_name_text(), 1: foe_side.trainer.name()})
+		# Chaque dresseur dit sa réplique de défaite et paie selon le niveau de son dernier Pokémon.
+		money_won = pay_day
+		for i in trainers.size():
+			var speech := TrainerSpeech.lose_message(trainers[i].id)
+			if not speech.is_empty():
+				push({"type": "message", "file": BWFiles.TEXT_TRAINER_SPEECH, "line": speech.line, "words": {}})
+			var last_index := (foe_side.partner_first if i == 0 and foe_side.partner else foe_side.party.size()) - 1
+			money_won += BattleCalc.prize_money(trainers[i], foe_side.party[last_index].level)
+		if money_doubled:
+			money_won *= 2
 		if money_won > 0:
 			state.add_money(money_won)
 			say(BattleText.WON_MONEY, {0: state.player_name, 1: str(money_won)})
+	elif pay_day > 0:
+		# Combat sauvage : les pièces de Jackpot (« X obtient Y $ ! », fichier 15, 59).
+		money_won = pay_day * (2 if money_doubled else 1)
+		state.add_money(money_won)
+		say(BattleText.GOT_MONEY, {0: state.player_name, 1: str(money_won)})
 
 
 func _defeat() -> void:
@@ -875,7 +1348,7 @@ func _defeat() -> void:
 
 
 ## Après le combat : statuts passagers effacés (l'empoisonnement grave redevient un poison
-## ordinaire), fin des événements.
+## ordinaire), capacités de l'équipe rendues (Copie, Morphing), fin des événements.
 func _finish() -> void:
 	for pokemon in player().party:
 		if pokemon.is_fainted():
@@ -885,6 +1358,7 @@ func _finish() -> void:
 	for side in sides:
 		for mon in side.active:
 			if mon:
+				mon.leave_field()
 				mon.volatile.clear()
 				mon.last_attacker = null
 		side.conditions.clear()
