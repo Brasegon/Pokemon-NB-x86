@@ -92,6 +92,8 @@ var victory_music := MUSIC_WILD_VICTORY
 var background := 0
 ## Saison du combat (0 printemps à 3 hiver : la nuit de la Sombre Ball en dépend).
 var season := 0
+## Paroles du dresseur déjà dites (ou écartées) pendant ce combat : genre -> vrai.
+var speech_used := {}
 var terrain := 0
 ## Démonstration de capture de la professeure (commande 0x17D) : elle joue toute seule.
 var demo := false
@@ -526,6 +528,7 @@ func _play_turn() -> void:
 	turn += 1
 	var actions: Array[Dictionary] = []
 	_chosen_switches.clear()
+	_trainer_speech()
 	for mon in fighters(BattleSide.PLAYER):
 		var action: Dictionary = await _choose_player_action(mon)
 		if result != Result.NONE:
@@ -1109,6 +1112,52 @@ func _offer_shift(foe_side: BattleSide, next: int, slot: int) -> void:
 	var index: int = await _ask_switch(false, slot)
 	if index >= 0:
 		await switch_mon(mine, index)
+
+
+## Paroles du dresseur en plein combat (0x021CE890), avant les choix du joueur : pour son Pokémon de
+## devant, dans l'ordre de la table 0x021EFF18 (18 à la moitié des PV, 17 touché une première fois,
+## 19 son dernier Pokémon, 20 son dernier Pokémon à la moitié de ses PV), chaque genre ne sert qu'une
+## fois ; un genre sans message est écarté, et quand plusieurs conviennent, le dernier l'emporte
+## (les autres sont perdus).
+func _trainer_speech() -> void:
+	var trainer := enemy().trainer
+	if is_wild() or trainer == null or demo:
+		return
+	var mon: BattleMon = null
+	for slot in slot_count():
+		var each := enemy().mon(slot)
+		if each and not each.is_fainted():
+			mon = each
+			break
+	if mon == null:
+		return
+	var party_size := enemy().partner_first if enemy().partner else enemy().party.size()
+	var able := 0
+	for i in party_size:
+		able += 0 if enemy().party[i].is_fainted() else 1
+	var last := party_size > 1 and able == 1
+	var half := mon.hp() <= mon.max_hp() / 2
+	var chosen := -1
+	for kind: int in TrainerSpeech.BATTLE_KINDS:
+		if speech_used.has(kind):
+			continue
+		var line := TrainerSpeech.line_of(trainer.id, kind)
+		var fits := false
+		match kind:
+			TrainerSpeech.Kind.FIRST_DAMAGE: fits = mon.hp() != mon.max_hp()
+			TrainerSpeech.Kind.HALF_HP: fits = half
+			TrainerSpeech.Kind.LAST_POKEMON: fits = last
+			TrainerSpeech.Kind.LAST_HALF_HP: fits = last and half
+		if line < 0:
+			speech_used[kind] = true
+		elif fits:
+			speech_used[kind] = true
+			chosen = line
+	if chosen < 0:
+		return
+	push({"type": "trainer", "side": BattleSide.ENEMY, "show": true})
+	push({"type": "message", "file": BWFiles.TEXT_TRAINER_SPEECH, "line": chosen, "words": {}})
+	push({"type": "trainer", "side": BattleSide.ENEMY, "show": false})
 
 
 ## Le joueur choisit un Pokémon de l'équipe pour une place (forcé : il ne peut pas renoncer).

@@ -56,6 +56,7 @@ func _initialize() -> void:
 	_test_bag_items()
 	_test_around_battle()
 	_test_evolution_rules()
+	_test_trainer_speech()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -1444,6 +1445,29 @@ func _test_evolution_rules() -> void:
 	tepig.held_item = 0
 	tepig.evolve_into(499)
 	_check(tepig.species == 499 and tepig.max_hp() - tepig.hp == old_hp, "évolution : les PV perdus restent perdus")
+
+
+## Paroles d'un champion en plein combat (0x021CE890) : touché une première fois, puis son dernier
+## Pokémon, une fois chacune.
+func _test_trainer_speech() -> void:
+	var state := _player(498, 50, 250)
+	var battle := Battle.against_trainer(state, 11, {"random": GameRandom.new(251)})
+	battle.send_out(battle.player(), 0, 0)
+	var foe := battle.send_out(battle.enemy(), 0, 0)
+	var first_damage := TrainerSpeech.line_of(11, TrainerSpeech.Kind.FIRST_DAMAGE)
+	var last := TrainerSpeech.line_of(11, TrainerSpeech.Kind.LAST_POKEMON)
+	battle._trainer_speech()
+	_check(not _said(battle, BWFiles.TEXT_TRAINER_SPEECH, first_damage), "paroles : rien tant que son Pokémon n'est pas touché")
+	foe.pokemon.hp -= 1
+	battle._trainer_speech()
+	var count := battle.events.filter(func(e: Dictionary) -> bool: return e.type == "message" and e.file == BWFiles.TEXT_TRAINER_SPEECH).size()
+	battle._trainer_speech()
+	var again := battle.events.filter(func(e: Dictionary) -> bool: return e.type == "message" and e.file == BWFiles.TEXT_TRAINER_SPEECH).size()
+	_check(_said(battle, BWFiles.TEXT_TRAINER_SPEECH, first_damage) and count == 1 and again == 1, "paroles : « touché une première fois » (genre 17), une seule fois")
+	foe.pokemon.hp = 0
+	battle.send_out(battle.enemy(), 1, 0)
+	battle._trainer_speech()
+	_check(_said(battle, BWFiles.TEXT_TRAINER_SPEECH, last), "paroles : son dernier Pokémon (genre 19)")
 
 
 ## Vérification qui ne s'affiche qu'en cas d'échec (boucles).

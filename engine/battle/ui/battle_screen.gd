@@ -674,9 +674,21 @@ func _rotate(event: Dictionary) -> void:
 ## Le dresseur d'en face revient après sa défaite : il glisse à sa place (effet 624).
 func _show_trainer(side: int, show: bool) -> void:
 	var trainer := battle.sides[side].trainer
-	if trainer == null or not show:
-		return
 	var slot := BattleSprite.ENEMY_TRAINER if side == BattleSide.ENEMY else BattleSprite.PLAYER_TRAINER
+	if not show:
+		# Fin d'une réplique en plein combat : le dresseur repart vers le bord, ses Pokémon reviennent.
+		var leaving: BattleSprite = slots.get(slot)
+		if leaving:
+			var tween := create_tween()
+			tween.tween_property(leaving, "lift", Vector2(240, 0), 0.35).set_ease(Tween.EASE_IN)
+			await tween.finished
+			_put_sprite(slot, null)
+		for each in battle.slot_count():
+			if slots.has(place_of(side, each)):
+				slots[place_of(side, each)].invisible = false
+		return
+	if trainer == null:
+		return
 	var sprite := BattleSprite.for_trainer(trainer.trainer_class)
 	if sprite == null:
 		return

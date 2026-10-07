@@ -1544,6 +1544,12 @@ des objets) ; un Pokémon sauvage ne vole plus l'objet du joueur.
   surnom (« Donner un surnom au Pokémon X capturé ? », fichier 234, 175, overlay 207) attend l'écran
   du surnom.
 
+- **Paroles du dresseur en plein combat** (0x021CE890, avant les choix du joueur, quand son Pokémon
+  n'a pas d'action imposée) : pour le Pokémon de devant du premier dresseur, dans l'ordre de la table
+  0x021EFF18 (18 moitié des PV, 17 touché une première fois : PV différents du maximum, 19 dernier
+  Pokémon : plus d'un membre et un seul en forme, 20 dernier Pokémon à la moitié de ses PV), chaque
+  genre une seule fois ; un genre sans message est écarté ; si plusieurs conviennent le même tour, le
+  dernier est dit et les autres sont perdus. Le dresseur revient, dit sa ligne (fichier 189), repart.
 - **Évolution après le combat** (0x021B95B4, étape 4) : après une victoire ou une capture, chaque
   membre de l'équipe dont le niveau a monté (masque de 0x021B99B4) passe par 0x0201B2CC (cas 0 :
   lieu du combat, période de la journée) ; une évolution trouvée joue la séquence (`EvolutionScreen`) :
