@@ -1208,10 +1208,13 @@ pour les PID des dresseurs).
 Le moteur du portage fait se dérouler un combat simple comme celui du jeu et produit une file
 d'événements (messages, PV, K.O., expérience, musiques...) que l'écran joue à son rythme ; quand
 il lui faut une décision, il pose une demande (action, Pokémon à envoyer, capacité à oublier, oui
-/ non) et attend la réponse. Les gestionnaires du jeu sont rangés en tables dans l'overlay 93 :
-talents 0x021F0E14, 0x021F114C et 0x021F125C (156 talents qui agissent en combat), objets tenus
-0x021F1E44 (171), capacités à part 0x021F2FD0 et 0x021F3518 (257). Les capacités ordinaires sont
-décrites par leurs données (catégorie d'effet +0x01) ; les autres sont écrites une à une.
+/ non) et attend la réponse. Les gestionnaires du jeu sont rangés en tables de paires (numéro,
+fonction) dans l'overlay 93 : talents 0x021F0E14 (158 talents, une seule table : 0x021D8424 la
+parcourt jusqu'à 0x9E), objets tenus 0x021F1E44 (171, puis une entrée vide : 0x021DCE64 s'arrête à
+0xAC), capacités à part 0x021F2FD0 (258 : 0x021E027C, borne 0x102 en 0x021E02EC). La fonction d'un
+talent renvoie la liste de ses réactions (événement, fonction) : Pression, par exemple, 3 réactions
+en 0x021F0A58. Les capacités ordinaires sont décrites par leurs données (catégorie d'effet +0x01) ;
+les autres sont écrites une à une.
 
 - **Ordre des actions** (0x021BC814) : clé = rang de l'action (bits 22-24 : attaque 0, sac et
   changement 1, fuite 2), priorité + 7 (bits 16-21), priorité spéciale (bits 13-15 : Vive Griffe,
@@ -1235,6 +1238,53 @@ décrites par leurs données (catégorie d'effet +0x01) ; les autres sont écrit
   combat (aucune archive ne contient de scripts d'IA) ; le portage note les capacités selon les
   indicateurs de la fiche (+0x0C : éviter l'inutile, préférer les dégâts et le K.O., jouer les
   statuts au bon moment, se préparer au premier tour) et soigne sous le quart des PV.
+- **Pression** (réaction à l'événement 0x4E, 0x021DB8DC) : un PP de plus par porteur, seulement si
+  le lanceur est d'en face, et si le porteur est visé, ou si la capacité vise le terrain (cible 10),
+  ou si elle est dans la liste 0x0689E2C4 (Saisie, Possessif, Picots, Pics Toxik, Piège de Roc). Une
+  capacité sur soi ne coûte donc qu'un PP.
+
+### Combats à plusieurs (`battle.gd`, `battle_moves.gd`)
+
+Type de combat (0x021C80FC, champ +0x02 bits 0-1 des dresseurs) : 0 simple, 1 double, 2 triple,
+3 rotatif ; dans la ROM, 26 dresseurs de combat double (par exemple la fiche 18, des jumelles), 7
+de triple (506...) et 8 de rotatif (513...). Chaque camp a 1, 2 ou 3 places ; la place du combat est
+camp + 2 x place (0, 2, 4 côté joueur ; 1, 3, 5 en face).
+
+- **Colonnes et voisins** : d'après les tables de positions (plus bas, « Scène »), la place 0 du
+  joueur est à gauche et la place 0 d'en face à droite. Colonne = place côté joueur, (nombre de
+  places - 1 - place) en face. Deux Pokémon sont voisins si leurs colonnes se touchent : toujours en
+  simple et en double ; en triple, un bord ne touche pas l'autre bord.
+- **Cible des données** (+0x14 de `a/0/2/1`) : 0 un autre Pokémon voisin, au choix (402 capacités),
+  1 soi ou un allié (Acupression), 2 un allié (Coup d'Main), 3 un adversaire (Moi d'Abord), 4 tous
+  les autres voisins (Séisme, Surf), 5 tous les adversaires voisins (Éboulement, Rugissement), 6 son
+  équipe (Glas de Soin), 7 soi, 8 tous (Requiem), 9 un adversaire au hasard (Mania), 10 le terrain
+  (météo, Buée Noire, Distorsion), 11 le côté d'en face (Picots), 12 son côté (Protection), 13 à part
+  (Riposte, Malédiction, Force-Nature). Les capacités « à distance » (drapeau 11) atteignent aussi
+  les non-voisins. Le portage remplace une cible partie par un autre adversaire voisin ; Paratonnerre,
+  Lavabo et Par Ici attirent les capacités à une seule cible (comportement du jeu, pas encore vérifié
+  dans le code).
+- **Dégâts** (0x021C0D30) : la liste des cibles garde le nombre de départ (+0x43) et le nombre
+  restant (+0x42, fonctions de l'overlay 95 en 0x0689CD40 et 0x0689CD38). Si la capacité visait
+  plus d'un Pokémon, les dégâts sont multipliés par 0xC00 (0,75) juste après les dégâts de base
+  (paramètre 6 de 0x021C1E14, avant la météo et le critique). La liste est coupée en deux
+  (0x0689CDCC) : les cibles d'en face prennent leurs dégâts et leurs messages d'abord, puis celles
+  du camp du lanceur.
+- **Efficacité** (0x021C57E0) : avec une seule cible touchée, « C'est super efficace ! » (fichier
+  15, ligne 78) si elle l'est, sinon « Ce n'est pas très efficace... » (79) ; avec plusieurs, un
+  message nomme les cibles super efficaces (fichier 14, ligne 6 pour une, 9 pour deux, 12 pour trois,
+  plus la variante du premier nommé), puis un autre les cibles peu efficaces (15, 18, 21). Le portage
+  nomme aussi la cible du coup critique dans ce cas (« Coup critique infligé à X ! », fichier 14,
+  ligne 384 ; non vérifié dans le code).
+- **Protection et Mur Lumière** (overlay 95, réaction 0x06898E54) : hors coup critique, 0x800 en
+  simple et en rotatif, 0xA8F (environ 2/3) en double et en triple.
+- **Messages** (fichier 15) : deux sauvages 2 ; « X et Y ! Go ! » 12, trois 13 ; « Un X et un Y
+  sont envoyés par... » 15, trois 16 ; deux dresseurs 9 (défi) et 45 (défaite). Fichier 18, 103 :
+  « X est déjà sélectionné. » (le même remplaçant choisi deux fois dans un tour). Fichier 17, 44 :
+  pas de Ball face à deux Pokémon sauvages ; 47 : quand aucun n'est visible.
+- **Talents qui regardent les adversaires** (d'après le comportement du jeu, à vérifier dans leurs
+  gestionnaires) : Intimidation baisse l'Attaque de chaque adversaire voisin, Télécharge compare la
+  somme des Défenses et Défenses Spéciales d'en face, Fouille et Calque en prennent un au hasard,
+  Mauvais Rêve blesse chaque adversaire endormi, Tension empêche les baies si un adversaire l'a.
 
 ### Formules du combat (`battle_calc.gd`)
 
@@ -1292,7 +1342,18 @@ socle 32 (`batt_stage24`). Les « brush » du fond sont des nuages translucides 
 
 **Scène** (`battle_stage.gd`) : socles en (0, 0, 5,449) et (0, 0, -12,718) (0x021F67D6 ; rotatif :
 10 et -15). Pokémon (0x021FF39C, table 0x02209FF0 des combats simples) en (0,5 ; 0,4 ; 7) et
-(0,3 ; 0,4 ; -10) ; doubles 0x0220A020, triples 0x0220A0F8, rotatifs 0x0220A140. Caméra
+(0,3 ; 0,4 ; -10) ; doubles 0x0220A020, triples 0x0220A0F8, rotatifs 0x0220A140. La position d'une
+place vient de 0x02201848 : places 0 et 1 en combat simple ; à plusieurs, les Pokémon sont aux places
+2 à 7 (place du combat + 2) et les bits 0 et 1 de [vue+0x510] choisissent la table (rotatif si le
+bit 1, sinon triple si le bit 0, sinon double) ; places 8 à 13 pour les dresseurs (0x0220A0B0). En
+double : place 2 (joueur, gauche) x = -1,69, place 4 (joueur, droite) x = 2,5, place 3 (en face,
+droite) x = 2,43, place 5 (en face, gauche) x = -2,2 ; en triple, le joueur en x = -4, 0,75, 5,19 et
+en face 4,5, 0,74, -4,39. Échelles du mode « monde » (0x022018D4) : 0x02209F70 en double,
+0x02209FD8 en triple, 0x02209FA8 en rotatif. Les jauges des combats triples et rotatifs sont
+plus petites (fonds 171 à 176 au lieu de 165 à 170, 0x022073D0). Le début du combat a une routine
+par type de combat et d'adversaire (0x021EB2CC : sauvage 0x021EB630, dresseur 0x021EB810, double
+sauvage 0x021EBAC0, double contre un ou deux dresseurs 0x021EBD30 et 0x021EBD7C, triple
+0x021EBE74...) ; le portage joue pour l'instant les effets d'envoi une place après l'autre. Caméra
 (0x021F6DDC, créée par 0x020489BC) : perspective, demi-angle vertical 13° (sinus 0x399, cosinus
 0xF97), plans 1 et 512 ; vue par défaut (0x021F71A8) œil (6,7 ; 6,7 ; 17,3), point visé (0 ; 2,6 ;
 0) ; prises de vue (switch 0x021F9C74) : sur le Pokémon du joueur ou d'en face (yeux 0x0220AC88,

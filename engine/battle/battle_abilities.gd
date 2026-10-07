@@ -213,7 +213,7 @@ func _target_ability(target: BattleMon, attacker: BattleMon) -> int:
 
 ## Montre le nom du talent (fenêtre du jeu).
 func announce(mon: BattleMon) -> void:
-	battle.push({"type": "ability", "side": mon.side, "ability": mon.ability, "name": mon.name()})
+	battle.push({"type": "ability", "side": mon.side, "slot": mon.slot, "ability": mon.ability, "name": mon.name()})
 
 
 func _boost(mon: BattleMon, stat: int, amount: int) -> void:
@@ -223,13 +223,22 @@ func _boost(mon: BattleMon, stat: int, amount: int) -> void:
 
 # --- Entrée et sortie ---------------------------------------------------------------------------
 
+## Talents d'entrée. En combat à plusieurs, ils regardent tous les adversaires : Intimidation
+## touche chaque adversaire voisin, Télécharge compare la somme de leurs Défenses, Fouille et Calque
+## en prennent un au hasard.
 func on_switch_in(mon: BattleMon) -> void:
-	var foe := battle.foe_of(mon)
+	var foes := battle.foes_of(mon, false)
+	var foe: BattleMon = foes[battle.random.range_of(foes.size())] if foes.size() > 1 else (foes[0] if not foes.is_empty() else null)
 	match ability_of(mon):
 		INTIMIDATE:
-			if foe and not foe.is_fainted() and not foe.has("substitute"):
+			var touched: Array[BattleMon] = []
+			for each in battle.foes_of(mon):
+				if not each.has("substitute"):
+					touched.append(each)
+			if not touched.is_empty():
 				announce(mon)
-				battle.moves.change_stat(foe, mon, Stats.Stat.ATTACK, -1, false)
+				for each in touched:
+					battle.moves.change_stat(each, mon, Stats.Stat.ATTACK, -1, false)
 		DRIZZLE, DROUGHT, SAND_STREAM, SNOW_WARNING:
 			var weather: Battle.Weather = {DRIZZLE: Battle.Weather.RAIN, DROUGHT: Battle.Weather.SUN,
 				SAND_STREAM: Battle.Weather.SAND, SNOW_WARNING: Battle.Weather.HAIL}[ability_of(mon)]
@@ -240,9 +249,12 @@ func on_switch_in(mon: BattleMon) -> void:
 				battle.push({"type": "weather", "weather": weather})
 				battle.say([0, BattleText.SUN_STARTED, BattleText.RAIN_STARTED, BattleText.HAIL_STARTED, BattleText.SAND_STARTED][weather])
 		DOWNLOAD:
-			if foe:
-				var defense := BattleMon.apply_stage(foe.raw_stat(Stats.Stat.DEFENSE), foe.stage(Stats.Stat.DEFENSE))
-				var sp_defense := BattleMon.apply_stage(foe.raw_stat(Stats.Stat.SP_DEFENSE), foe.stage(Stats.Stat.SP_DEFENSE))
+			if not foes.is_empty():
+				var defense := 0
+				var sp_defense := 0
+				for each in foes:
+					defense += BattleMon.apply_stage(each.raw_stat(Stats.Stat.DEFENSE), each.stage(Stats.Stat.DEFENSE))
+					sp_defense += BattleMon.apply_stage(each.raw_stat(Stats.Stat.SP_DEFENSE), each.stage(Stats.Stat.SP_DEFENSE))
 				_boost(mon, Stats.Stat.SP_ATTACK if sp_defense > defense else Stats.Stat.ATTACK, 1)
 		PRESSURE:
 			announce(mon)
@@ -260,29 +272,37 @@ func on_switch_in(mon: BattleMon) -> void:
 			announce(mon)
 			battle.say(176 + (0 if mon.side == BattleSide.ENEMY else 1))
 		ANTICIPATION:
-			if foe and _foe_has_dangerous_move(mon, foe):
-				announce(mon)
-				battle.say_mon(436, mon)
+			for each in foes:
+				if _foe_has_dangerous_move(mon, each):
+					announce(mon)
+					battle.say_mon(436, mon)
+					break
 		FRISK:
 			if foe and foe.pokemon.held_item != 0:
 				announce(mon)
 				battle.say_mon(439, mon, {1: Autoloads.rom().text(BWFiles.TEXT_ITEM_NAMES, foe.pokemon.held_item)})
 		FOREWARN:
-			if foe and not foe.pokemon.moves.is_empty():
-				var best := 0
-				var best_power := -1
-				for move in foe.pokemon.moves:
+			var best := 0
+			var best_power := -1
+			for each in foes:
+				for move in each.pokemon.moves:
 					var data := MoveData.of(move.id)
 					if data and data.power > best_power:
 						best = move.id
 						best_power = data.power
+			if best > 0:
 				announce(mon)
 				battle.say_mon(433, mon, {1: Autoloads.rom().text(BWFiles.TEXT_MOVE_NAMES, best)})
 		TRACE:
-			if foe and ability_of(foe) not in [0, TRACE, 121, 149, 150, 161]:
-				mon.ability = foe.ability
+			var traceable: Array[BattleMon] = []
+			for each in battle.foes_of(mon):
+				if ability_of(each) not in [0, TRACE, 121, 149, 150, 161]:
+					traceable.append(each)
+			if not traceable.is_empty():
+				var copied: BattleMon = traceable[battle.random.range_of(traceable.size())] if traceable.size() > 1 else traceable[0]
+				mon.ability = copied.ability
 				announce(mon)
-				battle.say_mon(381, mon, {1: Autoloads.rom().text(BWFiles.TEXT_ABILITY_NAMES, foe.ability)})
+				battle.say_mon(381, mon, {1: Autoloads.rom().text(BWFiles.TEXT_ABILITY_NAMES, copied.ability)})
 				on_switch_in(mon)
 		SLOW_START:
 			mon.set_effect("slow_start", 5)
@@ -378,11 +398,11 @@ func on_turn_end(mon: BattleMon) -> void:
 				if not lowerable.is_empty():
 					battle.moves.change_stat(mon, mon, lowerable[battle.random.range_of(lowerable.size())], -1, false)
 		BAD_DREAMS:
-			var foe := battle.foe_of(mon)
-			if foe and foe.status() == Pokemon.Status.SLEEP and not _magic_guard(foe):
-				announce(mon)
-				battle.say_mon(BattleText.HURT, foe)
-				battle.damage(foe, maxi(foe.max_hp() / 8, 1), "bad_dreams")
+			for foe in battle.foes_of(mon, false):
+				if foe.status() == Pokemon.Status.SLEEP and not _magic_guard(foe):
+					announce(mon)
+					battle.say_mon(BattleText.HURT, foe)
+					battle.damage(foe, maxi(foe.max_hp() / 8, 1), "bad_dreams")
 		SLOW_START:
 			if mon.has("slow_start"):
 				var turns: int = mon.get_effect("slow_start") - 1
@@ -401,7 +421,7 @@ func _cure(mon: BattleMon) -> void:
 	mon.pokemon.status = Pokemon.Status.NONE
 	mon.pokemon.sleep_turns = 0
 	mon.badly_poisoned = false
-	battle.push({"type": "status", "side": mon.side, "status": 0})
+	battle.push({"type": "status", "side": mon.side, "slot": mon.slot, "status": 0})
 	battle.say_mon(message, mon)
 
 
@@ -527,6 +547,24 @@ func traps(holder: BattleMon, target: BattleMon) -> bool:
 
 
 # --- Immunités et protections ---------------------------------------------------------------------
+
+## Cible d'une capacité à une seule cible, attirée ailleurs en combat à plusieurs : Par Ici et Poudre
+## Fureur (effet « follow_me » posé sur un Pokémon du camp visé), puis Paratonnerre et Lavabo pour
+## les capacités Électrik et Eau (le plus rapide des porteurs, hors le lanceur).
+func redirect(mon: BattleMon, target: BattleMon, data: MoveData, move_type: int) -> BattleMon:
+	if not battle.is_multi() or data.target not in [MoveData.Target.OTHER, MoveData.Target.ENEMY, MoveData.Target.RANDOM_ENEMY]:
+		return target
+	for each in battle.sides[target.side].on_field():
+		if each.has("follow_me"):
+			return each
+	var drawing := {Stats.Type.ELECTRIC: LIGHTNING_ROD, Stats.Type.WATER: STORM_DRAIN}
+	if not drawing.has(move_type) or ability_of(target) == drawing[move_type]:
+		return target
+	for each in battle.by_speed(battle.all_active()):
+		if each != mon and _target_ability(each, mon) == drawing[move_type]:
+			return each
+	return target
+
 
 ## Le talent de la cible arrête la capacité (Lévitation, Absorb Volt...) ; vrai si elle est arrêtée.
 func blocks_move(target: BattleMon, attacker: BattleMon, data: MoveData, move_type := -1) -> bool:

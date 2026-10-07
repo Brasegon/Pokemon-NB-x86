@@ -59,11 +59,11 @@ const MESSAGE_TRIM := Color("#686878")
 var battle: Battle
 var stage: BattleStage
 var messages: DialogueBox
-## Jauges, sprites des Pokémon et sprites des dresseurs, par côté (BattleSide.PLAYER, ENEMY).
-var gauges: Array[BattleGauge] = [null, null]
-var sprites: Array[BattleSprite] = [null, null]
+## Jauges des Pokémon, par place du jeu (voir place_of()).
+var gauges := {}
+## Sprites des dresseurs, par côté (BattleSide.PLAYER, ENEMY).
 var trainer_sprites: Array[BattleSprite] = [null, null]
-## Sprites par place du jeu (BattleSprite.PLAYER, ENEMY, PLAYER_TRAINER, ENEMY_TRAINER...).
+## Sprites par place du jeu : Pokémon 0 et 1 en combat simple, 2 à 7 sinon ; dresseurs 8 à 13.
 var slots := {}
 ## Les effets du combat (scripts de la ROM) et leurs particules.
 var effects: BattleEffects
@@ -80,7 +80,6 @@ var _menu_layer: Control
 var _fade: ScreenFade
 var _ball: Sprite2D
 var _menu: Control
-var _status := [Pokemon.Status.NONE, Pokemon.Status.NONE]
 var _frame_time := 0.0
 ## Rangées de Balls à l'écran (début d'un combat contre un dresseur).
 var _trays: Array[BattleTray] = []
@@ -124,6 +123,7 @@ func _build() -> void:
 	stage.build(scene, options.get("light_color", Color.WHITE))
 	effects = BattleEffects.new()
 	effects.host = self
+	BattleSprite.layout = battle.format if battle else Battle.Format.SINGLE
 
 	_view = TextureRect.new()
 	_view.name = "Decor"
@@ -142,11 +142,13 @@ func _build() -> void:
 	particles.stage = stage
 	add_child(particles)
 
-	for side in [BattleSide.PLAYER, BattleSide.ENEMY]:
-		var gauge := BattleGauge.create(BattleStage.Side.PLAYER if side == BattleSide.PLAYER else BattleStage.Side.ENEMY)
-		gauge.visible = false
-		add_child(gauge)
-		gauges[side] = gauge
+	if battle:
+		for slot in battle.slot_count():
+			for side in [BattleSide.PLAYER, BattleSide.ENEMY]:
+				var gauge := BattleGauge.create(BattleStage.Side.PLAYER if side == BattleSide.PLAYER else BattleStage.Side.ENEMY)
+				gauge.visible = false
+				add_child(gauge)
+				gauges[place_of(side, slot)] = gauge
 
 	messages = DialogueBox.new()
 	messages.name = "Messages"
@@ -187,16 +189,39 @@ func _render_size() -> Vector2i:
 
 func _layout() -> void:
 	_place_messages()
-	if gauges[BattleSide.ENEMY]:
-		gauges[BattleSide.ENEMY].position = ENEMY_GAUGE
-	if gauges[BattleSide.PLAYER]:
-		gauges[BattleSide.PLAYER].position = _player_gauge_position()
+	for place: int in gauges:
+		gauges[place].position = _gauge_home(place)
 	if _menu:
 		_place_menu(_menu)
 
 
+## Place du jeu d'un Pokémon (0x02201848) : en combat simple 0 pour le joueur et 1 en face ; à
+## plusieurs, place du combat (camp + 2 x place) + 2, soit 2, 4, 6 pour le joueur et 3, 5, 7 en face.
+func place_of(side: int, slot: int) -> int:
+	if battle == null or not battle.is_multi():
+		return side
+	return 2 + side + 2 * slot
+
+
+func _side_of_place(place: int) -> int:
+	return place % 2
+
+
+## Jauge d'un Pokémon : en face en haut à gauche, celles du joueur à droite au-dessus des messages.
+## À plusieurs, elles s'empilent dans l'ordre des colonnes, de gauche à droite.
+func _gauge_home(place: int) -> Vector2:
+	var side := _side_of_place(place)
+	var slot := (place - 2) / 2 if battle and battle.is_multi() else 0
+	var count := battle.slot_count() if battle else 1
+	var row := battle.column(side, slot) if battle else 0
+	var step := BattleGauge.SIZE.y + 2
+	if side == BattleSide.ENEMY:
+		return ENEMY_GAUGE + Vector2(0, row * step)
+	return Vector2(size.x - BattleGauge.SIZE.x, size.y - PLAYER_GAUGE_BOTTOM - (count - 1 - row) * step)
+
+
 func _player_gauge_position() -> Vector2:
-	return Vector2(size.x - BattleGauge.SIZE.x, size.y - PLAYER_GAUGE_BOTTOM)
+	return _gauge_home(place_of(BattleSide.PLAYER, 0))
 
 
 ## Boîte de messages en bas, sur toute la largeur.
@@ -299,19 +324,20 @@ func _play(event: Dictionary) -> void:
 		"send_out":
 			await _send_out(event)
 		"withdraw":
-			await _withdraw(event.side)
+			await _withdraw(_event_place(event))
 		"trainer":
 			await _show_trainer(event.side, event.show)
 		"hp":
-			var gauge := gauges[event.side]
+			var gauge: BattleGauge = gauges.get(_event_place(event))
 			if gauge and gauge.visible:
 				await gauge.animate_hp(event.to, event.max)
 		"hit":
 			_play_sound(_hit_sound(event.get("effectiveness", Stats.Effectiveness.NORMAL)))
-			if sprites[event.side]:
-				await sprites[event.side].blink()
+			var hit: BattleSprite = slots.get(_event_place(event))
+			if hit:
+				await hit.blink()
 		"faint":
-			await _faint(event.side)
+			await _faint(_event_place(event))
 		"cry":
 			_play_cry(event.species)
 			await _wait(0.3)
@@ -324,20 +350,22 @@ func _play(event: Dictionary) -> void:
 		"sound":
 			_play_sound(event.name, event.get("fanfare", false))
 		"status":
-			_status[event.side] = event.status
-			if gauges[event.side]:
-				gauges[event.side].status = event.status
-				gauges[event.side].queue_redraw()
+			var gauge: BattleGauge = gauges.get(_event_place(event))
+			if gauge:
+				gauge.status = event.status
+				gauge.queue_redraw()
 		"stat":
-			if sprites[event.side]:
-				await _stat_flash(sprites[event.side], event.up)
+			var raised: BattleSprite = slots.get(_event_place(event))
+			if raised:
+				await _stat_flash(raised, event.up)
 		"move":
 			await _move_animation(event)
 		"substitute":
-			if sprites[event.side]:
-				sprites[event.side].alpha = 17 if event.on else BattleSprite.ALPHA_MAX
+			var behind: BattleSprite = slots.get(_event_place(event))
+			if behind:
+				behind.alpha = 17 if event.on else BattleSprite.ALPHA_MAX
 		"ability":
-			await _show_ability(event.side, event.ability)
+			await _show_ability(_event_place(event), event.ability)
 		"ball":
 			await _throw_ball(event)
 		"request":
@@ -422,9 +450,9 @@ func _stage_side(side: int) -> BattleStage.Side:
 	return BattleStage.Side.PLAYER if side == BattleSide.PLAYER else BattleStage.Side.ENEMY
 
 
-## Place du jeu d'un côté du moteur : 0 pour le joueur, 1 en face (combats simples).
-static func _slot_of(side: int) -> int:
-	return BattleSprite.PLAYER if side == BattleSide.PLAYER else BattleSprite.ENEMY
+## Place du jeu d'un événement du moteur (camp et place du camp).
+func _event_place(event: Dictionary) -> int:
+	return place_of(event.side, event.get("slot", 0))
 
 
 ## Met un sprite à une place (le précédent est enlevé).
@@ -452,7 +480,6 @@ func _sort_sprites() -> void:
 
 
 func _sync_side_arrays() -> void:
-	sprites = [slots.get(BattleSprite.PLAYER), slots.get(BattleSprite.ENEMY)]
 	trainer_sprites = [slots.get(BattleSprite.PLAYER_TRAINER), slots.get(BattleSprite.ENEMY_TRAINER)]
 
 
@@ -461,51 +488,48 @@ func _sync_side_arrays() -> void:
 func _prepare_pokemon(event: Dictionary) -> int:
 	var side: int = event.side
 	var mon: BattleMon = event.mon
-	var slot := _slot_of(side)
+	var place := _event_place(event)
 	var sprite := BattleSprite.for_pokemon(mon.pokemon, side == BattleSide.PLAYER)
-	_put_sprite(slot, sprite)
-	var gauge := gauges[side]
+	_put_sprite(place, sprite)
+	var gauge: BattleGauge = gauges[place]
 	gauge.show_pokemon(mon.pokemon)
 	gauge.level = event.get("level", mon.level())
 	gauge.max_hp = maxi(event.get("max", mon.max_hp()), 1)
 	gauge.shown_hp = event.get("hp", mon.hp())
 	gauge.animate_hp(int(gauge.shown_hp))
-	_status[side] = event.get("status", Pokemon.Status.NONE)
-	gauge.status = _status[side]
+	gauge.status = event.get("status", Pokemon.Status.NONE)
 	gauge.caught_mark = battle.is_wild() and side == BattleSide.ENEMY and battle.state.caught.has(mon.pokemon.species)
-	return slot
+	return place
 
 
 ## Un Pokémon arrive en cours de combat (effet 621), puis sa jauge glisse à l'écran.
 func _send_out(event: Dictionary) -> void:
-	var slot := _prepare_pokemon(event)
-	await play_effect(BattleEffects.SWITCH_IN, slot)
-	_slide_gauge(event.side, true)
+	var place := _prepare_pokemon(event)
+	await play_effect(BattleEffects.SWITCH_IN, place)
+	_slide_gauge(place, true)
 
 
-func _withdraw(side: int) -> void:
-	_slide_gauge(side, false)
-	var slot := _slot_of(side)
-	if slots.has(slot):
-		await play_effect(BattleEffects.WITHDRAW, slot)
-		_put_sprite(slot, null)
+func _withdraw(place: int) -> void:
+	_slide_gauge(place, false)
+	if slots.has(place):
+		await play_effect(BattleEffects.WITHDRAW, place)
+		_put_sprite(place, null)
 
 
-func _faint(side: int) -> void:
-	_slide_gauge(side, false)
-	var slot := _slot_of(side)
-	if slots.has(slot):
-		await play_effect(BattleEffects.FAINT, slot)
-		_put_sprite(slot, null)
+func _faint(place: int) -> void:
+	_slide_gauge(place, false)
+	if slots.has(place):
+		await play_effect(BattleEffects.FAINT, place)
+		_put_sprite(place, null)
 
 
 ## Jauge qui glisse depuis le bord de l'écran (ou qui y repart).
-func _slide_gauge(side: int, show: bool) -> void:
-	var gauge := gauges[side]
+func _slide_gauge(place: int, show: bool) -> void:
+	var gauge: BattleGauge = gauges.get(place)
 	if gauge == null:
 		return
-	var home := ENEMY_GAUGE if side == BattleSide.ENEMY else _player_gauge_position()
-	var away := home + Vector2(-BattleGauge.SIZE.x if side == BattleSide.ENEMY else BattleGauge.SIZE.x, 0)
+	var home := _gauge_home(place)
+	var away := home + Vector2(-BattleGauge.SIZE.x if _side_of_place(place) == BattleSide.ENEMY else BattleGauge.SIZE.x, 0)
 	var tween := create_tween()
 	if show:
 		gauge.visible = true
@@ -526,8 +550,9 @@ func _show_trainer(side: int, show: bool) -> void:
 	if sprite == null:
 		return
 	_put_sprite(slot, sprite)
-	if slots.has(_slot_of(side)):
-		slots[_slot_of(side)].invisible = true
+	for each in battle.slot_count():
+		if slots.has(place_of(side, each)):
+			slots[place_of(side, each)].invisible = true
 	await play_effect(BattleEffects.TRAINER_RETURN)
 
 
@@ -546,13 +571,17 @@ func _intro(event: Dictionary) -> void:
 ## « Un X sauvage apparaît ! », sa jauge entre et la boîte se ferme, le héros arrive (562), puis il
 ## envoie son Pokémon.
 func _wild_intro(event: Dictionary) -> void:
-	var slot := _prepare_pokemon(event.enemy)
+	var places: Array[int] = []
+	for sent: Dictionary in event.enemy:
+		places.append(_prepare_pokemon(sent))
 	messages.close()
-	effects.play(BattleEffects.WILD_INTRO, slot)
 	_fade.fade_to(0.0, INTRO_FADE_TIME)
-	await _until_effects_done()
+	for place in places:
+		effects.play(BattleEffects.WILD_INTRO, place)
+		await _until_effects_done()
 	await _say(event.appeared)
-	_slide_gauge(BattleSide.ENEMY, true)
+	for place in places:
+		_slide_gauge(place, true)
 	messages.close()
 	await play_effect(BattleEffects.PLAYER_ENTRY)
 	await _send_player(event)
@@ -578,30 +607,52 @@ func _trainer_intro(event: Dictionary) -> void:
 	effects.play(BattleEffects.TRAINER_READY, BattleSprite.ENEMY)
 	messages.close()
 	await _until_effects_done()
-	await _say(event.sent)
-	var slot := _prepare_pokemon(event.enemy)
-	effects.play(BattleEffects.ENEMY_SEND_OUT, slot)
+	var places: Array[int] = []
+	var sent_messages: Array = event.sent if event.sent is Array else [event.sent]
+	for i in sent_messages.size():
+		await _say(sent_messages[i])
+		# Les Pokémon de ce dresseur (un seul dresseur : tous) ; l'effet du dernier envoi part avec la
+		# fin de la rangée de Balls.
+		var owner := battle.enemy().trainer if i == 0 else battle.enemy().partner
+		var mine: Array[int] = []
+		for sent: Dictionary in event.enemy:
+			var mon: BattleMon = sent.mon
+			if sent_messages.size() == 1 or battle.enemy().trainer_of_slot(mon.slot) == owner:
+				mine.append(_prepare_pokemon(sent))
+		for j in mine.size():
+			places.append(mine[j])
+			effects.play(BattleEffects.ENEMY_SEND_OUT, mine[j])
+			if i < sent_messages.size() - 1 or j < mine.size() - 1:
+				await _until_effects_done()
 	_remove_tray(enemy_tray)
 	messages.close()
 	await _until_effects_done()
 	var player_tray := _show_tray(BattleSide.PLAYER, parties[BattleSide.PLAYER])
-	_slide_gauge(BattleSide.ENEMY, true)
+	for place in places:
+		_slide_gauge(place, true)
 	effects.play(BattleEffects.PLAYER_ENTRY)
 	while effects.is_running() or player_tray.busy:
 		await get_tree().process_frame
 	await _send_player(event, player_tray)
 
 
-## Le joueur envoie son Pokémon : l'effet 564 et « X ! Go ! » commencent ensemble ; quand le message
-## est passé, la rangée de Balls disparaît et la boîte se ferme ; la jauge entre à la fin de l'effet.
+## Le joueur envoie ses Pokémon : l'effet 564 et « X ! Go ! » commencent ensemble ; quand le message
+## est passé, la rangée de Balls disparaît et la boîte se ferme ; les jauges entrent à la fin de
+## l'effet.
 func _send_player(event: Dictionary, tray: BattleTray = null) -> void:
-	var slot := _prepare_pokemon(event.player)
-	effects.play(BattleEffects.PLAYER_SEND_OUT, slot)
+	var places: Array[int] = []
+	for sent: Dictionary in event.player:
+		places.append(_prepare_pokemon(sent))
+	if not places.is_empty():
+		effects.play(BattleEffects.PLAYER_SEND_OUT, places[0])
 	await _say(event.go)
 	_remove_tray(tray)
 	messages.close()
 	await _until_effects_done()
-	_slide_gauge(BattleSide.PLAYER, true)
+	for i in range(1, places.size()):
+		await play_effect(BattleEffects.PLAYER_SEND_OUT, places[i])
+	for place in places:
+		_slide_gauge(place, true)
 
 
 ## Message préparé par Battle._text() : écrit, puis 80 images d'attente.
@@ -714,14 +765,13 @@ func effect_trainer_class(client: int) -> int:
 func effect_gauges(show: int, which: int, attacker: int) -> void:
 	if show > 1:
 		return
-	for side in [BattleSide.PLAYER, BattleSide.ENEMY]:
-		var slot := _slot_of(side)
-		if which == 3 and slot != attacker:
+	for place: int in gauges:
+		if which == 3 and place != attacker:
 			continue
-		if which == 4 and slot == attacker:
+		if which == 4 and place == attacker:
 			continue
-		var gauge := gauges[side]
-		if gauge and slots.has(slot):
+		var gauge: BattleGauge = gauges[place]
+		if gauge and slots.has(place):
 			gauge.visible = show == 1
 
 
@@ -813,7 +863,9 @@ func _move_animation(event: Dictionary) -> void:
 	messages.close()
 	var data := MoveData.of(event.move)
 	var values := {9: data.target if data else 0, 10: event.get("variant", 0)}
-	if effects.play(event.move, _slot_of(event.side), _slot_of(event.target), values):
+	var attacker := place_of(event.side, event.get("slot", 0))
+	var target := place_of(event.target, event.get("target_slot", 0))
+	if effects.play(event.move, attacker, target, values):
 		await effects.finished
 
 
@@ -826,7 +878,7 @@ func _stat_flash(sprite: BattleSprite, up: bool) -> void:
 
 
 ## Bandeau du talent qui agit (son nom, fichier système 182), près de la jauge du Pokémon.
-func _show_ability(side: int, ability: int) -> void:
+func _show_ability(place: int, ability: int) -> void:
 	var label := GameLabel.new()
 	label.font_id = GameTheme.FontId.DIALOGUE
 	label.text = Autoloads.rom().text(BWFiles.TEXT_ABILITY_NAMES, ability)
@@ -836,8 +888,10 @@ func _show_ability(side: int, ability: int) -> void:
 	panel.add_child(label)
 	add_child(panel)
 	panel.reset_size()
-	var gauge := gauges[side]
-	var at := gauge.position + Vector2(0, BattleGauge.SIZE.y + 2) if side == BattleSide.ENEMY else gauge.position + Vector2(BattleGauge.SIZE.x - panel.size.x, -panel.size.y - 2)
+	var home := _gauge_home(place)
+	var at := home + Vector2(BattleGauge.SIZE.x + 2, 0) if _side_of_place(place) == BattleSide.ENEMY else home + Vector2(-panel.size.x - 2, 0)
+	if battle and not battle.is_multi():
+		at = home + Vector2(0, BattleGauge.SIZE.y + 2) if _side_of_place(place) == BattleSide.ENEMY else home + Vector2(BattleGauge.SIZE.x - panel.size.x, -panel.size.y - 2)
 	panel.position = at
 	await _wait(1.0)
 	panel.queue_free()
@@ -846,7 +900,7 @@ func _show_ability(side: int, ability: int) -> void:
 # --- Expérience et niveaux ------------------------------------------------------------------------
 
 func _gain_exp(event: Dictionary) -> void:
-	var gauge := gauges[BattleSide.PLAYER]
+	var gauge: BattleGauge = gauges.get(place_of(BattleSide.PLAYER, event.get("slot", 0)))
 	if not event.get("on_field", false) or gauge == null or not gauge.visible:
 		return
 	var pokemon: Pokemon = battle.player().party[event.party]
@@ -863,7 +917,7 @@ func _gain_exp(event: Dictionary) -> void:
 
 
 func _level_up(event: Dictionary) -> void:
-	var gauge := gauges[BattleSide.PLAYER]
+	var gauge: BattleGauge = gauges.get(place_of(BattleSide.PLAYER, event.get("slot", 0)))
 	if not event.get("on_field", false) or gauge == null:
 		return
 	gauge.level = event.level
@@ -891,7 +945,7 @@ func _show_level_stats(event: Dictionary) -> void:
 ## La Ball lancée vers le Pokémon d'en face : il y entre, elle tombe, tremble (`shakes` fois), puis
 ## se ferme ou s'ouvre. Un dresseur détourne la Ball (shakes = -1).
 func _throw_ball(event: Dictionary) -> void:
-	var target := sprites[BattleSide.ENEMY]
+	var target: BattleSprite = slots.get(place_of(BattleSide.ENEMY, event.get("slot", 0)))
 	if target == null:
 		return
 	var factor := size / Vector2(_render_size())
@@ -968,7 +1022,7 @@ func _answer(request: Dictionary) -> void:
 		"action":
 			value = await _choose_action(request.mon)
 		"switch":
-			value = await _choose_party(PROMPT_FIGHT if request.get("forced", false) else PROMPT_CHOOSE, not request.get("forced", false))
+			value = await _choose_party(PROMPT_FIGHT if request.get("forced", false) else PROMPT_CHOOSE, not request.get("forced", false), request.get("slot", 0))
 		"forget_move":
 			value = await _choose_move_to_forget(request.pokemon, request.move)
 		"yes_no":
@@ -992,17 +1046,27 @@ func _choose_action(mon: BattleMon) -> Dictionary:
 			BattleCommandPanel.Command.FIGHT:
 				if _no_pp_left(mon):
 					return {"action": Battle.Action.FIGHT, "move": -1}
-				messages.close()
-				var moves := BattleMovePanel.create(mon, battle.moves.move_type_of)
-				var choice: int = await _open(moves)
-				if choice >= 0:
-					return {"action": Battle.Action.FIGHT, "move": moves.slot_of(choice)}
+				while true:
+					messages.close()
+					var moves := BattleMovePanel.create(mon, battle.moves.move_type_of)
+					var choice: int = await _open(moves)
+					if choice < 0:
+						break
+					var slot := moves.slot_of(choice)
+					var data := MoveData.of(mon.pokemon.moves[slot].id) if slot < mon.pokemon.moves.size() else null
+					if not BattleTargetPanel.needs_choice(battle, data):
+						return {"action": Battle.Action.FIGHT, "move": slot}
+					# Combat à plusieurs : la cible (Annuler revient aux capacités).
+					var targets := BattleTargetPanel.create(battle, mon, data)
+					var picked: int = await _open(targets)
+					if picked >= 0:
+						return {"action": Battle.Action.FIGHT, "move": slot, "target": targets.position_of(picked)}
 			BattleCommandPanel.Command.BAG:
 				var use := await _choose_item(mon)
 				if not use.is_empty():
 					return {"action": Battle.Action.BAG, "item": use.item, "target": use.target}
 			BattleCommandPanel.Command.POKEMON:
-				var party_index: int = await _choose_party(PROMPT_CHOOSE, true)
+				var party_index: int = await _choose_party(PROMPT_CHOOSE, true, mon.slot)
 				if party_index >= 0:
 					return {"action": Battle.Action.SWITCH, "party": party_index}
 			BattleCommandPanel.Command.RUN:
@@ -1017,10 +1081,11 @@ func _no_pp_left(mon: BattleMon) -> bool:
 	return true
 
 
-## Un Pokémon de l'équipe (n°), ou -1 si le joueur annule (quand il le peut).
-func _choose_party(prompt: int, cancellable: bool) -> int:
+## Un Pokémon de l'équipe (n°), ou -1 si le joueur annule (quand il le peut) ; `slot` : la place
+## du Pokémon qui serait remplacé.
+func _choose_party(prompt: int, cancellable: bool, slot := 0) -> int:
 	await _show_message(BWFiles.TEXT_BATTLE_PARTY, prompt, {}, false, true)
-	var active := battle.player().mon(0)
+	var active := battle.player().mon(slot)
 	var panel := BattlePartyPanel.create(battle.player().party, active.party_index if active and not active.is_fainted() else -1)
 	panel.cancellable = cancellable
 	var index: int = await _open(panel)
@@ -1052,7 +1117,7 @@ func _choose_item(mon: BattleMon) -> Dictionary:
 		var data := ItemData.of(item)
 		var target := mon.party_index
 		if data and data.battle_pocket & 0xC != 0:
-			target = await _choose_party(PROMPT_ITEM_TARGET, true)
+			target = await _choose_party(PROMPT_ITEM_TARGET, true, mon.slot)
 			if target < 0:
 				continue
 		return {"item": item, "target": target}
@@ -1126,7 +1191,7 @@ func _open(panel: Control) -> int:
 ## Place d'un panneau : commandes en bas à droite, capacités et poches en bas, équipe au-dessus des
 ## messages, menus à droite au-dessus des messages.
 func _place_menu(panel: Control) -> void:
-	if panel is BattleCommandPanel or panel is BattleMovePanel:
+	if panel is BattleCommandPanel or panel is BattleMovePanel or panel is BattleTargetPanel:
 		panel.position = size - panel.size - Vector2(MARGIN, MARGIN)
 	elif panel is BattlePartyPanel:
 		panel.position = Vector2((size.x - panel.size.x) / 2.0, size.y - MESSAGE_HEIGHT - MARGIN * 2 - panel.size.y)

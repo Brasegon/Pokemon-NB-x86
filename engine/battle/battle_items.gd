@@ -176,10 +176,12 @@ func _is_berry(mon: BattleMon) -> bool:
 	return data != null and data.pocket_id == ItemData.Pocket.BERRIES
 
 
-## Tension : l'adversaire ne peut pas manger de baies.
+## Tension : aucun adversaire au combat ne doit l'avoir pour pouvoir manger une baie.
 func _can_eat(mon: BattleMon) -> bool:
-	var foe := battle.foe_of(mon)
-	return not (foe and battle.abilities.has_ability(foe, BattleAbilities.UNNERVE))
+	for foe in battle.foes_of(mon, false):
+		if battle.abilities.has_ability(foe, BattleAbilities.UNNERVE):
+			return false
+	return true
 
 
 # --- Vitesse, priorité, précision -----------------------------------------------------------
@@ -450,7 +452,7 @@ func on_status(mon: BattleMon) -> void:
 		mon.pokemon.status = Pokemon.Status.NONE
 		mon.pokemon.sleep_turns = 0
 		mon.badly_poisoned = false
-		battle.push({"type": "status", "side": mon.side, "status": 0})
+		battle.push({"type": "status", "side": mon.side, "slot": mon.slot, "status": 0})
 		battle.say_mon(1010, mon, {1: _name(item)})
 
 
@@ -515,12 +517,12 @@ func on_turn_end(mon: BattleMon) -> void:
 			if mon.status() == Pokemon.Status.NONE and not mon.has_type(Stats.Type.POISON) and not mon.has_type(Stats.Type.STEEL):
 				mon.pokemon.status = Pokemon.Status.POISON
 				mon.badly_poisoned = true
-				battle.push({"type": "status", "side": mon.side, "status": Pokemon.Status.POISON})
+				battle.push({"type": "status", "side": mon.side, "slot": mon.slot, "status": Pokemon.Status.POISON})
 				battle.say_mon(240, mon, {1: _name(item)})
 		FLAME_ORB:
 			if mon.status() == Pokemon.Status.NONE and not mon.has_type(Stats.Type.FIRE):
 				mon.pokemon.status = Pokemon.Status.BURN
-				battle.push({"type": "status", "side": mon.side, "status": Pokemon.Status.BURN})
+				battle.push({"type": "status", "side": mon.side, "slot": mon.slot, "status": Pokemon.Status.BURN})
 				battle.say_mon(258, mon, {1: _name(item)})
 		STICKY_BARB:
 			battle.say_mon(1038, mon, {1: _name(item)})
@@ -543,8 +545,12 @@ func bag_problem(action: Dictionary) -> Dictionary:
 	if data and data.is_ball():
 		if not battle.is_wild():
 			return {}
-		if battle.state.party.size() >= GameState.PARTY_SIZE and false:
-			return {"line": 45, "file": BWFiles.TEXT_BATTLE_BAG}
+		# Combat sauvage double : pas de Ball tant que les deux Pokémon sont là (fichier 17).
+		var wild := battle.enemy().on_field()
+		if wild.size() > 1:
+			return {"line": BattleText.BALL_TWO_TARGETS, "file": BWFiles.TEXT_BATTLE_BAG}
+		if wild.is_empty():
+			return {"line": BattleText.BALL_NO_TARGET, "file": BWFiles.TEXT_BATTLE_BAG}
 		return {}
 	if item in [POKE_DOLL, FLUFFY_TAIL]:
 		return {} if battle.is_wild() else {"line": BattleText.NO_RUNNING_TRAINER}
@@ -569,8 +575,8 @@ func _would_help(data: ItemData, pokemon: Pokemon, index: int) -> bool:
 		var status_bits := {Pokemon.Status.SLEEP: 0, Pokemon.Status.POISON: 1, Pokemon.Status.BURN: 2, Pokemon.Status.FREEZE: 3, Pokemon.Status.PARALYSIS: 4}
 		if data.cures & (1 << status_bits.get(pokemon.status, 7)):
 			return true
-	var active := battle.player().mon(0)
-	var on_field := active != null and active.party_index == index
+	var active := battle.mon_at(BattleSide.PLAYER, battle.player_slot_of(index))
+	var on_field := active != null and not active.is_fainted()
 	if data.cures & (1 << ItemData.Cure.CONFUSION) and on_field and active.has("confusion"):
 		return true
 	if data.pp_restore or data.pp_restore_all:
@@ -597,7 +603,8 @@ func use_from_bag(mon: BattleMon, action: Dictionary) -> void:
 		battle.say(BattleText.PLAYER_USED_ITEM, {0: battle.state.player_name, 1: _name(item)})
 	else:
 		side.items.erase(item)
-		battle.say(BattleText.TRAINER_USED_ITEM, {0: side.trainer.class_name_text(), 1: side.trainer.name(), 2: _name(item)})
+		var owner := side.trainer_of_slot(mon.slot)
+		battle.say(BattleText.TRAINER_USED_ITEM, {0: owner.class_name_text(), 1: owner.name(), 2: _name(item)})
 	if data and data.is_ball():
 		await throw_ball(mon, item)
 		return
@@ -607,8 +614,10 @@ func use_from_bag(mon: BattleMon, action: Dictionary) -> void:
 		return
 	var index: int = action.get("target", mon.party_index)
 	var pokemon: Pokemon = side.party[index]
-	var active := side.mon(0)
-	var target := active if active and active.party_index == index else null
+	var target: BattleMon = null
+	for each in side.active:
+		if each and each.party_index == index and not each.is_fainted():
+			target = each
 	apply_item(data, pokemon, target)
 
 
@@ -643,7 +652,7 @@ func apply_item(data: ItemData, pokemon: Pokemon, target: BattleMon) -> void:
 			pokemon.sleep_turns = 0
 			if target:
 				target.badly_poisoned = false
-				battle.push({"type": "status", "side": target.side, "status": 0})
+				battle.push({"type": "status", "side": target.side, "slot": target.slot, "status": 0})
 			battle.say(line, {0: name}, 157)
 		if target and data.cures_status(ItemData.Cure.CONFUSION) and target.has("confusion"):
 			target.clear_effect("confusion")
@@ -667,9 +676,10 @@ func apply_item(data: ItemData, pokemon: Pokemon, target: BattleMon) -> void:
 
 ## Lancer d'une Ball (formule 0x021CBAD4) : secousses, puis capture ou non.
 func throw_ball(mon: BattleMon, ball: int) -> void:
-	var target := battle.foe_of(mon)
+	var wild := battle.enemy().on_field()
+	var target: BattleMon = wild[0] if not wild.is_empty() else battle.foe_of(mon)
 	if not battle.is_wild():
-		battle.push({"type": "ball", "ball": ball, "shakes": -1, "caught": false})
+		battle.push({"type": "ball", "ball": ball, "slot": target.slot if target else 0, "shakes": -1, "caught": false})
 		battle.say(BattleText.TRAINER_BLOCKED_BALL)
 		return
 	if target == null or target.is_fainted():
@@ -685,7 +695,7 @@ func throw_ball(mon: BattleMon, ball: int) -> void:
 	if battle.demo:
 		# La Ball de la démonstration réussit toujours.
 		result = {"caught": true, "shakes": 3, "critical": false}
-	battle.push({"type": "ball", "ball": ball, "shakes": result.shakes, "caught": result.caught, "critical": result.critical})
+	battle.push({"type": "ball", "ball": ball, "slot": target.slot, "shakes": result.shakes, "caught": result.caught, "critical": result.critical})
 	if not result.caught:
 		battle.say([BattleText.BROKE_FREE, BattleText.ALMOST_1, BattleText.ALMOST_2, BattleText.ALMOST_3][clampi(result.shakes, 0, 3)])
 		return

@@ -40,25 +40,39 @@ func choose_action(mon: BattleMon) -> Dictionary:
 			usable.append(slot)
 	if usable.is_empty():
 		return {"action": Battle.Action.FIGHT, "mon": mon, "move": -1, "move_id": BattleMoves.STRUGGLE}
-	if side.trainer == null or side.trainer.ai_flags == 0:
-		return {"action": Battle.Action.FIGHT, "mon": mon, "move": usable[battle.random.range_of(usable.size())]}
-	var flags := side.trainer.ai_flags
-	var best: Array[int] = []
+	var owner := side.trainer_of_slot(mon.slot)
+	if owner == null or owner.ai_flags == 0:
+		var slot := usable[battle.random.range_of(usable.size())]
+		var foes := battle.foes_of(mon)
+		var target: BattleMon = foes[battle.random.range_of(foes.size())] if foes.size() > 1 else (foes[0] if not foes.is_empty() else null)
+		return {"action": Battle.Action.FIGHT, "mon": mon, "move": slot, "target": target.position() if target else -1}
+	var flags := owner.ai_flags
+	# Chaque capacité est notée contre chaque adversaire à portée ; la meilleure paire l'emporte.
+	var best: Array[Dictionary] = []
 	var best_score := -1000
 	for slot in usable:
-		var score := score_move(mon, mon.pokemon.moves[slot].id, flags)
-		if score > best_score:
-			best_score = score
-			best = [slot]
-		elif score == best_score:
-			best.append(slot)
-	return {"action": Battle.Action.FIGHT, "mon": mon, "move": best[battle.random.range_of(best.size())]}
+		var foes := battle.foes_of(mon)
+		if foes.is_empty() and battle.foe_of(mon):
+			foes.append(battle.foe_of(mon))
+		for foe in foes:
+			var score := score_move(mon, mon.pokemon.moves[slot].id, flags, foe)
+			if score > best_score:
+				best_score = score
+				best = [{"move": slot, "target": foe}]
+			elif score == best_score:
+				best.append({"move": slot, "target": foe})
+	if best.is_empty():
+		return {"action": Battle.Action.FIGHT, "mon": mon, "move": usable[0]}
+	var choice: Dictionary = best[battle.random.range_of(best.size())]
+	var chosen: BattleMon = choice.target
+	return {"action": Battle.Action.FIGHT, "mon": mon, "move": choice.move, "target": chosen.position() if chosen else -1}
 
 
-## Note d'une capacité pour l'IA d'un dresseur.
-func score_move(mon: BattleMon, move: int, flags: int) -> int:
+## Note d'une capacité pour l'IA d'un dresseur, contre un adversaire donné (celui d'en face par défaut).
+func score_move(mon: BattleMon, move: int, flags: int, foe: BattleMon = null) -> int:
 	var data := MoveData.of(move)
-	var foe := battle.foe_of(mon)
+	if foe == null:
+		foe = battle.foe_of(mon)
 	if data == null or foe == null:
 		return NEUTRAL
 	var score := NEUTRAL
@@ -147,7 +161,7 @@ func _choose_item(mon: BattleMon, side: BattleSide) -> int:
 	return 0
 
 
-## Pokémon envoyé après un K.O. : le suivant de l'équipe.
-func choose_replacement(side: BattleSide) -> int:
-	var reserves := side.reserves()
+## Pokémon envoyé après un K.O. : le suivant de l'équipe que la place peut envoyer.
+func choose_replacement(side: BattleSide, slot := -1) -> int:
+	var reserves := side.reserves(slot)
 	return reserves[0] if not reserves.is_empty() else -1

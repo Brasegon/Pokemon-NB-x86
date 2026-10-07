@@ -31,6 +31,11 @@ const CHARGE_MESSAGES := {76: BattleText.ABSORBED_LIGHT, 19: BattleText.FLEW_UP,
 	291: 535, 340: 545, 13: 547, 143: 552, 130: 557, 553: 866, 554: 863, 467: 542}
 ## État pendant le premier tour (pour les attaques qui le touchent quand même).
 const CHARGE_STATES := {19: "flying", 340: "flying", 91: "underground", 291: "underwater", 467: "vanished"}
+## Capacités qui comptent tous les adversaires pour Pression (liste 0x0689E2C4 de l'overlay 95).
+const PRESSURE_MOVES: Array[int] = [289, 286, 191, 390, 446]
+## Facteur des dégâts d'une capacité qui visait plusieurs Pokémon (0x021C0D30), appliqué juste
+## après les dégâts de base.
+const SPREAD_RATIO := 0xC00
 
 ## Le combat, gardé par une référence faible : il possède ce module (pas de cycle de références).
 var battle: Battle:
@@ -55,8 +60,10 @@ func forced_action(mon: BattleMon) -> Dictionary:
 		return {"action": Battle.Action.FIGHT, "mon": mon, "move": -1, "move_id": 0, "recharge": true}
 	for state in ["charging", "rampage", "rollout", "uproar", "bide"]:
 		if mon.has(state):
-			var move: int = mon.get_effect(state).move
-			return {"action": Battle.Action.FIGHT, "mon": mon, "move": mon.move_index(move), "move_id": move, "forced": state}
+			var effect: Dictionary = mon.get_effect(state)
+			var move: int = effect.move
+			return {"action": Battle.Action.FIGHT, "mon": mon, "move": mon.move_index(move), "move_id": move, "forced": state,
+				"target": effect.get("target", -1)}
 	if mon.has("encore"):
 		var move: int = mon.get_effect("encore").move
 		var slot := mon.move_index(move)
@@ -100,8 +107,10 @@ func is_trapped(mon: BattleMon) -> bool:
 		return false
 	if mon.has("trapped") or mon.has("bind") or mon.has("ingrain"):
 		return true
-	var foe := battle.foe_of(mon)
-	return foe != null and battle.abilities.traps(foe, mon)
+	for foe in battle.foes_of(mon, false):
+		if battle.abilities.traps(foe, mon):
+			return true
+	return false
 
 
 ## Priorité d'une capacité choisie (+ Farceur...).
@@ -140,56 +149,168 @@ func use_move(mon: BattleMon, action: Dictionary) -> void:
 	# « X utilise Y ! » (fichier 13 : trois messages par capacité).
 	battle.say(move * 3 + BattleText.variant(mon, battle.is_wild()), {0: mon.name()}, BWFiles.TEXT_BATTLE_MOVES)
 	var forced: String = action.get("forced", "")
+	var targets := resolve_targets(mon, data, action.get("target", -1))
 	if forced.is_empty() and move != STRUGGLE:
 		if slot < 0 or mon.pp(slot) <= 0:
 			battle.say(BattleText.NO_PP)
 			return
-		var cost := 2 if battle.abilities.has_pressure(battle.foe_of(mon)) else 1
-		mon.pokemon.moves[slot].pp = maxi(mon.pp(slot) - cost, 0)
+		mon.pokemon.moves[slot].pp = maxi(mon.pp(slot) - pp_cost(mon, data, targets), 0)
 	mon.last_move = move
 	if battle.items.locks_choice(mon) and not mon.has("choice_lock"):
 		mon.set_effect("choice_lock", move)
-	if not await _charge_turn(mon, data, forced):
+	if not await _charge_turn(mon, data, forced, action.get("target", -1)):
 		return
-	var target := _target(mon, data)
+	var target: BattleMon = targets[0] if not targets.is_empty() else null
 	# L'animation n'est jouée que si la capacité part vraiment (pas d'échec, pas d'esquive).
 	if not _before_move(mon, target, data):
 		_after_failed(mon, data)
 		return
-	if data.target in [MoveData.Target.USER, MoveData.Target.ALLY_OR_USER, MoveData.Target.ALLY,
-			MoveData.Target.ALL_ALLIES, MoveData.Target.USER_SIDE, MoveData.Target.FIELD, MoveData.Target.ALL]:
+	if data.target in [MoveData.Target.USER, MoveData.Target.ALL_ALLIES, MoveData.Target.USER_SIDE,
+			MoveData.Target.FIELD, MoveData.Target.ALL]:
 		push_anim(mon, mon, move)
 		await _status_move(mon, mon, data)
 		return
 	if target == null or target.is_fainted():
 		battle.say(BattleText.BUT_IT_FAILED)
 		return
-	if not _passes_protection(mon, target, data):
-		return
-	if not _can_reach(mon, target, data):
-		battle.say_mon(BattleText.AVOIDED, target)
-		_after_failed(mon, data)
+	if data.target in [MoveData.Target.ALLY, MoveData.Target.ALLY_OR_USER]:
+		push_anim(mon, target, move)
+		await _status_move(mon, target, data)
 		return
 	if data.is_damaging():
-		await _damaging_move(mon, target, data)
+		if targets.size() == 1:
+			if not _passes_protection(mon, target, data):
+				return
+			if not _can_reach(mon, target, data):
+				battle.say_mon(BattleText.AVOIDED, target)
+				_after_failed(mon, data)
+				return
+			await _damaging_move(mon, target, data)
+		else:
+			await _spread_damaging_move(mon, targets, data)
 		if mon.has("pivot"):
 			mon.clear_effect("pivot")
 			await _pivot_switch(mon)
-	else:
-		if not _type_allows_status(mon, target, data) or battle.abilities.blocks_move(target, mon, data):
-			return
-		if not hits(mon, target, data):
-			battle.say_mon(BattleText.AVOIDED, target)
-			_after_failed(mon, data)
-			return
-		push_anim(mon, target, move)
-		await _status_move(mon, target, data)
+		return
+	# Capacité de statut sur une ou plusieurs cibles (Rugissement, Doux Parfum...) : l'animation
+	# une fois, puis l'effet sur chaque cible qui n'y échappe pas.
+	var reached: Array[BattleMon] = []
+	for each in targets:
+		if not _passes_protection(mon, each, data):
+			continue
+		if not _can_reach(mon, each, data):
+			battle.say_mon(BattleText.AVOIDED, each)
+			continue
+		if not _type_allows_status(mon, each, data) or battle.abilities.blocks_move(each, mon, data):
+			continue
+		if not hits(mon, each, data):
+			battle.say_mon(BattleText.AVOIDED, each)
+			continue
+		reached.append(each)
+	if reached.is_empty():
+		_after_failed(mon, data)
+		return
+	push_anim(mon, reached[0], move)
+	for each in reached:
+		await _status_move(mon, each, data)
 
 
 ## Animation d'une capacité (effet n° de la capacité) ; `variant` : variante du script (tour des
 ## capacités en deux tours...), variable 10 des effets.
 func push_anim(mon: BattleMon, target: BattleMon, move: int, variant := 0) -> void:
-	battle.push({"type": "move", "side": mon.side, "target": target.side if target else mon.side, "move": move, "variant": variant})
+	battle.push({"type": "move", "side": mon.side, "slot": mon.slot, "target": target.side if target else mon.side,
+		"target_slot": target.slot if target else mon.slot, "move": move, "variant": variant})
+
+
+## PP enlevés (événement 0x4E de Pression, 0x021DB8DC) : 1, plus 1 par adversaire qui a Pression et
+## qui est visé ; toutes les capacités qui visent le terrain (cible 10) ou tout le monde, et celles
+## de la liste 0x0689E2C4 (Saisie, Possessif, Picots, Pics Toxik, Piège de Roc) comptent chaque
+## adversaire. Une capacité sur soi n'en coûte qu'un.
+func pp_cost(mon: BattleMon, data: MoveData, targets: Array[BattleMon]) -> int:
+	var cost := 1
+	var watched: Array[BattleMon] = targets
+	if data.target in [MoveData.Target.FIELD, MoveData.Target.ALL] or data.id in PRESSURE_MOVES:
+		watched = battle.foes_of(mon, false)
+	for each in watched:
+		if each.side != mon.side and battle.abilities.has_pressure(each):
+			cost += 1
+	return cost
+
+
+# --- Cibles --------------------------------------------------------------------------------------
+
+## Les cibles d'une capacité au moment où elle part, d'après sa cible (+0x14 des données) et la
+## place choisie (`chosen` : place du jeu, camp + 2 x place ; -1 : aucune). Une cible choisie qui
+## n'est plus là est remplacée par un autre adversaire voisin ; les capacités qui touchent tout le
+## monde ne visent que les voisins.
+func resolve_targets(mon: BattleMon, data: MoveData, chosen := -1) -> Array[BattleMon]:
+	var list: Array[BattleMon] = []
+	var picked := _mon_at_position(chosen)
+	match data.target:
+		MoveData.Target.USER, MoveData.Target.USER_SIDE, MoveData.Target.ALL_ALLIES, MoveData.Target.FIELD, MoveData.Target.ALL:
+			list.append(mon)
+		MoveData.Target.ALLY:
+			var allies := battle.allies_of(mon)
+			if picked and picked in allies:
+				list.append(picked)
+			elif not allies.is_empty():
+				list.append(allies[0])
+		MoveData.Target.ALLY_OR_USER:
+			list.append(picked if picked and (picked == mon or picked in battle.allies_of(mon)) else mon)
+		MoveData.Target.ALL_OTHERS:
+			list.append_array(battle.foes_of(mon))
+			list.append_array(battle.allies_of(mon))
+		MoveData.Target.ALL_ENEMIES, MoveData.Target.ENEMY_SIDE:
+			list.append_array(battle.foes_of(mon))
+		MoveData.Target.RANDOM_ENEMY:
+			var foes := battle.foes_of(mon)
+			if not foes.is_empty():
+				list.append(foes[_random().range_of(foes.size())] if foes.size() > 1 else foes[0])
+		MoveData.Target.SPECIAL:
+			# Riposte, Voile Miroir, Fulmifer : le dernier attaquant ; Malédiction (Spectre) : un adversaire.
+			var attacker := mon.last_attacker
+			if data.id in [68, 243, 368] and attacker and battle.is_on_field(attacker):
+				list.append(attacker)
+			else:
+				var foe := _default_foe(mon, picked, data)
+				if foe:
+					list.append(foe)
+		_:
+			var foe := _default_foe(mon, picked, data)
+			if foe:
+				list.append(foe)
+	if list.size() == 1 and list[0] != mon and list[0].side != mon.side:
+		list[0] = battle.abilities.redirect(mon, list[0], data, move_type_of(mon, data))
+	if not battle.is_multi() and list.is_empty() and data.target != MoveData.Target.ALLY:
+		# Combat simple : l'adversaire, même s'il n'est plus là (le message d'échec vient ensuite).
+		var foe := battle.sides[1 - mon.side].mon(0)
+		if foe:
+			list.append(foe)
+	return list
+
+
+## Le Pokémon à une place du jeu (camp + 2 x place), ou null.
+func _mon_at_position(position: int) -> BattleMon:
+	if position < 0:
+		return null
+	return battle.mon_at(position % 2, position / 2)
+
+
+## Cible d'une capacité qui vise un seul Pokémon : celui choisi s'il est encore là et à portée
+## (voisin, ou n'importe où pour les capacités à distance), sinon l'adversaire en face, sinon le
+## premier adversaire à portée (combat triple : un bord ne touche pas l'autre bord).
+func _default_foe(mon: BattleMon, picked: BattleMon, data: MoveData) -> BattleMon:
+	var distant := data.has_flag(MoveData.Flag.DISTANT)
+	if picked and picked != mon and battle.is_on_field(picked) and (distant or battle.adjacent(mon, picked)):
+		return picked
+	if picked and picked.side == mon.side and picked != mon:
+		# L'allié visé n'est plus là : la capacité ne part pas vers l'adversaire.
+		return null
+	var foe := battle.foe_of(mon)
+	if foe and battle.is_on_field(foe):
+		return foe
+	var foes := battle.foes_of(mon, not distant)
+	return foes[0] if not foes.is_empty() else null
 
 
 func _move_name(move: int) -> String:
@@ -217,7 +338,7 @@ func _can_act(mon: BattleMon, move: int) -> bool:
 				mon.pokemon.sleep_turns = 0
 				mon.pokemon.status = Pokemon.Status.NONE
 				battle.say_mon(BattleText.WOKE_UP, mon)
-				battle.push({"type": "status", "side": mon.side, "status": 0})
+				battle.push({"type": "status", "side": mon.side, "slot": mon.slot, "status": 0})
 			elif move not in [214, 173]:
 				battle.say_mon(BattleText.FAST_ASLEEP, mon)
 				return false
@@ -258,7 +379,7 @@ func _can_act(mon: BattleMon, move: int) -> bool:
 				return false
 	if mon.has("attract"):
 		var lover: BattleMon = mon.get_effect("attract")
-		if lover == null or lover.is_fainted() or battle.foe_of(mon) != lover:
+		if lover == null or not battle.is_on_field(lover):
 			mon.clear_effect("attract")
 		else:
 			battle.say_mon(333, mon, {1: lover.name()})
@@ -280,7 +401,8 @@ func confusion_damage(mon: BattleMon) -> int:
 
 
 ## Premier tour d'une capacité en deux tours (Lance-Soleil, Vol...) ; vrai si elle agit ce tour.
-func _charge_turn(mon: BattleMon, data: MoveData, forced: String) -> bool:
+## La place visée est gardée pour le second tour.
+func _charge_turn(mon: BattleMon, data: MoveData, forced: String, chosen := -1) -> bool:
 	if not data.has_flag(MoveData.Flag.CHARGE):
 		return true
 	if forced == "charging":
@@ -294,21 +416,10 @@ func _charge_turn(mon: BattleMon, data: MoveData, forced: String) -> bool:
 	battle.say_mon(CHARGE_MESSAGES.get(data.id, BattleText.ABSORBED_LIGHT), mon)
 	if battle.items.skips_charge(mon):
 		return true
-	mon.set_effect("charging", {"move": data.id})
+	mon.set_effect("charging", {"move": data.id, "target": chosen})
 	if CHARGE_STATES.has(data.id):
 		mon.set_effect(CHARGE_STATES[data.id])
 	return false
-
-
-## Cible d'une capacité en combat simple.
-func _target(mon: BattleMon, data: MoveData) -> BattleMon:
-	match data.target:
-		MoveData.Target.USER, MoveData.Target.ALLY_OR_USER, MoveData.Target.ALLY, MoveData.Target.ALL_ALLIES, MoveData.Target.USER_SIDE:
-			return mon
-	if data.id in [68, 243, 368]:
-		var attacker := mon.last_attacker
-		return attacker if attacker else battle.foe_of(mon)
-	return battle.foe_of(mon)
 
 
 ## Abri, Détection... : la capacité ne passe pas si la cible se protège.
@@ -421,25 +532,114 @@ func _damaging_move(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 	if hit_count > 1:
 		battle.say(BattleText.HIT_TIMES, {0: str(hits_done)})
 	if not _fixed_damage_ignores_types(data):
-		if effectiveness > Stats.Effectiveness.NORMAL:
-			battle.say(BattleText.SUPER_EFFECTIVE)
-		elif effectiveness < Stats.Effectiveness.NORMAL:
-			battle.say(BattleText.NOT_VERY_EFFECTIVE)
+		_effectiveness_messages([target], {target: effectiveness}, false)
 	_after_damage(mon, target, data, total, move_type)
 
 
-## Inflige des dégâts à la cible (clone, Ténacité, Ceinture Force) et renvoie les PV enlevés.
-func _deal_damage(mon: BattleMon, target: BattleMon, data: MoveData, amount: int, critical: bool, effectiveness := Stats.Effectiveness.NORMAL) -> int:
+## Capacité qui touche plusieurs Pokémon à la fois (Séisme, Éboulement...), comme le jeu
+## (0x021C0D30) : chaque cible peut se protéger, être immunisée ou esquiver ; l'animation est jouée
+## une fois ; les adversaires prennent leurs dégâts (x 0,75 : la capacité visait plusieurs Pokémon)
+## et leurs messages, puis les alliés ; enfin les effets sur chaque cible.
+func _spread_damaging_move(mon: BattleMon, targets: Array[BattleMon], data: MoveData) -> void:
+	var move_type := move_type_of(mon, data)
+	var hit: Array[BattleMon] = []
+	var effects := {}
+	for target in _foes_then_allies(mon, targets):
+		if target.is_fainted() or not _passes_protection(mon, target, data):
+			continue
+		if not _can_reach(mon, target, data):
+			battle.say_mon(BattleText.AVOIDED, target)
+			continue
+		var effectiveness := effectiveness_against(mon, target, data, move_type)
+		if effectiveness == Stats.Effectiveness.IMMUNE and not _fixed_damage_ignores_types(data):
+			battle.say_mon(BattleText.NO_EFFECT_ON, target)
+			continue
+		if battle.abilities.blocks_move(target, mon, data, move_type):
+			continue
+		if not hits(mon, target, data):
+			battle.say_mon(BattleText.AVOIDED, target)
+			continue
+		hit.append(target)
+		effects[target] = effectiveness
+	if hit.is_empty():
+		_after_failed(mon, data)
+		return
+	push_anim(mon, hit[0], data.id)
+	# Plus d'une cible touchée : les messages nomment les cibles (bit 0 passé à 0x021C1190).
+	var named := hit.size() > 1
+	var dealt := {}
+	var total := 0
+	for group_side in [1 - mon.side, mon.side]:
+		var group: Array[BattleMon] = []
+		for target in hit:
+			if target.side == group_side:
+				group.append(target)
+		for target in group:
+			var critical := _critical(mon, target, data)
+			var amount := calc_damage(mon, target, data, critical, move_type, effects[target], false, SPREAD_RATIO)
+			dealt[target] = _deal_damage(mon, target, data, amount, critical, effects[target], named)
+			total += dealt[target]
+		if not _fixed_damage_ignores_types(data):
+			_effectiveness_messages(group, effects, named)
+	for target in hit:
+		_after_damage(mon, target, data, dealt[target], move_type, false)
+	battle.items.after_attack(mon, hit[0], data, total)
+
+
+## Les cibles d'en face d'abord, puis celles du camp du lanceur (les deux listes de 0x0689CDCC).
+func _foes_then_allies(mon: BattleMon, targets: Array[BattleMon]) -> Array[BattleMon]:
+	var ordered: Array[BattleMon] = []
+	for target in targets:
+		if target.side != mon.side:
+			ordered.append(target)
+	for target in targets:
+		if target.side == mon.side:
+			ordered.append(target)
+	return ordered
+
+
+## Messages d'efficacité d'un groupe de cibles (0x021C57E0). Sans cibles nommées : « C'est super
+## efficace ! » si une cible l'est, sinon « Ce n'est pas très efficace... » (fichier 15). Avec :
+## un message pour les cibles super efficaces, puis un pour les autres, qui nomme une, deux ou trois
+## cibles (fichier 14, variante du premier Pokémon nommé).
+func _effectiveness_messages(group: Array[BattleMon], effects: Dictionary, named: bool) -> void:
+	var strong: Array[BattleMon] = []
+	var weak: Array[BattleMon] = []
+	for target in group:
+		var effectiveness: int = effects[target]
+		if effectiveness > Stats.Effectiveness.NORMAL:
+			strong.append(target)
+		elif effectiveness < Stats.Effectiveness.NORMAL:
+			weak.append(target)
+	if not named:
+		if not strong.is_empty():
+			battle.say(BattleText.SUPER_EFFECTIVE)
+		elif not weak.is_empty():
+			battle.say(BattleText.NOT_VERY_EFFECTIVE)
+		return
+	for entry: Array in [[strong, BattleText.SUPER_EFFECTIVE_ON], [weak, BattleText.NOT_VERY_EFFECTIVE_ON]]:
+		var list: Array[BattleMon] = entry[0]
+		if list.is_empty():
+			continue
+		var words := {}
+		for i in list.size():
+			words[i] = list[i].name()
+		battle.say(int(entry[1]) + 3 * (list.size() - 1) + BattleText.variant(list[0], battle.is_wild()), words, BWFiles.TEXT_BATTLE_SET)
+
+
+## Inflige des dégâts à la cible (clone, Ténacité, Ceinture Force) et renvoie les PV enlevés ;
+## `named` : le coup critique nomme la cible (capacité qui en touche plusieurs).
+func _deal_damage(mon: BattleMon, target: BattleMon, data: MoveData, amount: int, critical: bool, effectiveness := Stats.Effectiveness.NORMAL, named := false) -> int:
 	if target.has("substitute") and not data.has_flag(MoveData.Flag.SOUND) and data.id != 228:
 		var substitute: int = target.get_effect("substitute")
 		var taken := mini(amount, substitute)
 		battle.say_mon(BattleText.SUBSTITUTE_TOOK_HIT, target)
 		if critical:
-			battle.say(BattleText.CRITICAL_HIT)
+			_say_critical(target, named)
 		if taken >= substitute:
 			target.clear_effect("substitute")
 			battle.say_mon(BattleText.SUBSTITUTE_FADED, target)
-			battle.push({"type": "substitute", "side": target.side, "on": false})
+			battle.push({"type": "substitute", "side": target.side, "slot": target.slot, "on": false})
 		else:
 			target.set_effect("substitute", substitute - taken)
 		target.set_effect("substitute_hit")
@@ -452,10 +652,10 @@ func _deal_damage(mon: BattleMon, target: BattleMon, data: MoveData, amount: int
 		elif battle.abilities.survives(target, amount) or battle.items.survives(target, amount):
 			amount = target.hp() - 1
 	# Le bruit du coup dépend de l'efficacité (SEQ_SE_KOUKA_H, _M, _L).
-	battle.push({"type": "hit", "side": target.side, "effectiveness": effectiveness})
+	battle.push({"type": "hit", "side": target.side, "slot": target.slot, "effectiveness": effectiveness})
 	var lost := battle.damage(target, amount, "move")
 	if critical:
-		battle.say(BattleText.CRITICAL_HIT)
+		_say_critical(target, named)
 		battle.abilities.on_critical(target)
 	target.hit_this_turn = true
 	target.last_damage = lost
@@ -471,8 +671,17 @@ func _deal_damage(mon: BattleMon, target: BattleMon, data: MoveData, amount: int
 	return lost
 
 
-## Après les dégâts : effets secondaires, drain, contrecoup, contact, rage...
-func _after_damage(mon: BattleMon, target: BattleMon, data: MoveData, total: int, move_type: int) -> void:
+## « Coup critique ! », ou « Coup critique infligé à X ! » quand la capacité touche plusieurs cibles.
+func _say_critical(target: BattleMon, named: bool) -> void:
+	if named:
+		battle.say_mon(BattleText.CRITICAL_ON, target)
+	else:
+		battle.say(BattleText.CRITICAL_HIT)
+
+
+## Après les dégâts : effets secondaires, drain, contrecoup, contact, rage... `last` : faux pour les
+## cibles d'une capacité qui en touche plusieurs (l'objet du lanceur agit une fois, à la fin).
+func _after_damage(mon: BattleMon, target: BattleMon, data: MoveData, total: int, move_type: int, last := true) -> void:
 	var substitute_hit := target.has("substitute_hit")
 	target.clear_effect("substitute_hit")
 	if total > 0 and not target.is_fainted() and data.has_flag(MoveData.Flag.CONTACT):
@@ -502,7 +711,8 @@ func _after_damage(mon: BattleMon, target: BattleMon, data: MoveData, total: int
 	elif data.has_flag(MoveData.Flag.RECHARGE):
 		mon.set_effect("recharge")
 	_special_after(mon, target, data, total)
-	battle.items.after_attack(mon, target, data, total)
+	if last:
+		battle.items.after_attack(mon, target, data, total)
 
 
 func _after_failed(mon: BattleMon, data: MoveData) -> void:
@@ -620,11 +830,11 @@ func _fixed_damage_ignores_types(data: MoveData) -> bool:
 	return data.id in [69, 101, 82, 49, 162, 283, 149, 515]
 
 
-## Dégâts d'une capacité (0x021C1E14) : base, météo, critique (x2), hasard (100 - rand(16)) %,
-## même type (x1,5), efficacité, brûlure (/2 en physique sans Cran), au moins 1, puis les
-## multiplicateurs de fin (Protection, Orbe Vie...).
+## Dégâts d'une capacité (0x021C1E14) : base, x 0,75 si elle visait plusieurs Pokémon, météo,
+## critique (x2), hasard (100 - rand(16)) %, même type (x1,5), efficacité, brûlure (/2 en physique
+## sans Cran), au moins 1, puis les multiplicateurs de fin (Protection, Orbe Vie...).
 func calc_damage(mon: BattleMon, target: BattleMon, data: MoveData, critical: bool, move_type: int,
-		effectiveness: Stats.Effectiveness, fixed_random := false) -> int:
+		effectiveness: Stats.Effectiveness, fixed_random := false, spread := BattleCalc.FX_ONE) -> int:
 	var fixed := _fixed_damage(mon, target, data)
 	if fixed >= 0:
 		return fixed
@@ -635,6 +845,8 @@ func calc_damage(mon: BattleMon, target: BattleMon, data: MoveData, critical: bo
 	var attack := _attack_stat(mon, target, data, critical, physical, move_type)
 	var defense := _defense_stat(mon, target, data, critical, physical)
 	var damage := BattleCalc.base_damage(power, attack, mon.level(), defense)
+	if spread != BattleCalc.FX_ONE:
+		damage = BattleCalc.fx_mul(damage, spread)
 	var weather_ratio := _weather_ratio(move_type)
 	if weather_ratio != BattleCalc.FX_ONE:
 		damage = BattleCalc.fx_mul(damage, weather_ratio)
@@ -650,10 +862,13 @@ func calc_damage(mon: BattleMon, target: BattleMon, data: MoveData, critical: bo
 	damage = maxi(damage, 1)
 	var ratio := BattleCalc.FX_ONE
 	if not critical and not battle.abilities.has_ability(mon, BattleAbilities.INFILTRATOR):
+		# Protection, Mur Lumière (overlay 95, 0x06898E54) : 1/2 en simple et en rotatif, 0xA8F (2/3)
+		# en double et en triple.
+		var screen := 0xA8F if battle.format in [Battle.Format.DOUBLE, Battle.Format.TRIPLE] else 0x800
 		if physical and battle.sides[target.side].has("reflect"):
-			ratio = BattleCalc.fx_mul(ratio, 0x800)
+			ratio = BattleCalc.fx_mul(ratio, screen)
 		elif not physical and battle.sides[target.side].has("light_screen"):
-			ratio = BattleCalc.fx_mul(ratio, 0x800)
+			ratio = BattleCalc.fx_mul(ratio, screen)
 	ratio = battle.abilities.final_ratio(mon, target, data, effectiveness, critical, ratio)
 	ratio = battle.items.final_ratio(mon, target, data, effectiveness, move_type, ratio)
 	if ratio != BattleCalc.FX_ONE:
@@ -942,7 +1157,8 @@ func inflict(target: BattleMon, source: BattleMon, ailment: int, data: MoveData 
 			if target.has_type(Stats.Type.GRASS) or target.has("leech_seed"):
 				battle.say_mon(BattleText.UNAFFECTED, target)
 				return false
-			target.set_effect("leech_seed", source.side)
+			# La place du lanceur : c'est le Pokémon qui s'y trouve qui reçoit les PV.
+			target.set_effect("leech_seed", {"side": source.side, "slot": source.slot})
 			battle.say_mon(607, target)
 			return true
 		MoveData.Ailment.TORMENT:
@@ -1034,7 +1250,7 @@ func set_status(target: BattleMon, source: BattleMon, status: Pokemon.Status, se
 		Pokemon.Status.POISON:
 			target.badly_poisoned = badly
 			target.toxic_counter = 0
-	battle.push({"type": "status", "side": target.side, "status": status})
+	battle.push({"type": "status", "side": target.side, "slot": target.slot, "status": status})
 	battle.say_mon(BattleText.BADLY_POISONED if badly else messages[0], target)
 	if status != Pokemon.Status.SLEEP:
 		battle.abilities.on_status(target, source, status)
@@ -1046,7 +1262,7 @@ func _cure_status(mon: BattleMon, message: int, words := {}) -> void:
 	mon.pokemon.status = Pokemon.Status.NONE
 	mon.pokemon.sleep_turns = 0
 	mon.badly_poisoned = false
-	battle.push({"type": "status", "side": mon.side, "status": 0})
+	battle.push({"type": "status", "side": mon.side, "slot": mon.slot, "status": 0})
 	battle.say_mon(message, mon, words)
 
 
@@ -1076,7 +1292,7 @@ func change_stat(mon: BattleMon, source: BattleMon, stat: int, amount: int, seco
 		if not secondary:
 			battle.say_mon(BattleText.stat_message(stat, amount, true), mon)
 		return false
-	battle.push({"type": "stat", "side": mon.side, "up": changed > 0})
+	battle.push({"type": "stat", "side": mon.side, "slot": mon.slot, "up": changed > 0})
 	battle.say_mon(BattleText.stat_message(stat, changed, false), mon)
 	if changed < 0 and source != mon:
 		battle.abilities.on_stat_dropped(mon, source)
@@ -1194,10 +1410,10 @@ func _force_switch(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 		battle.say(BattleText.BUT_IT_FAILED)
 		return
 	var index := reserves[_random().range_of(reserves.size())]
-	battle.push({"type": "withdraw", "side": side.id, "slot": 0})
-	var incoming := BattleMon.create(side.party[index], side.id, index)
-	side.active[0] = incoming
-	battle.push({"type": "send_out", "side": side.id, "slot": 0, "mon": incoming, "intro": false, "hp": incoming.hp(),
+	battle.push({"type": "withdraw", "side": side.id, "slot": target.slot})
+	var incoming := BattleMon.create(side.party[index], side.id, index, target.slot)
+	side.active[target.slot] = incoming
+	battle.push({"type": "send_out", "side": side.id, "slot": target.slot, "mon": incoming, "intro": false, "hp": incoming.hp(),
 		"max": incoming.max_hp(), "level": incoming.level(), "status": incoming.status()})
 	battle.say_mon(845, incoming)
 	apply_entry_hazards(incoming)
@@ -1265,7 +1481,7 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 				return true
 			mon.pokemon.status = Pokemon.Status.SLEEP
 			mon.pokemon.sleep_turns = 3
-			battle.push({"type": "status", "side": mon.side, "status": Pokemon.Status.SLEEP})
+			battle.push({"type": "status", "side": mon.side, "slot": mon.slot, "status": Pokemon.Status.SLEEP})
 			battle.say_mon(638, mon)
 			battle.heal(mon, mon.max_hp())
 		164:
@@ -1278,7 +1494,7 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 				return true
 			battle.damage(mon, cost, "substitute")
 			mon.set_effect("substitute", cost)
-			battle.push({"type": "substitute", "side": mon.side, "on": true})
+			battle.push({"type": "substitute", "side": mon.side, "slot": mon.slot, "on": true})
 			battle.say_mon(BattleText.CREATED_SUBSTITUTE, mon)
 		116:
 			if mon.has("focus_energy"):
@@ -1336,13 +1552,14 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 			if battle.sides[mon.side].has("wish"):
 				battle.say(BattleText.BUT_IT_FAILED)
 				return true
-			battle.sides[mon.side].conditions["wish"] = {"turns": 2, "amount": mon.max_hp() / 2, "mon": mon}
+			battle.sides[mon.side].conditions["wish"] = {"turns": 2, "amount": mon.max_hp() / 2, "mon": mon, "slot": mon.slot}
 		215, 312:
 			for pokemon in battle.sides[mon.side].party:
 				pokemon.status = Pokemon.Status.NONE
 				pokemon.sleep_turns = 0
-			mon.badly_poisoned = false
-			battle.push({"type": "status", "side": mon.side, "status": 0})
+			for each in battle.sides[mon.side].on_field():
+				each.badly_poisoned = false
+				battle.push({"type": "status", "side": each.side, "slot": each.slot, "status": 0})
 			battle.say(111 if data.id == 215 else 112)
 		287:
 			if mon.status() == Pokemon.Status.NONE or mon.status() == Pokemon.Status.SLEEP or mon.status() == Pokemon.Status.FREEZE:
@@ -1454,9 +1671,9 @@ func _pivot_switch(mon: BattleMon) -> void:
 		return
 	var index := -1
 	if side.is_player():
-		index = await battle.ask_switch(true)
+		index = await battle.ask_switch(true, mon.slot)
 	else:
-		index = battle.ai.choose_replacement(side)
+		index = battle.ai.choose_replacement(side, mon.slot)
 	if index >= 0:
 		await battle.switch_mon(mon, index)
 
@@ -1521,7 +1738,8 @@ func end_of_turn_effects(mon: BattleMon) -> void:
 	if mon.has("ingrain") and battle.heal(mon, maxi(mon.max_hp() / 16, 1)) > 0:
 		battle.say_mon(739, mon)
 	if mon.has("leech_seed"):
-		var receiver := battle.sides[int(mon.get_effect("leech_seed"))].mon(0)
+		var seeder: Dictionary = mon.get_effect("leech_seed")
+		var receiver := battle.mon_at(seeder.side, seeder.slot)
 		if receiver and not receiver.is_fainted():
 			var amount := maxi(mon.max_hp() / 8, 1)
 			var taken := battle.damage(mon, amount, "leech_seed")
@@ -1545,7 +1763,7 @@ func end_of_turn_effects(mon: BattleMon) -> void:
 		var bind: Dictionary = mon.get_effect("bind")
 		var source: BattleMon = bind.source
 		bind.turns -= 1
-		if bind.turns <= 0 or source == null or source.is_fainted() or battle.sides[source.side].mon(0) != source:
+		if bind.turns <= 0 or not battle.is_on_field(source):
 			mon.clear_effect("bind")
 			battle.say_mon(BattleText.FREED_FROM_MOVE, mon, {1: _move_name(bind.move)})
 		else:
@@ -1606,7 +1824,7 @@ func side_conditions_end_of_turn() -> void:
 			wish.turns -= 1
 			if wish.turns <= 0:
 				side.conditions.erase("wish")
-				var mon := side.mon(0)
+				var mon := side.mon(wish.get("slot", 0))
 				var wisher: BattleMon = wish.mon
 				if mon and not mon.is_fainted() and battle.heal(mon, wish.amount) > 0:
 					battle.say_mon(700, wisher)

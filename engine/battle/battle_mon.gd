@@ -12,6 +12,9 @@ var pokemon: Pokemon
 ## Camp (0 le joueur, 1 l'adversaire) et place dans l'équipe.
 var side := 0
 var party_index := 0
+## Place dans son camp (0 en combat simple ; 0 et 1 en double ; 0 à 2 en triple et en rotatif).
+## La place du jeu (sprites, effets) est camp + 2 x place : paires côté joueur, impaires en face.
+var slot := 0
 ## Crans de -6 à +6 (indices de Stats.Stat : Attaque à Esquive ; PV inutilisé).
 var stages: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0]
 var types: Array[int] = [0, 0]
@@ -38,13 +41,19 @@ var protect_streak := 0
 var opponents_faced := {}
 
 
-static func create(member: Pokemon, side_id: int, index: int) -> BattleMon:
+static func create(member: Pokemon, side_id: int, index: int, slot_index := 0) -> BattleMon:
 	var mon := BattleMon.new()
 	mon.pokemon = member
 	mon.side = side_id
 	mon.party_index = index
+	mon.slot = slot_index
 	mon.reset_on_entry()
 	return mon
+
+
+## Place du jeu : 0, 2, 4 côté joueur ; 1, 3, 5 en face (tables de positions de l'overlay 94).
+func position() -> int:
+	return side + 2 * slot
 
 
 ## Remis à neuf en entrant au combat (les crans et effets passagers ne suivent pas le Pokémon).

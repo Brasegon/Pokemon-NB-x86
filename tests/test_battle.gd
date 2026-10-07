@@ -40,6 +40,10 @@ func _initialize() -> void:
 	_test_backgrounds()
 	_test_wild_encounters()
 	_test_capture_demo()
+	_test_double_wild()
+	_test_double_trainer()
+	_test_triple_adjacency()
+	_test_spread_and_screens()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -259,7 +263,9 @@ func _transcript(battle: Battle) -> PackedStringArray:
 			texts = [event]
 		elif event.type == "intro":
 			for key: String in ["appeared", "challenge", "sent", "go"]:
-				if event.has(key):
+				if event.has(key) and event[key] is Array:
+					texts.append_array(event[key])
+				elif event.has(key):
 					texts.append(event[key])
 		for text: Dictionary in texts:
 			var file: MsgFile = _rom.text_file(BWFiles.TEXT_SYSTEM, text.file)
@@ -357,6 +363,100 @@ func _test_learn_move() -> void:
 	battle.run()
 	battle.learn_move(snivy, 74)
 	_check(snivy.knows(74) and not snivy.knows(33), "nouvelle capacité à la place de la première")
+
+
+## Combat sauvage double (herbes sombres) : deux Pokémon de chaque côté, messages du jeu pour deux,
+## Éboulement touche les deux adversaires et nomme ceux pour qui c'est super efficace.
+func _test_double_wild() -> void:
+	var state := _player(74, 30, 50)
+	state.party[0].set_moves([157, 89])
+	var second := Pokemon.create(506, 30, {"random": GameRandom.new(51), "ot_id": state.trainer_id})
+	# Rugissement : une capacité de statut qui vise les deux adversaires (cible 5).
+	second.set_moves([45])
+	state.party.append(second)
+	var first := Pokemon.create(519, 5, {"random": GameRandom.new(52)})
+	var partner := Pokemon.create(554, 5, {"random": GameRandom.new(53)})
+	var battle := Battle.wild(state, first, {"random": GameRandom.new(54), "partner": partner})
+	battle.auto_answer = _auto
+	battle.run()
+	var lines := _transcript(battle)
+	print("   Combat sauvage double : ", " | ".join(lines))
+	_check(battle.format == Battle.Format.DOUBLE and battle.slot_count() == 2, "deux Pokémon sauvages : combat double")
+	_check(lines.size() > 2 and lines[0] == "Un Poichigeon et un Darumarond sauvages apparaissent!", "« Un X et un Y sauvages apparaissent ! » (ligne 2)")
+	_check(lines.has("Racaillou et Ponchiot! Go!"), "« X et Y ! Go ! » (ligne 12)")
+	var named := false
+	var growled := 0
+	for line in lines:
+		named = named or line.begins_with("C'est super efficace sur")
+		growled += 1 if line.contains("Attaque du") and line.contains("baisse") else 0
+	_check(named, "Éboulement : l'efficacité nomme les cibles (fichier 14, 0x021C57E0)")
+	_check(growled >= 2, "Rugissement baisse l'Attaque des deux adversaires")
+	_check(battle.result == Battle.Result.WIN and battle.enemy().all_fainted(), "les deux sauvages sont K.O.")
+
+
+## Combat double contre un dresseur de la ROM (fiche 18, type 1) : deux Pokémon envoyés d'un coup.
+func _test_double_trainer() -> void:
+	var state := _player(497, 60, 55)
+	var second := Pokemon.create(500, 60, {"random": GameRandom.new(56), "ot_id": state.trainer_id})
+	state.party.append(second)
+	var battle := Battle.against_trainer(state, 18, {"random": GameRandom.new(57)})
+	battle.auto_answer = _auto
+	battle.run()
+	var lines := _transcript(battle)
+	print("   Combat double contre un dresseur : ", " | ".join(lines.slice(0, 6)))
+	_check(battle.format == Battle.Format.DOUBLE, "la fiche 18 est un combat double")
+	var sent := false
+	for line in lines:
+		sent = sent or line.contains("sont envoyés par")
+	_check(sent, "« Un X et un Y sont envoyés par... » (ligne 15)")
+	_check(battle.result == Battle.Result.WIN, "combat double gagné (%s)" % Battle.Result.keys()[battle.result])
+
+
+## Combat triple (fiche 506) : les colonnes vont de gauche à droite vue du joueur, la place 0 d'en
+## face est à droite ; les deux bords ne se touchent pas (tables de positions de l'overlay 94).
+func _test_triple_adjacency() -> void:
+	var state := _player(497, 50, 58)
+	for i in 2:
+		state.party.append(Pokemon.create(500 + i, 50, {"random": GameRandom.new(59 + i), "ot_id": state.trainer_id}))
+	var battle := Battle.against_trainer(state, 506, {"random": GameRandom.new(61)})
+	_check(battle.format == Battle.Format.TRIPLE and battle.slot_count() == 3, "la fiche 506 est un combat triple")
+	for slot in 3:
+		battle._send_out(battle.player(), slot, slot)
+		battle._send_out(battle.enemy(), slot, slot)
+	var left := battle.mon_at(BattleSide.PLAYER, 0)
+	var center := battle.mon_at(BattleSide.PLAYER, 1)
+	_check(battle.column(BattleSide.ENEMY, 0) == 2 and battle.column(BattleSide.PLAYER, 0) == 0, "colonnes : place 0 du joueur à gauche, place 0 d'en face à droite")
+	_check(not battle.adjacent(left, battle.mon_at(BattleSide.ENEMY, 0)) and battle.adjacent(left, battle.mon_at(BattleSide.ENEMY, 2)),
+		"le bord gauche ne touche pas le bord droit d'en face")
+	_check(battle.foes_of(center).size() == 3 and battle.foes_of(left).size() == 2, "le milieu touche les trois adversaires, un bord deux")
+	var rock_slide := MoveData.of(157)
+	var targets := battle.moves.resolve_targets(left, rock_slide)
+	_check(targets.size() == 2 and battle.mon_at(BattleSide.ENEMY, 0) not in targets, "Éboulement depuis un bord : les deux adversaires voisins")
+	var earthquake := MoveData.of(89)
+	_check(battle.moves.resolve_targets(center, earthquake).size() == 5, "Séisme depuis le milieu : tous les autres (alliés compris)")
+
+
+## Capacité qui visait plusieurs Pokémon : x 0,75 après les dégâts de base (0x021C1E14) ; Protection :
+## 1/2 en combat simple, 0xA8F en double (overlay 95, 0x06898E54).
+func _test_spread_and_screens() -> void:
+	var state := _player(74, 40, 62)
+	state.party.append(Pokemon.create(506, 40, {"random": GameRandom.new(63), "ot_id": state.trainer_id}))
+	var foe := Pokemon.create(504, 40, {"random": GameRandom.new(64)})
+	var battle := Battle.wild(state, foe, {"random": GameRandom.new(65), "partner": Pokemon.create(504, 40, {"random": GameRandom.new(66)})})
+	for slot in 2:
+		battle._send_out(battle.player(), slot, slot)
+		battle._send_out(battle.enemy(), slot, slot)
+	var attacker := battle.mon_at(BattleSide.PLAYER, 0)
+	var target := battle.mon_at(BattleSide.ENEMY, 0)
+	var move := MoveData.of(157)
+	var move_type := battle.moves.move_type_of(attacker, move)
+	var effectiveness := battle.moves.effectiveness_against(attacker, target, move, move_type)
+	var single := battle.moves.calc_damage(attacker, target, move, false, move_type, effectiveness, true)
+	var spread := battle.moves.calc_damage(attacker, target, move, false, move_type, effectiveness, true, BattleMoves.SPREAD_RATIO)
+	_check(absi(spread - single * 3 / 4) <= 2 and spread < single, "Éboulement sur deux cibles : x 0,75 (%d -> %d)" % [single, spread])
+	battle.enemy().conditions["reflect"] = 5
+	var screened := battle.moves.calc_damage(attacker, target, move, false, move_type, effectiveness, true)
+	_check(absi(screened - single * 0xA8F / 0x1000) <= 1, "Protection en double : 0xA8F (%d -> %d)" % [single, screened])
 
 
 ## Décor (a/1/5/2) : la Route 1 en herbe, au printemps et en été, et un décor qui change avec les

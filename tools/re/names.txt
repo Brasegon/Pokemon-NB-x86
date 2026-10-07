@@ -378,8 +378,12 @@ ov93:0x021BC814   battle_action_order             ordre des actions
 ov93:0x021BC8E8   battle_speed                    vitesse d'un Pokémon
 ov93:0x021BD5AC   battle_escape                   la fuite réussit-elle
 ov93:0x021BFA00   battle_accuracy                 précision : la capacité touche-t-elle
+ov93:0x021C0D30   battle_damage_targets           dégâts sur la liste des cibles : x 0,75 si la capacité en visait plusieurs, adversaires puis alliés
+ov93:0x021C154C   effectiveness_message           efficacité d'une seule cible : « C'est super efficace ! » ou « pas très efficace »
 ov93:0x021C1E14   battle_damage                   dégâts d'une capacité
+ov93:0x021C57E0   effectiveness_messages          efficacité d'un groupe de cibles : sans noms, ou une, deux, trois cibles nommées (fichier 14)
 ov93:0x021C6370   battle_confusion_damage         dégâts de la confusion (puissance 40)
+ov93:0x021C80FC   battle_rule                     type de combat : 0 simple, 1 double, 2 triple, 3 rotatif
 ov93:0x021CB274   battle_exp_share                partage de l'expérience
 ov93:0x021CB4FC   battle_exp_gain                 expérience reçue
 ov93:0x021CBAD4   battle_capture                  calcul de la capture
@@ -401,6 +405,11 @@ ov93:0x021D7B74   battle_weather_damage           dégâts du sable et de la gr�
 ov93:0x021D7E54   battle_exp_yield                expérience donnée
 ov93:0x021D7F5C   battle_prize                    somme gagnée
 ov93:0x021D7F98   battle_money_lost               somme perdue
+ov93:0x021D8424   ability_handler_lookup          cherche un talent dans la table des gestionnaires (0x9E entrées)
+ov93:0x021DB8DC   ability_pressure_pp             Pression : un PP de plus (porteur visé, terrain, ou liste 0x0689E2C4)
+ov93:0x021DCE64   item_handler_lookup             cherche un objet tenu dans la table des gestionnaires (171 entrées et une fin)
+ov93:0x021E027C   move_handler_lookup             cherche une capacité à part dans la table des gestionnaires (0x102 entrées)
+ov93:0x021EB2CC   intro_select                    choisit le début du combat selon le type de combat et l'adversaire
 ov93:0x021EB524   intro_fade_in                   ouverture depuis le noir (16 à 0, un cran toutes les 2 images)
 ov93:0x021EB630   intro_wild                      début d'un combat sauvage (9 étapes)
 ov93:0x021EB7C0   intro_wild_message              « Un X sauvage apparaît ! »
@@ -449,9 +458,10 @@ ov94:0x022004FC   effect_draw_order               ordre de dessin en combat doub
 ov94:0x022006EC   motion_setup                    règle un mouvement générique
 ov94:0x02200C70   task_sprite_stutter             tâche : animation qui bégaie
 ov94:0x02200DBC   task_sprite_ellipse             tâche : ellipse
+ov94:0x02201848   sprite_home                     position de départ d'une place : 0-1 simple, 2-7 selon le type de combat, 8-13 dresseurs
 ov94:0x022018D4   sprite_screen_scale             taille en mode « écran » : 16.0 ou 32.0 en seizièmes
 ov94:0x02206B68   gauge_load                      charge les jauges (palette 162 de a/0/1/1)
-ov94:0x022073D0   gauge_background                fond de la jauge : 165/166 en face, 168/169 joueur
+ov94:0x022073D0   gauge_background                fond de la jauge : 165-167 en face, 168-170 joueur ; 171-176 en triple et rotatif
 ov94:0x02207960   gauge_hp_bar                    place la barre de PV (table 0x0220AA70)
 ov94:0x02207F0C   gauge_hp_drain                  descente des PV d'un PV par image
 ov94:0x02207FD4   gauge_hp_pixels                 pixels = PV x 48 / PV max, au moins 1
@@ -462,6 +472,11 @@ ov94:0x022085F0   gauge_caught_ball               petite Ball si l'espèce est d
 ov94:0x02208D4C   tray_create                     crée une rangée de Balls
 ov94:0x02209008   tray_hide                       la rangée disparaît d'un coup
 ov94:0x02209054   tray_update                     une image de la rangée de Balls
+
+# Overlay 95 (chargé en VRAM, 0x06898020) : gestionnaires et listes de cibles
+ov95:0x06898E54   screen_damage_ratio             Protection, Mur Lumière : 0x800 en simple et rotatif, 0xA8F en double et triple
+ov95:0x0689CD38   target_list_count               nombre de cibles restantes d'une liste de cibles (+0x42)
+ov95:0x0689CD40   target_list_initial             nombre de cibles de départ d'une liste de cibles (+0x43)
 
 [fonctions en ARM]
 
@@ -562,19 +577,19 @@ ov93:0x021F03CD   badge_money_table               somme perdue selon les badges 
 ov93:0x021F03E8   stage_ratio_table               rapports des crans des statistiques
 ov93:0x021F0402   accuracy_ratio_table            rapports des crans de précision
 ov93:0x021F041C   type_chart                      table des types 17 x 17 (0 aucun effet, 2 moitié, 4 normal, 8 double)
-ov93:0x021F0E14   ability_handlers_1              gestionnaires des talents (1)
-ov93:0x021F114C   ability_handlers_2              gestionnaires des talents (2)
-ov93:0x021F125C   ability_handlers_3              gestionnaires des talents (3)
+ov93:0x021F0E14   ability_handlers                gestionnaires des 158 talents (une table, lue jusqu'à 0x9E par 0x021D8424)
 ov93:0x021F1E44   item_handlers                   gestionnaires des 171 objets tenus
-ov93:0x021F2FD0   move_handlers_1                 gestionnaires des capacités à part (1)
-ov93:0x021F3518   move_handlers_2                 gestionnaires des capacités à part (2)
+ov93:0x021F2FD0   move_handlers                   gestionnaires des 258 capacités à part (une table, borne 0x102 en 0x021E02EC)
 
 # Overlay 94
 ov94:0x02209D6C   effect_vm_descriptor            descripteur de la machine des effets
 ov94:0x02209E28   effect_commands                 table des 78 commandes des effets
 ov94:0x02209F60   cry_pans                        panoramiques des cris (20 ou 107)
 ov94:0x02209F68   sprite_world_scales             échelles en mode « monde » (0x1030 joueur, 0x11BF en face)
+ov94:0x02209F70   sprite_world_scales_double      échelles en mode « monde » en combat double (places 2 à 5)
+ov94:0x02209FA8   sprite_world_scales_rotation    échelles en mode « monde » en combat rotatif (places 2 à 7)
 ov94:0x02209FC0   trainer_world_scales            échelles des dresseurs en mode « monde »
+ov94:0x02209FD8   sprite_world_scales_triple      échelles en mode « monde » en combat triple (places 2 à 7)
 ov94:0x02209FF0   positions_single                positions des Pokémon en combat simple
 ov94:0x0220A020   positions_double                positions des Pokémon en combat double
 ov94:0x0220A0B0   trainer_positions_single        positions des dresseurs en combat simple
@@ -587,6 +602,9 @@ ov94:0x0220AB0C   tray_positions                  positions des rangées de Ball
 ov94:0x0220AC40   camera_start_views              vues de départ de la caméra
 ov94:0x0220AC88   camera_eyes                     yeux des prises de vue
 ov94:0x0220ACA0   camera_targets                  points visés des prises de vue
+
+# Overlay 95
+ov95:0x0689E2C4   pressure_moves                  Saisie, Possessif, Picots, Pics Toxik, Piège de Roc : Pression compte tous les adversaires
 
 [commandes de script]
 
