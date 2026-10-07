@@ -42,6 +42,8 @@ static func parse(bytes: PackedByteArray) -> ZoneTable:
 			"parent": bytes.decode_u16(p + 0x18),
 			"name": bytes[p + 0x1A],
 			"camera": (bytes.decode_u16(p + 0x1C) >> 9) & 0x7F,
+			# Temps du terrain par défaut (bits 0-5, 0x02013C2C ; voir FieldWeather).
+			"weather": bytes.decode_u16(p + 0x1C) & 0x3F,
 			"battle_background": (bytes.decode_u16(p + 0x1E) >> 5) & 0x1F,
 			"camera_area": bytes.decode_u16(p + 0x20),
 			"x": bytes.decode_u32(p + 0x24),

@@ -57,6 +57,7 @@ func _initialize() -> void:
 	_test_around_battle()
 	_test_evolution_rules()
 	_test_trainer_speech()
+	_test_field_weather()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -1468,6 +1469,23 @@ func _test_trainer_speech() -> void:
 	battle.send_out(battle.enemy(), 1, 0)
 	battle._trainer_speech()
 	_check(_said(battle, BWFiles.TEXT_TRAINER_SPEECH, last), "paroles : son dernier Pokémon (genre 19)")
+
+
+## Temps du terrain (calendrier a/0/9/7, en-tête des zones) et temps au début du combat.
+func _test_field_weather() -> void:
+	_check(FieldWeather.day_index(1, 1) == 0 and FieldWeather.day_index(3, 1) == 60 and FieldWeather.day_index(12, 31) == 365,
+		"calendrier : 366 jours, février en compte 29")
+	_check(FieldWeather.of(157, {}, 6, 15) == 3 and FieldWeather.battle_weather(3) == Battle.Weather.SAND,
+		"Désert Délassant (zone 157) : tempête de sable toute l'année")
+	_check(FieldWeather.of(389, {"weather": 0}, 6, 15) == 0 and FieldWeather.of(233, {"weather": 4}, 6, 15) == 4
+		and FieldWeather.battle_weather(4) == Battle.Weather.HAIL, "sans calendrier : le temps de l'en-tête (bits 0-5 de +0x1C)")
+	var state := _player(498, 20, 260)
+	var battle := Battle.wild(state, Pokemon.create(504, 20, {"random": GameRandom.new(261)}), {"random": GameRandom.new(262)})
+	battle.start_weather = Battle.Weather.SAND
+	battle._start()
+	_check(battle.weather == Battle.Weather.SAND and battle.weather_turns == 0 and _said(battle, BWFiles.TEXT_BATTLE, BattleText.SAND_STARTED),
+		"le combat commence sous le temps du terrain, sans fin")
+	battle._finish()
 
 
 ## Vérification qui ne s'affiche qu'en cas d'échec (boucles).

@@ -595,6 +595,9 @@ func _battle_options(battle: Battle) -> Dictionary:
 	battle.background = background
 	battle.terrain = attribute
 	battle.season = field.season
+	if not battle.demo:
+		var date := Time.get_date_dict_from_system()
+		battle.start_weather = FieldWeather.battle_weather(FieldWeather.of(zone, header, date.month, date.day, Game.state.work))
 	var light: Array = field.light.get("colors", [])
 	return {"zone_background": background, "attribute": attribute, "season": field.season,
 		"light_color": light[0] if not light.is_empty() else Color.WHITE}

@@ -94,6 +94,8 @@ var background := 0
 var season := 0
 ## Paroles du dresseur déjà dites (ou écartées) pendant ce combat : genre -> vrai.
 var speech_used := {}
+## Temps du terrain au début du combat (FieldWeather) : il dure tout le combat.
+var start_weather := Weather.NONE
 var terrain := 0
 ## Démonstration de capture de la professeure (commande 0x17D) : elle joue toute seule.
 var demo := false
@@ -453,6 +455,13 @@ func _start() -> void:
 		intro.parties = [player().party.duplicate(), foe_side.party.duplicate()]
 	push(intro)
 	_mark_opponents()
+	# Le temps du terrain (0x021BBB00 : 0x021C3B08 avec 0xFF tours), avant les talents d'entrée.
+	if start_weather != Weather.NONE:
+		weather = start_weather
+		weather_turns = 0
+		push({"type": "weather", "weather": weather})
+		say([0, BattleText.SUN_STARTED, BattleText.RAIN_STARTED, BattleText.HAIL_STARTED, BattleText.SAND_STARTED][weather])
+		weather_changed()
 	# Talents d'entrée : du plus rapide au plus lent.
 	for mon in by_speed(all_active()):
 		abilities.on_switch_in(mon)

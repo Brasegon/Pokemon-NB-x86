@@ -46,10 +46,12 @@
 0x02013BB8        zone_is_outdoor                 champ 1C bits 6-8 : 1 dehors, 0 dedans
 0x02013BCC        zone_camera_type                type de caméra de la zone (champ 1C bits 9-15)
 0x02013BE0        zone_camera_rects               fichier des rectangles de la caméra (champ 20, a/1/0/8 ; 0xFFFF aucun)
+0x02013C2C        zone_weather                    temps par défaut de la zone (bits 0-5 de +0x1C)
 0x02013EE8        zone_events_file                fichier des événements de la zone (champ 16, a/1/2/5)
 0x02013EF4        zone_battle_background          décor des combats de la zone (champ 1E bits 5-9)
 0x02014188        warp_set_destination            garde la destination d'une porte et son repère (+0x0A)
 0x02014280        new_game_location               lieu de départ d'une nouvelle partie : zone 391, case (5, 6)
+0x0202C72C        field_weather                   temps du terrain : exceptions, calendrier, en-tête
 
 # Drapeaux et variables, terrain (ARM9)
 0x02014304        event_flag_get                  état d'un drapeau
@@ -213,6 +215,7 @@ ov10:0x02162E9C   zone_find_trigger               une case est-elle sur un décl
 ov10:0x0216385C   npc_step_blocked                le pas d'un PNJ est-il bloqué (étendue, terrain, dénivelé...)
 ov10:0x02163C2C   npc_step_out_of_range           le pas sort-il de l'étendue du PNJ
 ov10:0x02163C94   npc_step_terrain_blocked        le terrain bloque-t-il le pas
+ov10:0x021647D4   weather_calendar_day            temps d'une zone à une date (calendrier a/0/9/7)
 ov10:0x02169790   terrain_height                  hauteur du sol : position - centre du morceau, fonction du type
 ov10:0x0216CC6C   field_open_characters           ouvre l'archive des personnages (a/0/4/9)
 ov10:0x0216CDFC   npc_create                      crée un PNJ absent des événements (commande 0x69)
@@ -325,6 +328,7 @@ ov21:0x021AA2A4   encounter_battle_terrain        décor du combat : genre de la
 ov21:0x021AA2FC   encounter_tile_group            groupe de rencontres de la case
 ov21:0x021AA380   encounter_group_rate            taux d'un groupe
 ov21:0x021AA39C   encounter_roll                  tirage de la rencontre
+ov21:0x021AA63C   battle_start_weather            temps du combat d'après le temps du terrain (2, 6, 7 pluie ; 3, 12 sable ; 4, 5 grêle)
 ov21:0x021AA698   encounter_set_reference         pose la case de référence quand un combat commence
 ov21:0x021AA6C8   encounter_step_count            compteur de pas
 ov21:0x021AAC74   field_tile_effects              liste les cases à phénomène autour du héros
@@ -383,6 +387,7 @@ ov74:0x021F5460   cutin_kind                      fiche d'un genre de coupure (t
 # Moteur du combat (overlay 93)
 ov93:0x021B857C   battle_text_speed               vitesse d'écriture des messages (options)
 ov93:0x021B9CB0   illusion_setup                  Illusion : apparence du dernier membre de l'équipe en état de se battre
+ov93:0x021BBB00   battle_start_effects            début du combat : temps du terrain (sans fin), puis effets d'entrée
 ov93:0x021BBF48   battle_run_actions              exécute les actions dans l'ordre (ordre recalculé après les rotations)
 ov93:0x021BC300   battle_escape_after_faint       après un K.O. : la fuite avec le Pokémon K.O. de la place 0
 ov93:0x021BC3B8   battle_rotate                   rotation : un Pokémon en retrait passe devant (combat rotatif)
@@ -406,6 +411,7 @@ ov93:0x021C0D30   battle_damage_targets           dégâts sur la liste des cibl
 ov93:0x021C154C   effectiveness_message           efficacité d'une seule cible : « C'est super efficace ! » ou « pas très efficace »
 ov93:0x021C1E14   battle_damage                   dégâts d'une capacité
 ov93:0x021C21F0   battle_set_item                 pose l'objet tenu ; consommé : retenu pour Recyclage (+0x14)
+ov93:0x021C3B08   battle_set_weather              pose un temps (et son animation, son message)
 ov93:0x021C45B4   battle_recenter_triple          combat triple : un contre un aux coins opposés, les deux glissent au milieu
 ov93:0x021C50A8   battle_switch_out               sortie d'un Pokémon (changement, rotation) : événement 0xA3
 ov93:0x021C57E0   effectiveness_messages          efficacité d'un groupe de cibles : sans noms, ou une, deux, trois cibles nommées (fichier 14)

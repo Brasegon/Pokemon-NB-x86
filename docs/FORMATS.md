@@ -588,8 +588,9 @@ ces cases autour du héros (herbe qui bouge, poussière, remous, ombres sur les 
   terrain »), 1C bits 6-8 (0x02013BB8 : 1 dehors, 0 dedans), 1E bits 5-9 décor des combats
   (0x02013EF4, recopié par 0x021AA2A4 avec le genre de la case et l'heure, pour la phase 4),
   20 rectangles de la caméra (`a/1/0/8`), 24, 28, 2C position par défaut x, y, z (u32, en cases :
-  0x02013B84). La météo n'est pas dans l'en-tête (Désert Délassant et Tour Dragospire n'y ont rien
-  de particulier) : sa table reste à retrouver. Une nouvelle partie commence dans la zone 391 à cette position, (5, 6)
+  0x02013B84). 1C bits 0-5 : temps du terrain par défaut (0x02013C2C ; seules les zones 233 et 238
+  en ont un) : le temps vient surtout du calendrier `a/0/9/7` (voir « Temps du terrain »). Une
+  nouvelle partie commence dans la zone 391 à cette position, (5, 6)
   (0x02014280). Renouet = zone 389 (lieu n° 4, `SEQ_BGM_T_01`), Route 1 = 317 ;
   ses intérieurs sont les zones 390 à 396, chacune avec sa matrice d'un seul morceau (390-391 : la
   maison du héros, 396 : le laboratoire).
@@ -1550,6 +1551,15 @@ des objets) ; un Pokémon sauvage ne vole plus l'objet du joueur.
   Pokémon : plus d'un membre et un seul en forme, 20 dernier Pokémon à la moitié de ses PV), chaque
   genre une seule fois ; un genre sans message est écarté ; si plusieurs conviennent le même tour, le
   dernier est dit et les autres sont perdus. Le dresseur revient, dit sa ligne (fichier 189), repart.
+- **Temps du terrain** (0x0202C72C) et **au début du combat** : exceptions de l'histoire (0x0202C8CC :
+  zone 337 sous la pluie, temps 6 ou 7, quand le drapeau 0x96F est mis ; zones 289 à 316, temps 10,
+  11, 13, 14 selon des drapeaux, 0x0202C850, sans effet en combat), puis le calendrier `a/0/9/7`
+  (0x021647D4 de l'overlay 10) : fichier 1, 68 paires (zone, position) dès l'octet 2 ; fichier 0, un
+  octet par jour, 366 jours par zone (jour = jours des mois précédents, février compté 29, table
+  0x0216489C, + jour - 1) ; Désert Délassant (157, 326) : sable toute l'année ; zones 96 à 345 : pluie,
+  grêle certains jours ; sinon l'en-tête (bits 0-5 de +0x1C). Au combat (0x021AA63C) : 2, 6, 7 pluie,
+  3 et 12 sable, 4 et 5 grêle ; le combat commence avec ce temps, sans fin (0x021BBB00 : 0x021C3B08
+  avec 0xFF tours), avant les talents d'entrée (« Il commence à pleuvoir ! »...).
 - **Évolution après le combat** (0x021B95B4, étape 4) : après une victoire ou une capture, chaque
   membre de l'équipe dont le niveau a monté (masque de 0x021B99B4) passe par 0x0201B2CC (cas 0 :
   lieu du combat, période de la journée) ; une évolution trouvée joue la séquence (`EvolutionScreen`) :
