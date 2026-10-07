@@ -1568,7 +1568,7 @@ Les nombres « fx » ont 12 bits après la virgule (0x1000 = 1,0). Arrondi des m
 | partage | 0x021CB274 | moitié au Multi Exp, le reste entre les Pokémon qui ont affronté le vaincu |
 | expérience reçue | 0x021CB4FC | part x (2L + 10)^2,5 / (L + Lj + 10)^2,5 + 1 (racine fx, 0x0207C74C) ; x 1,5 Pokémon échangé, x 1,5 Œuf Chance |
 | capture | 0x021CBAD4 | ((3 PV max - 2 PV) x taux x Ball / 3 PV max) x statut (x 2,5 sommeil et gel, x 1,5 les autres) ; seuil = 0x10000000 / racine4(0xFF000 / valeur), trois tests rand(0x10000) < seuil |
-| Balls | 0x021CBCE8 | Super x 2, Hyper x 1,5, Filet x 3, Scuba x 3,5, Faiblo, Bis x 3, Chrono, Sombre x 3,5, Rapide x 5 |
+| Balls | 0x021CBCE8 | Super x 2, Hyper x 1,5, Filet x 3, Scuba x 3,5 (terrain 6), Faiblo, Bis x 3, Chrono, Sombre x 3,5 (décors 4 et 5, ou décor de la liste 0x0689E308 aux périodes 3 et 4), Rapide x 5 |
 | herbes sombres | 0x021CBC94 | 0,3 à 1 selon les espèces capturées |
 | capture critique | 0x021CBE48 | x 0,5 à 2,5 selon les espèces capturées (plus de 30 à plus de 600), rand(256) < valeur x m / 6 ; un seul test |
 | fuite | 0x021BD5AC | réussie si plus rapide, sinon rand(256) < vitesse x 128 / vitesse adverse + 30 x tentatives |

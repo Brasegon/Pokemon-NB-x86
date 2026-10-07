@@ -594,6 +594,7 @@ func _battle_options(battle: Battle) -> Dictionary:
 		attribute = 5
 	battle.background = background
 	battle.terrain = attribute
+	battle.season = field.season
 	var light: Array = field.light.get("colors", [])
 	return {"zone_background": background, "attribute": attribute, "season": field.season,
 		"light_color": light[0] if not light.is_empty() else Color.WHITE}

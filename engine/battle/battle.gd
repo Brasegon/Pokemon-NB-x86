@@ -90,6 +90,8 @@ var music := MUSIC_WILD
 var victory_music := MUSIC_WILD_VICTORY
 ## Décor (champ 1E bits 5-9 de la zone) et genre de la case.
 var background := 0
+## Saison du combat (0 printemps à 3 hiver : la nuit de la Sombre Ball en dépend).
+var season := 0
 var terrain := 0
 ## Démonstration de capture de la professeure (commande 0x17D) : elle joue toute seule.
 var demo := false

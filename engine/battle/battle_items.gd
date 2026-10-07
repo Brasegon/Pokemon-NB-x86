@@ -1087,7 +1087,7 @@ func throw_ball(mon: BattleMon, ball: int) -> void:
 ## Multiplicateur de la Ball (0x021CBCE8) : Super Ball x2, Hyper Ball x1,5, Filet Ball x3 (Eau,
 ## Insecte), Scuba Ball x3,5 (sous l'eau), Faiblo Ball (41 - niveau) / 10 sous le niveau 30,
 ## Bis Ball x3 (espèce déjà capturée), Chrono Ball 1 + 0,3 par tour (4 au plus), Sombre Ball x3,5
-## (la nuit, dans une grotte), Rapide Ball x5 au premier tour.
+## (la nuit, ou dans une grotte), Rapide Ball x5 au premier tour.
 func ball_ratio(ball: int, target: BattleMon) -> int:
 	match ball:
 		2: return 0x2000
@@ -1105,8 +1105,13 @@ func ball_ratio(ball: int, target: BattleMon) -> int:
 		10:
 			return mini(maxi(battle.turn - 1, 0) * 0x4CD + 0x1000, 0x4000)
 		13:
+			# Sombre Ball : décors 4 et 5 (grottes), ou décor de la liste 0x0689E308 la nuit (périodes 3
+			# et 4 de la saison : 0x020113F0).
 			var hour: int = Time.get_datetime_dict_from_system().hour
-			if hour >= 20 or hour < 5 or battle.background == 4: return 0x3800
+			if battle.background in [4, 5]:
+				return 0x3800
+			if battle.background in [0, 1, 2, 3, 6, 7, 8, 10] and Evolutions.is_night(battle.season, hour):
+				return 0x3800
 		15:
 			if battle.turn <= 1: return 0x5000
 	return BattleCalc.FX_ONE
