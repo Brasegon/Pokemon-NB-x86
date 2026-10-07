@@ -299,6 +299,19 @@ func use_move(mon: BattleMon, action: Dictionary) -> void:
 		if mon.pokemon.held_item == mon.get_effect("item_thrown"):
 			battle.items.consume(mon)
 		mon.clear_effect("item_thrown")
+	battle.items.check_leppa(mon)
+	for each in battle.all_active():
+		battle.items.check_white_herb(each)
+	# Carton Rouge : l'attaquant est renvoyé ; Bouton Fuite : le porteur se retire.
+	for each in battle.all_active():
+		if each.has("red_card"):
+			each.clear_effect("red_card")
+			if not each.is_fainted():
+				_drag_in(each)
+	for each in battle.all_active():
+		if each.has("eject_button"):
+			each.clear_effect("eject_button")
+			await _pivot_switch(each)
 
 
 ## « X utilise Y ! » (fichier 13 : trois messages par capacité).
@@ -1172,6 +1185,8 @@ func _after_damage(mon: BattleMon, target: BattleMon, data: MoveData, total: int
 	# Illusion (événement 0x4B, 0x021DCD70) : un coup qui touche vraiment la brise.
 	if total > 0 and not substitute_hit and target.illusion:
 		battle.abilities.break_illusion(target)
+	if total > 0 and not substitute_hit:
+		battle.items.after_hit(target, mon)
 	if total > 0 and not target.is_fainted() and data.has_flag(MoveData.Flag.CONTACT):
 		battle.abilities.on_contact(target, mon)
 		battle.items.on_contact(target, mon)
@@ -1328,6 +1343,8 @@ func effectiveness_against(mon: BattleMon, target: BattleMon, data: MoveData, mo
 func _type_vs(move_type: int, defense_type: int, target: BattleMon) -> Stats.Effectiveness:
 	var value := Stats.type_effectiveness(move_type, defense_type)
 	if value == Stats.Effectiveness.IMMUNE:
+		if battle.items.loses_immunities(target):
+			return Stats.Effectiveness.NORMAL
 		if defense_type == Stats.Type.GHOST and target.has("foresight"):
 			return Stats.Effectiveness.NORMAL
 		if defense_type == Stats.Type.DARK and move_type == Stats.Type.PSYCHIC and target.has("miracle_eye"):
@@ -1732,6 +1749,7 @@ func inflict(target: BattleMon, source: BattleMon, ailment: int, data: MoveData 
 				return false
 			target.set_effect("attract", source)
 			battle.say_mon(BattleText.IN_LOVE, target)
+			battle.items.on_attracted(target, source)
 			return true
 		MoveData.Ailment.BIND:
 			if target.has("bind") or target.has("substitute"):

@@ -7,14 +7,16 @@ extends RefCounted
 
 ## Objets tenus (table 0x021F1E44 du jeu) traités par ce fichier, pour le décompte de
 ## tools/re/battle_coverage.gd.
-const HANDLED: Array[int] = [43, 149, 150, 151, 152, 153, 155, 156, 157, 158, 159, 160, 161, 162, 163, 184,
-	185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205,
-	206, 207, 208, 209, 210, 211, 212, 213, 215, 217, 219, 220, 221, 222, 226, 227, 228, 230, 232, 233, 234,
-	236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 253, 254, 255, 256, 257,
-	258, 259, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 281, 282, 283, 284,
-	285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 296, 297, 298, 299, 300, 301, 302, 303, 304, 305, 306,
-	307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317, 318, 326, 327, 538, 540, 541, 544, 545, 546, 548,
-	549, 550, 551, 552, 553, 554, 555, 556, 557, 558, 559, 560, 561, 562, 563, 564]
+const HANDLED: Array[int] = [
+	43, 112, 135, 136, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163,
+	184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202,
+	203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 217, 219, 220, 221, 222, 223,
+	225, 226, 227, 228, 230, 232, 233, 234, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246,
+	247, 248, 249, 250, 251, 253, 254, 255, 256, 257, 258, 259, 265, 266, 267, 268, 269, 270, 271,
+	272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290,
+	291, 292, 293, 294, 296, 297, 298, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310,
+	311, 312, 313, 314, 315, 316, 317, 318, 319, 326, 327, 538, 539, 540, 541, 542, 543, 544, 545,
+	546, 547, 548, 549, 550, 551, 552, 553, 554, 555, 556, 557, 558, 559, 560, 561, 562, 563, 564]
 ## Effets tenus (+0x02).
 const RESTORE_HP := 1
 const CURE_PARALYSIS := 5
@@ -160,6 +162,19 @@ const PLATE_ITEM_LAST := 313
 const DRIVE_ITEM_FIRST := 116
 const DRIVE_ITEM_LAST := 119
 const POISON_BARB := 245
+## Objets propres à une espèce : Rosée Âme (Latias, Latios), Orbe Adamant (Dialga), Orbe Perlé
+## (Palkia), Orbe Platiné (Giratina).
+const SOUL_DEW := 225
+const ADAMANT_ORB := 135
+const LUSTROUS_ORB := 136
+const LATIAS := 380
+const LATIOS := 381
+const DIALGA := 483
+const PALKIA := 484
+## Pièce Rune et Encens Veine : la somme gagnée double (0x021C83A8).
+const AMULET_COIN := 223
+const LUCK_INCENSE := 319
+const DESTINY_KNOT := 280
 const POKE_DOLL := 63
 const FLUFFY_TAIL := 64
 
@@ -364,14 +379,18 @@ func _cure_status_by_item(mon: BattleMon, item: int) -> bool:
 	return true
 
 
-## Baie Mepo (0x021DD33C) : 10 PP à la première capacité qui n'en a plus, sinon à la première qui en
-## a perdu (`forced` seulement) ; « restaure les PP de... » (911).
+## Baie Mepo (0x021DD33C) : 10 PP à la dernière capacité choisie si elle n'en a plus (0x021DD2D8),
+## sinon à la première qui n'en a plus (0x021DD308), sinon, mangée de force, à la première qui en a
+## perdu ; « restaure les PP de... » (911).
 func _restore_pp(mon: BattleMon, item: int, forced: bool) -> bool:
-	var chosen := -1
-	for i in mon.pokemon.moves.size():
-		if mon.pp(i) == 0:
-			chosen = i
-			break
+	var chosen := mon.move_index(mon.last_selected)
+	if chosen >= 0 and mon.pp(chosen) != 0:
+		chosen = -1
+	if chosen < 0:
+		for i in mon.pokemon.moves.size():
+			if mon.pp(i) == 0:
+				chosen = i
+				break
 	if chosen < 0 and forced:
 		for i in mon.pokemon.moves.size():
 			var move: Dictionary = mon.pokemon.moves[i]
@@ -546,6 +565,11 @@ func power_ratio(mon: BattleMon, data: MoveData, move_type: int, ratio: int) -> 
 	elif effect == WISE_GLASSES and data.damage_class == MoveData.DamageClass.SPECIAL:
 		ratio = BattleCalc.fx_mul(ratio, 0x119A)
 	var item := _item_of(mon)
+	# Orbes (0x021DF968, 0x021DF914, 0x021DF3D8) : Dragon et le second type du légendaire qui le tient,
+	# x (100 + force) / 100 (0x021DCFA8), x 0x1333 pour l'Orbe Platiné.
+	var orb_types := {ADAMANT_ORB: [DIALGA, Stats.Type.STEEL], LUSTROUS_ORB: [PALKIA, Stats.Type.WATER], GRISEOUS_ORB: [GIRATINA, Stats.Type.GHOST]}
+	if orb_types.has(item) and mon.pokemon.species == orb_types[item][0] and move_type in [Stats.Type.DRAGON, orb_types[item][1]]:
+		ratio = BattleCalc.fx_mul(ratio, 0x1333 if item == GRISEOUS_ORB else (100 + _param(mon)) * 0x1000 / 100)
 	if item >= GEM_FIRST and item <= GEM_LAST and GEM_TYPES[item - GEM_FIRST] == move_type and data.is_damaging():
 		battle.say(GEM_MESSAGE, {0: _name(item), 1: Autoloads.rom().text(BWFiles.TEXT_MOVE_NAMES, data.id)})
 		consume(mon)
@@ -565,6 +589,9 @@ func attack_ratio(mon: BattleMon, physical: bool, ratio: int) -> int:
 			if physical and mon.pokemon.species in [CUBONE, MAROWAK]: ratio = BattleCalc.fx_mul(ratio, 0x2000)
 		DEEP_SEA_TOOTH:
 			if not physical and mon.pokemon.species == CLAMPERL: ratio = BattleCalc.fx_mul(ratio, 0x2000)
+	# Rosée Âme (0x021DE818) : Attaque Spéciale x 1,5 de Latias et Latios.
+	if _item_of(mon) == SOUL_DEW and not physical and mon.pokemon.species in [LATIAS, LATIOS]:
+		ratio = BattleCalc.fx_mul(ratio, 0x1800)
 	return ratio
 
 
@@ -574,6 +601,9 @@ func defense_ratio(target: BattleMon, stat: int, ratio: int) -> int:
 			if stat == Stats.Stat.SP_DEFENSE and target.pokemon.species == CLAMPERL: ratio = BattleCalc.fx_mul(ratio, 0x2000)
 		METAL_POWDER:
 			if target.pokemon.species == DITTO: ratio = BattleCalc.fx_mul(ratio, 0x2000)
+	# Rosée Âme (0x021DE854) : Défense Spéciale x 1,5 de Latias et Latios.
+	if _item_of(target) == SOUL_DEW and stat == Stats.Stat.SP_DEFENSE and target.pokemon.species in [LATIAS, LATIOS]:
+		ratio = BattleCalc.fx_mul(ratio, 0x1800)
 	if _item_of(target) == EVIOLITE:
 		var data := target.pokemon.personal()
 		if data and not Evolutions.of(target.pokemon.species).is_empty():
@@ -680,6 +710,74 @@ func on_confused(mon: BattleMon) -> void:
 func on_switch_in(mon: BattleMon) -> void:
 	if _item_of(mon) == AIR_BALLOON:
 		battle.say_mon(408, mon)
+	# Pièce Rune, Encens Veine (0x021DF3A4) : un Pokémon du joueur qui les tient au combat double la
+	# somme gagnée.
+	if _item_of(mon) in [AMULET_COIN, LUCK_INCENSE] and mon.side == BattleSide.PLAYER:
+		battle.money_doubled = true
+	check_leppa(mon)
+	check_white_herb(mon)
+
+
+## Baie Mepo (0x021DD1D4) : à la fin d'une capacité dont la capacité choisie n'a plus de PP, ou en
+## entrant avec une capacité sans PP.
+func check_leppa(mon: BattleMon) -> void:
+	if _effect(mon) == RESTORE_PP and not mon.is_fainted() and _can_eat(mon):
+		var item := _item_of(mon)
+		var empty := false
+		for i in mon.pokemon.moves.size():
+			empty = empty or mon.pp(i) == 0
+		if empty:
+			consume(mon)
+			_restore_pp(mon, item, false)
+
+
+## Herbe Blanche (0x021DE1BC) : des crans baissés reviennent à 0 (après une capacité, en entrant, en
+## fin de tour).
+func check_white_herb(mon: BattleMon) -> void:
+	if _effect(mon) != WHITE_HERB or mon.is_fainted():
+		return
+	for stat in range(Stats.Stat.ATTACK, Stats.Stat.EVASION + 1):
+		if mon.stages[stat] < 0:
+			var item := _item_of(mon)
+			consume(mon)
+			_restore_stats(mon, item)
+			return
+
+
+## Nœud Destin (0x021DF064) : le porteur tombe amoureux, celui qui l'a charmé aussi (330).
+func on_attracted(holder: BattleMon, source: BattleMon) -> void:
+	if _item_of(holder) == DESTINY_KNOT and source and not source.is_fainted() and not source.has("attract"):
+		if battle.moves.inflict(source, holder, MoveData.Ailment.ATTRACT, null, true):
+			battle.say_mon(330, source, {1: _name(DESTINY_KNOT)})
+
+
+## Pierrallégée (0x021DFA00) : poids x 0,5.
+func weight_ratio(mon: BattleMon) -> int:
+	return 0x800 if _item_of(mon) == FLOAT_STONE else BattleCalc.FX_ONE
+
+
+## Point de Mire (0x021DFC58) : les immunités dues aux types du porteur ne comptent plus.
+func loses_immunities(mon: BattleMon) -> bool:
+	return _item_of(mon) == RING_TARGET
+
+
+## Carton Rouge (0x021DFBA0) et Bouton Fuite (0x021DFDC8), après un coup qui touche vraiment le
+## porteur : l'attaquant est renvoyé et remplacé au hasard (417, message à 7 variantes), ou le porteur
+## se retire et son dresseur choisit qui le remplace (414). Il faut un remplaçant.
+func after_hit(holder: BattleMon, attacker: BattleMon) -> void:
+	if holder.is_fainted() or attacker == holder or battle.result != Battle.Result.NONE:
+		return
+	match _item_of(holder):
+		RED_CARD:
+			if attacker and not attacker.is_fainted() and not battle.sides[attacker.side].reserves(attacker.slot).is_empty():
+				consume(holder)
+				battle.say_pair(417, holder, attacker)
+				attacker.set_effect("red_card")
+		EJECT_BUTTON:
+			if not battle.sides[holder.side].reserves(holder.slot).is_empty():
+				consume(holder)
+				battle.say_mon(414, holder)
+				holder.set_effect("eject_button")
 
 
 ## Contact : Casque Brut et Piquants blessent l'attaquant.
@@ -740,10 +838,13 @@ func on_turn_end(mon: BattleMon) -> void:
 			battle.say_mon(1038, mon, {1: _name(item)})
 			battle.damage(mon, maxi(mon.max_hp() / 8, 1), "sticky_barb")
 		MENTAL_HERB:
-			if mon.has("attract"):
-				consume(mon)
-				mon.clear_effect("attract")
-				battle.say_mon(935, mon, {1: _name(item)})
+			# Herbe Mental (0x021DE2F8) : amour, Tourmente, Entrave, Anti-Soin, Encore, Provoc.
+			for effect in ["attract", "torment", "disable", "heal_block", "encore", "taunt"]:
+				if mon.has(effect):
+					consume(mon)
+					_cure_mind(mon, item)
+					break
+	check_white_herb(mon)
 
 
 # --- Sac ------------------------------------------------------------------------------------------

@@ -52,6 +52,7 @@ func _initialize() -> void:
 	_test_item_moves()
 	_test_sky_drop_and_pledges()
 	_test_last_abilities()
+	_test_last_items()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -1263,6 +1264,68 @@ func _test_last_abilities() -> void:
 	battle.abilities.on_switch_in(me)
 	_check(me.has("transformed") and me.pokemon.move_ids() == foe.pokemon.move_ids(), "Imposteur : Morphing sur l'adversaire en entrant")
 	battle._finish()
+
+
+## Derniers objets tenus : Baie Mepo, Herbe Blanche, Rosée Âme, Orbes, Nœud Destin, Pièce Rune,
+## Pierrallégée, Point de Mire, Carton Rouge, Bouton Fuite.
+func _test_last_items() -> void:
+	var battle := _duel([33, 213], 190)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	me.pokemon.held_item = 154
+	me.pokemon.moves[0].pp = 1
+	_use(battle, me, 0)
+	_check(me.pp(0) == 10 and me.pokemon.held_item == 0 and _said(battle, BWFiles.TEXT_BATTLE_SET, 911),
+		"Baie Mepo : 10 PP à la capacité qui n'en a plus (911)")
+	me.pokemon.held_item = 214
+	foe.pokemon.set_moves([45, 213])
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
+	_check(me.stage(Stats.Stat.ATTACK) == 0 and me.pokemon.held_item == 0 and _said(battle, BWFiles.TEXT_BATTLE_SET, 1010),
+		"Herbe Blanche : le cran baissé revient (1010)")
+	me.pokemon.gender = Pokemon.Gender.MALE
+	foe.pokemon.gender = Pokemon.Gender.FEMALE
+	me.pokemon.held_item = 280
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 1, "mon": foe})
+	_check(me.has("attract") and foe.has("attract") and _said(battle, BWFiles.TEXT_BATTLE_SET, 330 + 1),
+		"Nœud Destin : celui qui charme tombe amoureux aussi (330)")
+	me.pokemon.held_item = 223
+	battle.items.on_switch_in(me)
+	_check(battle.money_doubled, "Pièce Rune : la somme gagnée double")
+	me.pokemon.held_item = 539
+	_check(battle.weight_of(me) == maxi(BattleCalc.fx_mul(me.weight(), 0x800), 1), "Pierrallégée : poids x 0,5")
+
+	battle = _duel([33], 194, 380)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.held_item = 225
+	_check(battle.items.attack_ratio(foe, false, BattleCalc.FX_ONE) == 0x1800 and battle.items.defense_ratio(foe, Stats.Stat.SP_DEFENSE, BattleCalc.FX_ONE) == 0x1800,
+		"Rosée Âme : Attaque et Défense Spéciales x 1,5 de Latias")
+	battle = _duel([33], 196, 483)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.held_item = 135
+	_check(battle.items.power_ratio(foe, MoveData.of(337), Stats.Type.DRAGON, BattleCalc.FX_ONE) == 0x1333,
+		"Orbe Adamant : capacités Dragon de Dialga x 1,2")
+	battle = _duel([33], 198, 92)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.held_item = 543
+	_check(battle.moves.effectiveness_against(me, foe, MoveData.of(33), Stats.Type.NORMAL) == Stats.Effectiveness.NORMAL,
+		"Point de Mire : le type Spectre ne protège plus des attaques Normal")
+
+	battle = _duel([33], 200)
+	battle.auto_answer = _auto
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	battle.player().party.append(Pokemon.create(506, 50, {"random": GameRandom.new(201)}))
+	foe.pokemon.held_item = 542
+	_use(battle, me, 0)
+	_check(battle.mon_at(BattleSide.PLAYER, 0).party_index == 1 and _said(battle, BWFiles.TEXT_BATTLE_SET, 417 + 3),
+		"Carton Rouge : l'attaquant est renvoyé (417, variante sauvage / joueur)")
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	me.pokemon.held_item = 547
+	foe.pokemon.set_moves([33])
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
+	_check(battle.mon_at(BattleSide.PLAYER, 0).party_index == 0 and _said(battle, BWFiles.TEXT_BATTLE_SET, 414),
+		"Bouton Fuite : le porteur se retire (414)")
 
 
 ## Vérification qui ne s'affiche qu'en cas d'échec (boucles).

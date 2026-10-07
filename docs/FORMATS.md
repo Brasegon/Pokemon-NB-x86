@@ -1475,6 +1475,19 @@ et Arceus, liste 0x0689E38C, Modules 116 à 119 et Genesect, 0x0689E2BC). Lettre
 148 (liste 0x0209E884 de l'ARM9) ; baies : 149 à 212 (0x0209E900). Le portage ne laisse pas voler
 l'objet d'un dresseur adverse (le jeu le rend-il après le combat ? non vérifié).
 
+**Derniers objets tenus** (gestionnaires de la table 0x021F1E44) : Baie Mepo (0x021DD1D4 : à la fin
+d'une capacité dont la capacité choisie n'a plus de PP, ou en entrant avec une capacité vide) ;
+Herbe Blanche (0x021DE1BC : des crans baissés, après une capacité, en entrant, en fin de tour ;
+1010) ; Rosée Âme (0x021DE818, 0x021DE854 : Attaque et Défense Spéciales x 1,5 de Latias et Latios) ;
+Orbe Adamant (Dialga, Dragon et Acier), Orbe Perlé (Palkia, Dragon et Eau) : x (100 + force) / 100
+(0x021DCFA8), Orbe Platiné (Giratina, Dragon et Spectre) x 0x1333 ; Nœud Destin (0x021DF064 : le
+porteur charmé, celui qui l'a charmé l'est aussi, 330) ; Pièce Rune et Encens Veine (0x021C83A8 :
+tenus au combat par un Pokémon du joueur, la somme gagnée double, Jackpot compris : « X obtient Y $ ! »,
+fichier 15, 59, après un combat sauvage) ; Pierrallégée (poids x 0,5) ; Point de Mire (0x021DFC58 :
+les immunités dues aux types du porteur tombent) ; Carton Rouge (0x021DFBA0 : touché, il renvoie
+l'attaquant, remplacé au hasard, 417 à 7 variantes) ; Bouton Fuite (0x021DFDC8 : touché, le porteur se
+retire, 414, et son dresseur choisit le remplaçant). Il faut un remplaçant pour les deux derniers.
+
 **Objet employé tout de suite** (travail 0x22, 0x021C9DDC : un gestionnaire provisoire de l'objet,
 0x021DCF18, reçoit l'événement 0x73) : les baies (soin, statut, confusion, crans, Lansat, Micle,
 Mepo), Herbe Blanche, Herbe Mental, Roche Royale et Croc Rasoir (apeurement à coup sûr), Balle

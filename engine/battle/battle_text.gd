@@ -118,6 +118,7 @@ const PAID_IN_PANIC := 55
 const PAID_WINNER := 56
 const PLAYER_BLACKED_OUT := 57
 const WON_MONEY := 58
+const GOT_MONEY := 59
 const GREW_TO_LEVEL := 60
 const BROKE_FREE := 61
 const ALMOST_1 := 62

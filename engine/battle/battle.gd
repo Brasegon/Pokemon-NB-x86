@@ -77,6 +77,8 @@ var escape_attempts := 0
 var money_won := 0
 ## Pièces ramassées après Jackpot (niveau x 5 à chaque emploi), gagnées si le joueur gagne.
 var pay_day := 0
+## Pièce Rune ou Encens Veine tenu au combat par un Pokémon du joueur : la somme gagnée double.
+var money_doubled := false
 ## Pokémon capturé (et ajouté à l'équipe ou non).
 var caught_pokemon: Pokemon
 ## Le combat a commencé dans des herbes sombres (pénalité de capture 0x021CBC94).
@@ -479,7 +481,8 @@ func send_out(side: BattleSide, index: int, slot := 0) -> BattleMon:
 ## Poids au combat (0x021C8340) : poids de l'espèce moins Allègement, x Heavy Metal ou Light Metal
 ## (que le Brise Moule de l'attaquant ignore), 0,1 kg au moins.
 func weight_of(mon: BattleMon, attacker: BattleMon = null) -> int:
-	return maxi(BattleCalc.fx_mul(mon.weight(), abilities.weight_ratio(mon, attacker)), 1)
+	var ratio := BattleCalc.fx_mul(abilities.weight_ratio(mon, attacker), items.weight_ratio(mon))
+	return maxi(BattleCalc.fx_mul(mon.weight(), ratio), 1)
 
 
 ## Le temps a changé (ou un talent qui l'annule est arrivé, parti) : Météo de chaque Morphéo.
@@ -1206,9 +1209,16 @@ func _victory() -> void:
 				push({"type": "message", "file": BWFiles.TEXT_TRAINER_SPEECH, "line": speech.line, "words": {}})
 			var last_index := (foe_side.partner_first if i == 0 and foe_side.partner else foe_side.party.size()) - 1
 			money_won += BattleCalc.prize_money(trainers[i], foe_side.party[last_index].level)
+		if money_doubled:
+			money_won *= 2
 		if money_won > 0:
 			state.add_money(money_won)
 			say(BattleText.WON_MONEY, {0: state.player_name, 1: str(money_won)})
+	elif pay_day > 0:
+		# Combat sauvage : les pièces de Jackpot (« X obtient Y $ ! », fichier 15, 59).
+		money_won = pay_day * (2 if money_doubled else 1)
+		state.add_money(money_won)
+		say(BattleText.GOT_MONEY, {0: state.player_name, 1: str(money_won)})
 
 
 func _defeat() -> void:
