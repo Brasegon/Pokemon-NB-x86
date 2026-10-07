@@ -69,6 +69,11 @@ Autres tests : `test_explorer`, `test_ui`, `test_sound`, `test_navigation`, `tes
 - Une coroutine qui attend un signal jamais émis garde ses objets en vie (fuites à la sortie) : un
   combat dont l'écran se ferme est abandonné (`Battle.abort()`). Avant de quitter un test qui a
   joué des sons : `Sound.stop_all()` puis quelques images.
+- Deux objets `RefCounted` qui se citent ne sont jamais libérés : un Pokémon au combat ne garde un
+  autre Pokémon (dernier attaquant, effets comme Regard Noir ou une étreinte) que par une référence
+  faible (`set_effect()`, `BattleMon.deref()`). De même, une fonction anonyme rangée dans un
+  dictionnaire qu'elle capture forme un cycle : préférer une méthode liée (`bind`). Pour vérifier :
+  lancer un test avec `--verbose` (lignes « Leaked instance »).
 
 ## Outils
 

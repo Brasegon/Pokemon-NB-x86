@@ -15,6 +15,9 @@ const SCENES := [
 	"res://scenes/title/title_screen.tscn",
 ]
 
+## Images laissées au serveur audio, après avoir coupé les sons, avant de quitter.
+const STOP_FRAMES := 3
+
 var _failures := 0
 var _scene_index := -1
 ## L'autoload « Rom » (l'identifiant global n'existe pas encore quand ce script est compilé).
@@ -45,6 +48,13 @@ func _process(_delta: float) -> bool:
 	_scene_index += 1
 	if _scene_index < SCENES.size():
 		change_scene_to_file(SCENES[_scene_index])
+		return false
+	if _scene_index == SCENES.size():
+		# La musique du titre joue encore : le serveur audio ne lâche sa lecture qu'à son passage
+		# suivant, il faut couper les sons puis laisser passer quelques images avant de quitter.
+		root.get_node("Sound").stop_all()
+		return false
+	if _scene_index < SCENES.size() + STOP_FRAMES:
 		return false
 	print("Interface : %d échec(s)" % _failures)
 	quit(1 if _failures > 0 else 0)

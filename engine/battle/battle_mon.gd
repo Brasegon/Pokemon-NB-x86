@@ -34,7 +34,15 @@ var last_selected := 0
 var last_hit_by_move := 0
 var last_damage := 0
 var last_damage_class := MoveData.DamageClass.STATUS
-var last_attacker: BattleMon
+## Gardé par une référence faible, comme tout lien vers un autre Pokémon au combat (voir
+## set_effect()) : deux Pokémon qui se citent ne seraient sinon jamais libérés. null une fois que
+## l'attaquant n'existe plus (il a quitté le combat).
+var last_attacker: BattleMon:
+	get:
+		return _last_attacker.get_ref() as BattleMon if _last_attacker else null
+	set(value):
+		_last_attacker = weakref(value) if value else null
+var _last_attacker: WeakRef
 var turns_active := 0
 ## Ce tour : a-t-il agi, a-t-il été touché, son rang d'action.
 var acted := false
@@ -234,11 +242,21 @@ func has(effect: String) -> bool:
 
 
 func get_effect(effect: String, default: Variant = null) -> Variant:
-	return volatile.get(effect, default)
+	var value: Variant = volatile.get(effect, default)
+	return (value as WeakRef).get_ref() if value is WeakRef else value
 
 
+## Un effet qui désigne un autre Pokémon (Regard Noir, amour, Chute Libre) le garde par une
+## référence faible ; dans un dictionnaire, ranger weakref(pokémon) et lire avec deref().
 func set_effect(effect: String, value: Variant = true) -> void:
-	volatile[effect] = value
+	volatile[effect] = weakref(value) if value is BattleMon else value
+
+
+## Le Pokémon d'une référence faible rangée dans un effet (null s'il n'existe plus).
+static func deref(value: Variant) -> BattleMon:
+	if value is WeakRef:
+		return (value as WeakRef).get_ref() as BattleMon
+	return value as BattleMon
 
 
 func clear_effect(effect: String) -> void:

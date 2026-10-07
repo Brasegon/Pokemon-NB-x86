@@ -895,7 +895,7 @@ func _passes_protection(mon: BattleMon, target: BattleMon, data: MoveData) -> bo
 
 ## Verrouillage ou Lire-Esprit du lanceur sur cette cible (état 0x1D).
 func locked_on(mon: BattleMon, target: BattleMon) -> bool:
-	return mon.has("lock_on") and mon.get_effect("lock_on").target == target
+	return mon.has("lock_on") and BattleMon.deref(mon.get_effect("lock_on").target) == target
 
 
 ## Une cible dans les airs, sous terre ou sous l'eau n'est touchée que par certaines capacités.
@@ -1160,7 +1160,7 @@ func _deal_damage(mon: BattleMon, target: BattleMon, data: MoveData, amount: int
 	if target.has("bide"):
 		var bide: Dictionary = target.get_effect("bide")
 		bide.damage += lost
-		bide.attacker = mon
+		bide.attacker = weakref(mon)
 	if lost > 0:
 		battle.items.on_damaged(target, mon, data, lost)
 		# Frénésie (0x021E2080) : touché pendant qu'il enrage, l'Attaque monte (532).
@@ -1758,7 +1758,7 @@ func inflict(target: BattleMon, source: BattleMon, ailment: int, data: MoveData 
 			var turns := (data.min_turns + _random().range_of(maxi(data.max_turns - data.min_turns + 1, 1))) if data else 5
 			if battle.items.extends_bind(source):
 				turns = 8
-			target.set_effect("bind", {"move": data.id if data else 35, "turns": turns, "source": source})
+			target.set_effect("bind", {"move": data.id if data else 35, "turns": turns, "source": weakref(source)})
 			battle.say_pair(BIND_MESSAGES.get(data.id if data else 35, 810), target, source)
 			return true
 		MoveData.Ailment.LEECH_SEED:
@@ -2228,7 +2228,7 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 		199, 170:
 			# Verrouillage, Lire-Esprit (état 0x1D, 2 tours) : la prochaine capacité contre cette
 			# cible ne peut pas rater ; message à 7 variantes (651).
-			mon.set_effect("lock_on", {"target": target, "turns": 2})
+			mon.set_effect("lock_on", {"target": weakref(target), "turns": 2})
 			battle.say_pair(651, mon, target)
 		174:
 			if mon.has_type(Stats.Type.GHOST):
@@ -3021,7 +3021,7 @@ func _bide(mon: BattleMon) -> void:
 		return
 	mon.clear_effect("bide")
 	battle.say_mon(748, mon)
-	var attacker: BattleMon = bide.attacker
+	var attacker := BattleMon.deref(bide.attacker)
 	if bide.damage <= 0 or attacker == null or not battle.is_on_field(attacker):
 		battle.say(BattleText.BUT_IT_FAILED)
 		return
@@ -3194,7 +3194,7 @@ func end_of_turn_effects(mon: BattleMon) -> void:
 		battle.damage(mon, maxi(mon.max_hp() / 4, 1), "curse")
 	if mon.has("bind") and not mon.is_fainted():
 		var bind: Dictionary = mon.get_effect("bind")
-		var source: BattleMon = bind.source
+		var source := BattleMon.deref(bind.source)
 		bind.turns -= 1
 		if bind.turns <= 0 or not battle.is_on_field(source):
 			mon.clear_effect("bind")
