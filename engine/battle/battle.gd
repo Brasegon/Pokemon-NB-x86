@@ -99,6 +99,9 @@ var queue: Array[Dictionary] = []
 var moves_this_turn: Array[Dictionary] = []
 ## Écho : dernier tour où il a été utilisé et nombre de tours de suite (0x021E7184).
 var echoed_voice := {"turn": -1, "count": 0}
+## Dernière capacité lancée au combat, par n'importe qui (Photocopie : champ 0x1F74 du serveur, lu
+## par 0x021C80B4).
+var last_move_used := 0
 
 var moves: BattleMoves
 var abilities: BattleAbilities
@@ -396,10 +399,10 @@ func _start() -> void:
 	for slot in slot_count():
 		var foe_index := _first_able(foe_side, slot)
 		if foe_index >= 0:
-			foes.append(_send_out(foe_side, foe_index, slot))
+			foes.append(send_out(foe_side, foe_index, slot))
 		var lead_index := _first_able(player(), slot)
 		if lead_index >= 0:
-			leads.append(_send_out(player(), lead_index, slot))
+			leads.append(send_out(player(), lead_index, slot))
 	for foe in foes:
 		state.register_seen(foe.pokemon.species)
 	# Le début du combat est joué d'un bloc par l'écran, comme le client du jeu (0x021EB630 en combat
@@ -460,18 +463,20 @@ func _first_able(side: BattleSide, slot := 0) -> int:
 
 
 ## Met le Pokémon n° index de l'équipe au combat à une place ; l'écran l'apprend par
-## _push_send_out(), après l'annonce.
-func _send_out(side: BattleSide, index: int, slot := 0) -> BattleMon:
+## push_send_out(), après l'annonce. Celui qui était là retrouve ses capacités (Copie, Morphing).
+func send_out(side: BattleSide, index: int, slot := 0) -> BattleMon:
 	var mon := BattleMon.create(side.party[index], side.id, index, slot)
 	if side.active.size() <= slot:
 		side.active.resize(slot + 1)
+	elif side.active[slot]:
+		side.active[slot].restore_moves()
 	side.active[slot] = mon
 	return mon
 
 
 ## Le Pokémon arrive à l'écran (`intro` : au début du combat). Le moteur joue tout le tour
 ## d'avance : l'interface reçoit les PV et le niveau de ce moment.
-func _push_send_out(mon: BattleMon, intro := false) -> void:
+func push_send_out(mon: BattleMon, intro := false) -> void:
 	push(_send_out_event(mon, intro))
 
 
@@ -786,13 +791,13 @@ func switch_mon(mon: BattleMon, index: int, keep := {}) -> void:
 	push({"type": "withdraw", "side": side.id, "slot": mon.slot})
 	if mon.badly_poisoned and mon.status() == Pokemon.Status.POISON:
 		mon.toxic_counter = 0
-	var incoming := _send_out(side, index, mon.slot)
+	var incoming := send_out(side, index, mon.slot)
 	for key: String in keep:
 		incoming.volatile[key] = keep[key]
 	if keep.has("stages"):
 		incoming.stages = keep.stages
 	_announce_send(side, incoming)
-	_push_send_out(incoming)
+	push_send_out(incoming)
 	_mark_opponents()
 	await on_entry(incoming)
 
@@ -1071,9 +1076,9 @@ func _ask_switch(forced: bool, slot := 0) -> int:
 func switch_in_replacement(side: BattleSide, index: int, slot := 0) -> void:
 	if index < 0:
 		return
-	var incoming := _send_out(side, index, slot)
+	var incoming := send_out(side, index, slot)
 	_announce_send(side, incoming)
-	_push_send_out(incoming)
+	push_send_out(incoming)
 	_mark_opponents()
 	await on_entry(incoming)
 
@@ -1201,7 +1206,7 @@ func _defeat() -> void:
 
 
 ## Après le combat : statuts passagers effacés (l'empoisonnement grave redevient un poison
-## ordinaire), fin des événements.
+## ordinaire), capacités de l'équipe rendues (Copie, Morphing), fin des événements.
 func _finish() -> void:
 	for pokemon in player().party:
 		if pokemon.is_fainted():
@@ -1211,6 +1216,7 @@ func _finish() -> void:
 	for side in sides:
 		for mon in side.active:
 			if mon:
+				mon.restore_moves()
 				mon.volatile.clear()
 				mon.last_attacker = null
 		side.conditions.clear()

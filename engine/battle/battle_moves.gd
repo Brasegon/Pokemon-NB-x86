@@ -47,21 +47,50 @@ const DRIVE_TYPES: Array[int] = [Stats.Type.WATER, Stats.Type.ELECTRIC, Stats.Ty
 ## statut, 1 un cran de moins, 2 l'apeurement.
 const SECRET_POWER := {0: [0, 2], 5: [0, 2], 1: [1, 6], 2: [1, 6], 3: [1, 6], 8: [1, 6], 15: [1, 6],
 	6: [1, 1], 11: [1, 1], 12: [1, 1], 7: [0, 3], 13: [0, 3], 9: [1, 5], 10: [2, 0]}
+## Capacités qui en lancent une autre (réaction à l'événement 0x18 de 0x021C6278) : Métronome,
+## Force-Nature, Blabla Dodo, Assistance, Photocopie, Moi d'Abord, Mimique.
+const CALLERS: Array[int] = [118, 267, 214, 274, 383, 382, 119]
+## Métronome tire une capacité de 1 à 0x22F, sauf celles de la liste 0x0689E3FC (overlay 95).
+const METRONOME_LAST := 0x22F
+const METRONOME_EXCLUDED: Array[int] = [118, 214, 165, 274, 383, 382, 119, 267, 448, 166, 102, 68, 243,
+	182, 197, 203, 194, 144, 266, 476, 264, 289, 270, 168, 343, 271, 415, 364, 511, 516, 546, 547, 548,
+	553, 554, 555, 557, 173, 501, 469, 495]
+## Force-Nature : capacité selon le terrain (0x021E6AC0) ; Triplattaque ailleurs.
+const NATURE_POWER := {0: 402, 5: 402, 1: 89, 2: 89, 3: 89, 8: 89, 15: 89, 6: 56, 11: 56, 12: 56,
+	7: 59, 9: 426, 10: 157, 13: 58}
+## Jamais appelées par Blabla Dodo, Assistance ni Photocopie (liste 0x0689E330), et en plus : par
+## Blabla Dodo (0x0689E346, avec les capacités en deux tours), par Assistance et Photocopie
+## (0x0689E3AC) ; Moi d'Abord ne copie pas celles de 0x0689E31C.
+const CALL_EXCLUDED: Array[int] = [118, 214, 274, 383, 382, 119, 267, 448, 165, 166, 102]
+const SLEEP_TALK_EXCLUDED: Array[int] = [253, 130, 143, 76, 117, 13, 19, 340, 467, 264, 507]
+const ASSIST_EXCLUDED: Array[int] = [68, 243, 182, 197, 203, 194, 266, 476, 289, 270, 168, 343, 271,
+	415, 364, 264, 144, 516, 525, 509]
+const ME_FIRST_EXCLUDED: Array[int] = [243, 68, 368, 264, 382, 168, 343, 448, 165]
+## Moi d'Abord : puissance x 1,5 de la capacité copiée (événement 0x38, 0x021E6EB4).
+const ME_FIRST_RATIO := 0x1800
+## Copie ne copie pas (0x0689E2CE) ; Encore échoue sur (0x0689E2DA).
+const MIMIC_EXCLUDED: Array[int] = [166, 102, 144, 165, 448]
+const ENCORE_EXCLUDED: Array[int] = [227, 119, 144, 102, 166]
+## Gribouille ne copie ni lui-même, ni Lutte, ni Babil (0x021E0A20).
+const SKETCH_EXCLUDED: Array[int] = [166, 165, 448]
+## Morphing : les capacités copiées ont 5 PP au plus (0x021D6BF0).
+const TRANSFORM_PP := 5
 ## Capacités à part (table 0x021F2FD0 du jeu) entièrement écrites dans ce fichier, pour le décompte
 ## de tools/re/battle_coverage.gd ; les autres se comportent selon leurs seules données.
 const HANDLED: Array[int] = [
-	6, 13, 16, 18, 19, 20, 23, 26, 35, 37, 49, 50, 54, 57, 59, 67, 68, 69, 73, 74, 76, 80, 82, 83, 86,
-	87, 89, 91, 99, 100, 101, 107, 111, 113, 114, 115, 116, 117, 120, 128, 130, 136, 138, 143, 149,
-	150, 153, 156, 160, 161, 162, 165, 167, 168, 169, 170, 171, 173, 174, 175, 176, 179, 180, 182, 187,
-	191, 193, 194, 195, 197, 199, 200, 203, 205, 206, 210, 212, 213, 215, 216, 217, 218, 219, 220, 222,
-	226, 227, 228, 229, 234, 235, 236, 237, 239, 243, 244, 246, 248, 250, 251, 252, 253, 254, 255, 256,
-	259, 262, 263, 264, 265, 266, 268, 269, 270, 272, 273, 279, 280, 282, 283, 284, 286, 287, 288, 290,
-	291, 293, 300, 301, 311, 312, 316, 318, 323, 327, 328, 335, 340, 343, 346, 353, 355, 356, 357, 358,
-	360, 361, 362, 364, 366, 367, 368, 369, 371, 372, 375, 376, 378, 379, 380, 381, 384, 385, 386, 387,
-	388, 389, 390, 391, 392, 393, 419, 432, 433, 445, 446, 447, 448, 449, 461, 462, 463, 466, 467, 469,
-	470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 481, 484, 485, 486, 487, 492, 493, 494, 495, 496,
-	497, 498, 499, 500, 501, 502, 504, 506, 509, 511, 512, 513, 514, 515, 521, 525, 533, 535, 537, 540,
-	542, 546, 547, 548, 553, 554, 558, 559]
+	6, 13, 16, 18, 19, 20, 23, 26, 35, 37, 49, 50, 54, 57, 59, 67, 68, 69, 73, 74, 76, 80, 82, 83,
+	86, 87, 89, 91, 99, 100, 101, 102, 107, 111, 113, 114, 115, 116, 117, 118, 119, 120, 128, 130,
+	136, 138, 143, 144, 149, 150, 153, 156, 160, 161, 162, 165, 166, 167, 168, 169, 170, 171, 173,
+	174, 175, 176, 179, 180, 182, 187, 191, 193, 194, 195, 197, 199, 200, 203, 205, 206, 210, 212,
+	213, 214, 215, 216, 217, 218, 219, 220, 222, 226, 227, 228, 229, 234, 235, 236, 237, 239, 243,
+	244, 246, 248, 250, 251, 252, 253, 254, 255, 256, 259, 262, 263, 264, 265, 266, 267, 268, 269,
+	270, 272, 273, 274, 277, 279, 280, 282, 283, 284, 286, 287, 288, 289, 290, 291, 293, 300, 301,
+	311, 312, 316, 318, 323, 327, 328, 335, 340, 343, 346, 353, 355, 356, 357, 358, 360, 361, 362,
+	364, 366, 367, 368, 369, 371, 372, 375, 376, 378, 379, 380, 381, 382, 383, 384, 385, 386, 387,
+	388, 389, 390, 391, 392, 393, 419, 432, 433, 445, 446, 447, 448, 449, 461, 462, 463, 466, 467,
+	469, 470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 481, 484, 485, 486, 487, 492, 493, 494,
+	495, 496, 497, 498, 499, 500, 501, 502, 504, 506, 509, 511, 512, 513, 514, 515, 521, 525, 533,
+	535, 537, 540, 542, 546, 547, 548, 553, 554, 558, 559]
 
 ## Le combat, gardé par une référence faible : il possède ce module (pas de cycle de références).
 var battle: Battle:
@@ -115,17 +144,33 @@ func move_blocked(mon: BattleMon, move: int) -> Dictionary:
 	if mon.has("disable") and mon.get_effect("disable").move == move:
 		return {"line": 595 + v, "file": BWFiles.TEXT_BATTLE_SET, "words": words}
 	var data := MoveData.of(move)
+	var grounded := _heal_or_gravity_block(mon, data)
+	if not grounded.is_empty():
+		return grounded
 	if mon.has("taunt") and data and data.damage_class == MoveData.DamageClass.STATUS:
 		return {"line": 571 + v, "file": BWFiles.TEXT_BATTLE_SET, "words": words}
-	if mon.has("torment") and mon.last_move == move and move != STRUGGLE:
+	if mon.has("torment") and mon.last_selected == move and move != STRUGGLE:
 		return {"line": 580 + v, "file": BWFiles.TEXT_BATTLE_SET, "words": words}
 	if mon.has("choice_lock") and mon.get_effect("choice_lock") != move and mon.move_index(mon.get_effect("choice_lock")) >= 0:
 		return {"line": BattleText.BUT_IT_FAILED}
-	if battle.field.has("gravity") and data and data.has_flag(MoveData.Flag.GRAVITY):
-		return {"line": 1086 + v, "file": BWFiles.TEXT_BATTLE_SET, "words": words}
 	for foe in battle.foes_of(mon, false):
 		if foe.has("imprison") and foe.move_index(move) >= 0 and move != STRUGGLE:
 			return {"line": 589 + v, "file": BWFiles.TEXT_BATTLE_SET, "words": words}
+	return {}
+
+
+## Anti-Soin et capacité qui soigne (drapeau 12 : « ne peut pas utiliser Y à cause d'Anti-Soin »,
+## 890), Gravité et capacité qu'elle interdit (drapeau 9, 1086) : vérifiés aussi pour une capacité
+## appelée par Métronome... (0x021BE348). {} si rien ne l'empêche.
+func _heal_or_gravity_block(mon: BattleMon, data: MoveData) -> Dictionary:
+	if data == null:
+		return {}
+	var words := {0: mon.name(), 1: _move_name(data.id)}
+	var v := BattleText.variant(mon, battle.is_wild())
+	if mon.has("heal_block") and data.has_flag(MoveData.Flag.HEAL):
+		return {"line": 890 + v, "file": BWFiles.TEXT_BATTLE_SET, "words": words}
+	if battle.field.has("gravity") and data.has_flag(MoveData.Flag.GRAVITY):
+		return {"line": 1086 + v, "file": BWFiles.TEXT_BATTLE_SET, "words": words}
 	return {}
 
 
@@ -180,29 +225,99 @@ func use_move(mon: BattleMon, action: Dictionary) -> void:
 	# Prélèvement Destin et Rancune durent jusqu'à la capacité suivante du lanceur.
 	mon.clear_effect("destiny_bond")
 	mon.clear_effect("grudge")
-	# « X utilise Y ! » (fichier 13 : trois messages par capacité).
-	battle.say(move * 3 + BattleText.variant(mon, battle.is_wild()), {0: mon.name()}, BWFiles.TEXT_BATTLE_MOVES)
+	_announce(mon, move)
 	var forced: String = action.get("forced", "")
-	var targets := resolve_targets(mon, data, action.get("target", -1))
-	if forced.is_empty() and move != STRUGGLE:
-		if slot < 0 or mon.pp(slot) <= 0:
-			battle.say(BattleText.NO_PP)
+	var chosen: int = action.get("target", -1)
+	var spends_pp := forced.is_empty() and move != STRUGGLE
+	if spends_pp and (slot < 0 or mon.pp(slot) <= 0):
+		battle.say(BattleText.NO_PP)
+		return
+	var selected := move
+	mon.last_selected = selected
+	mon.used_moves[selected] = true
+	if battle.items.locks_choice(mon) and not mon.has("choice_lock"):
+		mon.set_effect("choice_lock", selected)
+	# Capacités qui en lancent une autre (événement 0x18, 0x021C6278) : l'animation de l'appelante,
+	# puis la capacité appelée part à sa place, sur sa propre cible ; les PP sont pris à l'appelante.
+	if move in CALLERS and forced.is_empty():
+		var called := _called_move(mon, move, chosen)
+		if called.is_empty():
+			if spends_pp:
+				_spend_pp(mon, slot, data, resolve_targets(mon, data, chosen))
+			mon.last_move = move
+			battle.say(BattleText.BUT_IT_FAILED)
 			return
-		mon.pokemon.moves[slot].pp = maxi(mon.pp(slot) - pp_cost(mon, data, targets), 0)
+		push_anim(mon, mon, move)
+		move = called.move
+		chosen = called.target
+		var grounded := _heal_or_gravity_block(mon, MoveData.of(move))
+		if not grounded.is_empty():
+			if spends_pp:
+				var only_user: Array[BattleMon] = [mon]
+				_spend_pp(mon, slot, data, only_user)
+			mon.last_move = move
+			battle.say(grounded.line, grounded.words, grounded.file)
+			return
+		data = MoveData.of(move)
+	var targets := resolve_targets(mon, data, chosen)
+	if spends_pp:
+		_spend_pp(mon, slot, data, targets)
+	if move != selected:
+		# Événement 0x19 (0x021C63F8) : « Métronome lance Y ! », « Force-Nature provoque Y. »
+		# (fichier 15), sinon « X utilise Y ! » pour la capacité appelée.
+		match selected:
+			118: battle.say(120, {0: _move_name(move)})
+			267: battle.say(121, {0: _move_name(move)})
+			_: _announce(mon, move)
+		if selected == 382:
+			mon.set_effect("me_first")
 	mon.last_move = move
-	mon.used_moves[move] = true
+	battle.last_move_used = move
 	battle.moves_this_turn.append({"mon": mon, "move": move})
 	if move != 99:
 		mon.clear_effect("rage")
-	if battle.items.locks_choice(mon) and not mon.has("choice_lock"):
-		mon.set_effect("choice_lock", move)
-	if not await _charge_turn(mon, data, forced, action.get("target", -1)):
+	await _execute(mon, data, targets, forced, chosen)
+	mon.clear_effect("me_first")
+
+
+## « X utilise Y ! » (fichier 13 : trois messages par capacité).
+func _announce(mon: BattleMon, move: int) -> void:
+	battle.say(move * 3 + BattleText.variant(mon, battle.is_wild()), {0: mon.name()}, BWFiles.TEXT_BATTLE_MOVES)
+
+
+## Les PP enlevés à la capacité choisie (Pression compte les cibles de la capacité qui part).
+func _spend_pp(mon: BattleMon, slot: int, data: MoveData, targets: Array[BattleMon]) -> void:
+	mon.pokemon.moves[slot].pp = maxi(mon.pp(slot) - pp_cost(mon, data, targets), 0)
+
+
+## La capacité part : premier tour d'une capacité en deux tours, conditions, Saisie et Reflet Magik,
+## puis ses effets. `reflected` : renvoyée par Reflet Magik ou volée par Saisie (elle ne l'est pas
+## une seconde fois).
+func _execute(mon: BattleMon, data: MoveData, targets: Array[BattleMon], forced: String, chosen: int, reflected := false) -> void:
+	var move := data.id
+	if not await _charge_turn(mon, data, forced, chosen):
 		return
 	var target: BattleMon = targets[0] if not targets.is_empty() else null
 	# L'animation n'est jouée que si la capacité part vraiment (pas d'échec, pas d'esquive).
 	if not _before_move(mon, target, data):
 		_after_failed(mon, data)
 		return
+	if not reflected:
+		# Reflet Magik et Miroir Magik (événement 0x1F, 0x021E86E4) : Picots, Pics Toxik et Piège de
+		# Roc sont renvoyés sur le côté du lanceur.
+		if data.target == MoveData.Target.ENEMY_SIDE and data.has_flag(MoveData.Flag.MAGIC_COAT):
+			for foe in battle.foes_of(mon, false):
+				if _reflects(foe, mon):
+					await _bounce(foe, mon, data)
+					return
+		# Saisie (événement 0x1A, 0x021BEAB4) : un Pokémon qui guette vole la capacité et la lance
+		# lui-même (« X saisit la capacité de Y ! », 754).
+		var snatcher := _snatcher(mon, data)
+		if snatcher:
+			snatcher.clear_effect("snatch")
+			battle.say_pair(754, snatcher, mon)
+			await _execute(snatcher, data, resolve_targets(snatcher, data), "", -1, true)
+			return
 	if data.target in [MoveData.Target.USER, MoveData.Target.ALL_ALLIES, MoveData.Target.USER_SIDE,
 			MoveData.Target.FIELD, MoveData.Target.ALL]:
 		push_anim(mon, mon, move)
@@ -210,6 +325,11 @@ func use_move(mon: BattleMon, action: Dictionary) -> void:
 		if mon.has("baton_pass"):
 			mon.clear_effect("baton_pass")
 			await _baton_pass(mon)
+		return
+	if data.target == MoveData.Target.ENEMY_SIDE:
+		# Le côté d'en face, une seule fois (Picots...), même s'il y a plusieurs adversaires.
+		push_anim(mon, target if target else mon, move)
+		await _status_move(mon, target if target else mon, data)
 		return
 	if target == null or target.is_fainted():
 		battle.say(BattleText.BUT_IT_FAILED)
@@ -251,9 +371,14 @@ func use_move(mon: BattleMon, action: Dictionary) -> void:
 			await _pivot_switch(mon)
 		return
 	# Capacité de statut sur une ou plusieurs cibles (Rugissement, Doux Parfum...) : l'animation
-	# une fois, puis l'effet sur chaque cible qui n'y échappe pas.
+	# une fois, puis l'effet sur chaque cible qui n'y échappe pas. Une cible sous Reflet Magik
+	# (événement 0x2D, 0x021E8738) n'est pas touchée : elle renvoie la capacité au lanceur ensuite.
 	var reached: Array[BattleMon] = []
+	var bouncers: Array[BattleMon] = []
 	for each in targets:
+		if not reflected and each != mon and data.has_flag(MoveData.Flag.MAGIC_COAT) and _reflects(each, mon):
+			bouncers.append(each)
+			continue
 		if not _passes_protection(mon, each, data):
 			continue
 		if not _can_reach(mon, each, data):
@@ -265,12 +390,155 @@ func use_move(mon: BattleMon, action: Dictionary) -> void:
 			battle.say_mon(BattleText.AVOIDED, each)
 			continue
 		reached.append(each)
-	if reached.is_empty():
+	if reached.is_empty() and bouncers.is_empty():
 		_after_failed(mon, data)
 		return
-	push_anim(mon, reached[0], move)
+	if not reached.is_empty():
+		push_anim(mon, reached[0], move)
 	for each in reached:
 		await _status_move(mon, each, data)
+	for bouncer in bouncers:
+		if not mon.is_fainted():
+			await _bounce(bouncer, mon, data)
+
+
+## Reflet Magik (effet du tour) ou Miroir Magik renvoie une capacité de ce Pokémon (pas pendant
+## qu'il est dans les airs, sous terre... : 0x021D5BD0).
+func _reflects(holder: BattleMon, attacker: BattleMon) -> bool:
+	if not battle.is_on_field(holder) or _is_hidden(holder):
+		return false
+	return holder.has("magic_coat") or battle.abilities.bounces(holder, attacker)
+
+
+func _is_hidden(mon: BattleMon) -> bool:
+	for state in ["flying", "underground", "underwater", "vanished"]:
+		if mon.has(state):
+			return true
+	return false
+
+
+## La capacité renvoyée (0x021E87A4) : « X repousse Y ! Retour à l'envoyeur ! » (764), puis elle
+## part du Pokémon qui la renvoie vers le lanceur, sans pouvoir être renvoyée de nouveau.
+func _bounce(holder: BattleMon, attacker: BattleMon, data: MoveData) -> void:
+	battle.say_mon(764, holder, {1: _move_name(data.id)})
+	var targets: Array[BattleMon] = [attacker]
+	await _execute(holder, data, targets, "", attacker.position(), true)
+
+
+## Le Pokémon qui guette avec Saisie (le plus rapide) et vole cette capacité, ou null : une capacité
+## qui se laisse voler (drapeau 5), lancée par un autre.
+func _snatcher(mon: BattleMon, data: MoveData) -> BattleMon:
+	if not data.has_flag(MoveData.Flag.SNATCH):
+		return null
+	for each in battle.by_speed(battle.all_active()):
+		if each != mon and each.has("snatch") and not each.is_fainted():
+			return each
+	return null
+
+
+# --- Capacités qui en lancent une autre ------------------------------------------------------------
+
+## La capacité appelée par Métronome, Force-Nature, Blabla Dodo, Assistance, Photocopie, Moi d'Abord
+## ou Mimique (leur réaction à l'événement 0x18) : {move, target} ; {} si elle échoue.
+func _called_move(mon: BattleMon, move: int, chosen: int) -> Dictionary:
+	var called := 0
+	var target := -1
+	match move:
+		118:
+			# Métronome (0x021E6A24) : au hasard parmi les capacités 1 à 559 (0x021D7DE4), sauf la liste
+			# 0x0689E3FC.
+			var pool: Array[int] = []
+			for id in range(1, METRONOME_LAST + 1):
+				if id not in METRONOME_EXCLUDED:
+					pool.append(id)
+			called = pool[_random().range_of(pool.size())]
+		267:
+			# Force-Nature (0x021E6AC0) : selon le terrain du combat (0x021C8114).
+			called = NATURE_POWER.get(battle.terrain, 161)
+		214:
+			# Blabla Dodo (0x021E6C7C) : endormi, une de ses capacités au hasard (même sans PP), sauf
+			# les listes et les capacités en deux tours.
+			if mon.status() != Pokemon.Status.SLEEP:
+				return {}
+			var known: Array[int] = []
+			for each in mon.pokemon.moves:
+				var known_data := MoveData.of(each.id)
+				if each.id not in CALL_EXCLUDED and each.id not in SLEEP_TALK_EXCLUDED and known_data and not known_data.has_flag(MoveData.Flag.CHARGE):
+					known.append(each.id)
+			if known.is_empty():
+				return {}
+			called = known[_random().range_of(known.size())]
+		274:
+			# Assistance (0x021E6B94) : une capacité au hasard des autres Pokémon de son dresseur
+			# (même K.O.), sauf les listes.
+			var side := battle.sides[mon.side]
+			var pool: Array[int] = []
+			for index in side.party.size():
+				if index == mon.party_index or not side.slot_owns(mon.slot, index):
+					continue
+				for each in side.party[index].moves:
+					if each.id not in CALL_EXCLUDED and each.id not in ASSIST_EXCLUDED:
+						pool.append(each.id)
+			if pool.is_empty():
+				return {}
+			called = pool[_random().range_of(pool.size())]
+		383:
+			# Photocopie (0x021E6EDC) : la dernière capacité lancée au combat, sauf les listes.
+			called = battle.last_move_used
+			if called == 0 or called in CALL_EXCLUDED or called in ASSIST_EXCLUDED:
+				return {}
+		382, 119:
+			# Moi d'Abord (0x021E6DD8), Mimique (0x021E6D4C) : sur la cible choisie (sinon celle d'en
+			# face), la capacité qu'elle va lancer ce tour (une attaque, x 1,5) ou la dernière qu'elle a
+			# lancée (qui se laisse copier, drapeau 6).
+			var picked := _mon_at_position(chosen)
+			if picked == null:
+				picked = battle.foe_of(mon)
+			if picked == null or not battle.is_on_field(picked) or picked == mon:
+				return {}
+			target = picked.position()
+			if move == 119:
+				called = picked.last_move
+				var copied := MoveData.of(called)
+				if called == 0 or copied == null or not copied.has_flag(MoveData.Flag.MIRROR):
+					return {}
+			else:
+				var pending := _pending_action(picked)
+				if picked.acted or pending.is_empty() or pending.get("action") != Battle.Action.FIGHT:
+					return {}
+				called = _action_move(picked, pending)
+				var copied := MoveData.of(called)
+				if called == 0 or copied == null or not copied.is_damaging() or called in ME_FIRST_EXCLUDED:
+					return {}
+	if target < 0:
+		target = _called_target(mon, MoveData.of(called))
+	return {"move": called, "target": target}
+
+
+## Cible d'une capacité appelée (0x021C7FD0, 0x021D805C) : en combat simple, l'adversaire (ou le
+## lanceur) ; à plusieurs, au hasard parmi les adversaires à portée (ou les alliés pour une capacité
+## qui les vise) ; -1 pour celles qui visent plusieurs Pokémon ou le terrain.
+func _called_target(mon: BattleMon, data: MoveData) -> int:
+	if data == null:
+		return -1
+	match data.target:
+		MoveData.Target.USER:
+			return mon.position()
+		MoveData.Target.OTHER, MoveData.Target.ENEMY, MoveData.Target.RANDOM_ENEMY:
+			var foes := battle.foes_of(mon, not data.has_flag(MoveData.Flag.DISTANT) or battle.format != Battle.Format.TRIPLE)
+			if foes.is_empty():
+				return -1
+			if not battle.is_multi():
+				return foes[0].position()
+			return foes[_random().range_of(foes.size())].position() if foes.size() > 1 else foes[0].position()
+		MoveData.Target.ALLY_OR_USER, MoveData.Target.ALLY:
+			var candidates := battle.allies_of(mon)
+			if data.target == MoveData.Target.ALLY_OR_USER:
+				candidates.append(mon)
+			if candidates.is_empty() or not battle.is_multi():
+				return mon.position() if data.target == MoveData.Target.ALLY_OR_USER else -1
+			return candidates[_random().range_of(candidates.size())].position() if candidates.size() > 1 else candidates[0].position()
+	return -1
 
 
 ## Animation d'une capacité (effet n° de la capacité) ; `variant` : variante du script (tour des
@@ -1029,6 +1297,8 @@ func move_power(mon: BattleMon, target: BattleMon, data: MoveData, move_type: in
 	ratio = battle.items.power_ratio(mon, data, move_type, ratio)
 	if mon.has("helping_hand"):
 		ratio = BattleCalc.fx_mul(ratio, 0x1800)
+	if mon.has("me_first"):
+		ratio = BattleCalc.fx_mul(ratio, ME_FIRST_RATIO)
 	for sport: Array in [["mud_sport", Stats.Type.ELECTRIC], ["water_sport", Stats.Type.FIRE]]:
 		if move_type == sport[1] and battle.field.has(sport[0]) and battle.is_on_field(battle.field[sport[0]]):
 			ratio = BattleCalc.fx_mul(ratio, SPORT_RATIO)
@@ -1583,20 +1853,8 @@ func _force_switch(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 		else:
 			battle.result = Battle.Result.RUN
 		return
-	var side := battle.sides[target.side]
-	var reserves := side.reserves()
-	if reserves.is_empty():
+	if not _drag_in(target):
 		battle.say(BattleText.BUT_IT_FAILED)
-		return
-	var index := reserves[_random().range_of(reserves.size())]
-	battle.push({"type": "withdraw", "side": side.id, "slot": target.slot})
-	var incoming := BattleMon.create(side.party[index], side.id, index, target.slot)
-	side.active[target.slot] = incoming
-	battle.push({"type": "send_out", "side": side.id, "slot": target.slot, "mon": incoming, "intro": false, "hp": incoming.hp(),
-		"max": incoming.max_hp(), "level": incoming.level(), "status": incoming.status()})
-	battle.say_mon(845, incoming)
-	apply_entry_hazards(incoming)
-	battle.abilities.on_switch_in(incoming)
 
 
 # --- Capacités à part ---------------------------------------------------------------------------
@@ -1735,15 +1993,18 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 			target.set_effect("taunt", 3 + (0 if target.acted else 1))
 			battle.say_mon(568, target)
 		50:
-			var move := target.last_move
-			if move == 0 or target.has("disable") or target.move_index(move) < 0:
+			# Entrave (0x021E47C8) : la dernière capacité choisie par la cible (+0x14A).
+			var move := target.last_selected
+			if move == 0 or move == STRUGGLE or target.has("disable") or target.move_index(move) < 0:
 				battle.say(BattleText.BUT_IT_FAILED)
 				return true
 			target.set_effect("disable", {"move": move, "turns": 4})
 			battle.say_mon(592, target, {1: _move_name(move)})
 		227:
-			var move := target.last_move
-			if move == 0 or target.has("encore") or move in [227, 166, 165, 102]:
+			# Encore (0x021E4628) : la dernière capacité choisie, connue et avec des PP, hors liste.
+			var move := target.last_selected
+			var encore_slot := target.move_index(move)
+			if move == 0 or target.has("encore") or move in ENCORE_EXCLUDED or encore_slot < 0 or target.pp(encore_slot) <= 0:
 				battle.say(BattleText.BUT_IT_FAILED)
 				return true
 			target.set_effect("encore", {"move": move, "turns": 3})
@@ -1845,13 +2106,13 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 			battle.damage(mon, mon.hp(), "memento")
 		180:
 			# Dépit (0x021E4AA0) : la dernière capacité de la cible perd jusqu'à 4 PP (message 641).
-			var spite_slot := target.move_index(target.last_move)
+			var spite_slot := target.move_index(target.last_selected)
 			var lost := mini(target.pp(spite_slot), 4) if spite_slot >= 0 else 0
 			if lost <= 0:
 				battle.say(BattleText.BUT_IT_FAILED)
 				return true
 			target.pokemon.moves[spite_slot].pp -= lost
-			battle.say_mon(641, target, {1: _move_name(target.last_move), 2: str(lost)})
+			battle.say_mon(641, target, {1: _move_name(target.last_selected), 2: str(lost)})
 		288:
 			# Rancune (0x021E67A0) : si le lanceur est mis K.O. par une attaque avant son prochain tour,
 			# la capacité de l'attaquant perd tous ses PP (message 635).
@@ -1925,7 +2186,7 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 				battle.say(BattleText.BUT_IT_FAILED)
 				return true
 			mon.ability = copied
-			battle.say_mon(619, mon, {1: target.name(), 2: Autoloads.rom().text(BWFiles.TEXT_ABILITY_NAMES, copied)})
+			battle.say_pair(619, mon, target, {2: Autoloads.rom().text(BWFiles.TEXT_ABILITY_NAMES, copied)})
 		160:
 			# Adaptation (0x021E0408) : un type au hasard parmi ceux des capacités du lanceur (sauf
 			# celle-ci) qu'il n'a pas déjà.
@@ -1975,7 +2236,7 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 		513:
 			# Copie Type (0x021E77BC) : le lanceur prend les types de la cible (message 1089).
 			mon.types = target.types.duplicate()
-			battle.say_mon(1089, mon, {1: target.name()})
+			battle.say_pair(1089, mon, target)
 		475:
 			# Allègement : Vitesse +2 et 100 kg de moins (message 1102 si le poids a baissé).
 			var raised := change_stat(mon, mon, Stats.Stat.SPEED, 2, false)
@@ -2141,11 +2402,69 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 				battle.say(BattleText.BUT_IT_FAILED)
 				return true
 			mon.set_effect("baton_pass")
-		144, 102, 118, 119, 166, 214, 274, 383, 382:
+		102:
+			# Copie (0x021E0938) : la dernière capacité choisie par la cible remplace Copie le temps de
+			# la présence au combat, avec ses PP de base (688) ; pas si le lanceur est transformé ou la
+			# connaît déjà.
+			var copied := target.last_selected
+			var mimic_slot := mon.move_index(102)
+			if mon.has("transformed") or copied == 0 or copied in MIMIC_EXCLUDED or mon.move_index(copied) >= 0 or mimic_slot < 0:
+				battle.say(BattleText.BUT_IT_FAILED)
+				return true
+			mon.replace_move(mimic_slot, copied)
+			battle.say_mon(688, mon, {1: _move_name(copied)})
+		166:
+			# Gribouille (0x021E0A20) : la dernière capacité choisie par la cible remplace Gribouille pour
+			# de bon, avec ses PP de base (691).
+			var sketched := target.last_selected
+			var sketch_slot := mon.move_index(166)
+			if mon.has("transformed") or sketched == 0 or sketched in SKETCH_EXCLUDED or mon.move_index(sketched) >= 0 or sketch_slot < 0:
+				battle.say(BattleText.BUT_IT_FAILED)
+				return true
+			mon.pokemon.moves[sketch_slot] = {"id": sketched, "pp": MoveData.max_pp(sketched, 0), "pp_ups": 0}
+			battle.say_mon(691, mon, {1: _move_name(sketched)})
+		144:
+			# Morphing (0x021CA41C) : échoue si l'un des deux est déjà transformé ou si la cible a un
+			# clone.
+			if mon.has("transformed") or target.has("transformed") or target.has("substitute"):
+				battle.say(BattleText.BUT_IT_FAILED)
+				return true
+			_transform(mon, target)
+		289, 277:
+			# Saisie (0x021E3540), Reflet Magik (0x021E3454) : échouent si tous les autres ont déjà agi
+			# (0x021C804C) ; jusqu'à la fin du tour, le lanceur guette une capacité à voler (751) ou
+			# renvoie celles qui le visent (761).
+			if battle.queue.is_empty():
+				battle.say(BattleText.BUT_IT_FAILED)
+				return true
+			mon.set_effect("snatch" if data.id == 289 else "magic_coat")
+			battle.say_mon(751 if data.id == 289 else 761, mon)
+		118, 119, 214, 267, 274, 383, 382:
+			# Elles lancent une autre capacité avant d'arriver ici (use_move()).
 			battle.say(BattleText.BUT_IT_FAILED)
 		_:
 			return false
 	return true
+
+
+## Morphing (0x021D6BF0 copie la structure de la cible, sauf le début : PV, niveau...) : types,
+## statistiques sauf les PV, crans, talent, poids et capacités (5 PP au plus) ; le sprite devient
+## celui de la cible (commande 0x53 du client) ; « X prend l'apparence de Y ! » (644).
+func _transform(mon: BattleMon, target: BattleMon) -> void:
+	mon.set_effect("transformed", {"species": target.pokemon.species, "form": target.pokemon.form,
+		"gender": target.pokemon.gender, "weight": target.weight()})
+	mon.types = target.types.duplicate()
+	mon.ability = target.ability
+	mon.stages = target.stages.duplicate()
+	for stat in [Stats.Stat.ATTACK, Stats.Stat.DEFENSE, Stats.Stat.SPEED, Stats.Stat.SP_ATTACK, Stats.Stat.SP_DEFENSE]:
+		mon.stat_overrides[stat] = target.raw_stat(stat)
+	var ids: Array[int] = []
+	for each in target.pokemon.moves:
+		ids.append(each.id)
+	mon.replace_all_moves(ids, TRANSFORM_PP)
+	battle.push({"type": "transform", "side": mon.side, "slot": mon.slot, "species": target.pokemon.species,
+		"form": target.pokemon.form, "gender": target.pokemon.gender})
+	battle.say_pair(644, mon, target)
 
 
 ## Le Pokémon n'a plus qu'un type (Adaptation, Camouflage, Détrempage) : « X prend le type Y ! »
@@ -2447,19 +2766,25 @@ func _drag_out(mon: BattleMon, target: BattleMon) -> void:
 			battle.say_mon(767, target)
 			battle.result = Battle.Result.ENEMY_FLED
 		return
+	_drag_in(target)
+
+
+## Le Pokémon renvoyé de force (Hurlement, Projection...) est remplacé par un membre de son équipe
+## tiré au sort (« X est envoyé au combat ! », 845) ; faux si personne ne peut le remplacer.
+func _drag_in(target: BattleMon) -> bool:
 	var side := battle.sides[target.side]
 	var reserves := side.reserves(target.slot)
 	if reserves.is_empty():
-		return
+		return false
 	var index := reserves[_random().range_of(reserves.size())]
+	battle.abilities.on_switch_out(target)
 	battle.push({"type": "withdraw", "side": side.id, "slot": target.slot})
-	var incoming := BattleMon.create(side.party[index], side.id, index, target.slot)
-	side.active[target.slot] = incoming
-	battle.push({"type": "send_out", "side": side.id, "slot": target.slot, "mon": incoming, "intro": false, "hp": incoming.hp(),
-		"max": incoming.max_hp(), "level": incoming.level(), "status": incoming.status()})
+	var incoming := battle.send_out(side, index, target.slot)
+	battle.push_send_out(incoming)
 	battle.say_mon(845, incoming)
 	apply_entry_hazards(incoming)
 	battle.abilities.on_switch_in(incoming)
+	return true
 
 
 ## Demi-Tour, Change Éclair : le lanceur revient et le joueur choisit qui le remplace.
@@ -2589,7 +2914,7 @@ func end_of_turn_effects(mon: BattleMon) -> void:
 
 ## Compteurs des effets passagers en fin de tour : Provoc, Encore, Entrave, Bâillement, Requiem...
 func end_of_turn_counters(mon: BattleMon) -> void:
-	for effect in ["protect", "endure", "roost", "follow_me", "helping_hand"]:
+	for effect in ["protect", "endure", "roost", "follow_me", "helping_hand", "snatch", "magic_coat"]:
 		mon.clear_effect(effect)
 	if mon.has("uproar"):
 		_uproar_turn(mon)

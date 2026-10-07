@@ -25,9 +25,12 @@ var volatile := {}
 ## Compteur de l'empoisonnement grave (n/16 des PV, n monte chaque tour).
 var toxic_counter := 0
 var badly_poisoned := false
-## Dernière capacité utilisée, dernière capacité qui l'a touché, derniers dégâts reçus (Riposte,
-## Voile Miroir, Fulmifer), tours passés au combat.
+## Dernière capacité lancée (+0x14C de la structure du jeu : celle qu'a appelée Métronome, par
+## exemple ; Mimique la copie), dernière capacité choisie (+0x14A : Métronome lui-même ; Encore,
+## Entrave, Dépit, Copie, Gribouille, Tourmente), dernière capacité qui l'a touché, derniers dégâts
+## reçus (Riposte, Voile Miroir, Fulmifer), tours passés au combat.
 var last_move := 0
+var last_selected := 0
 var last_hit_by_move := 0
 var last_damage := 0
 var last_damage_class := MoveData.DamageClass.STATUS
@@ -46,6 +49,11 @@ var stat_overrides := {}
 var weight_lost := 0
 ## Capacités déjà utilisées depuis l'entrée au combat (Dernierecour).
 var used_moves := {}
+## Capacités de l'équipe remplacées le temps de la présence au combat (Copie, Morphing) : place ->
+## capacité d'origine, ou -1 -> toutes les capacités d'origine (Morphing). Le jeu garde deux copies
+## de chaque capacité (celle de l'équipe et celle du combat, 0x021D517C) ; elles sont rendues quand
+## le Pokémon quitte le terrain ou à la fin du combat.
+var replaced_moves := {}
 
 
 static func create(member: Pokemon, side_id: int, index: int, slot_index := 0) -> BattleMon:
@@ -71,6 +79,7 @@ func reset_on_entry() -> void:
 	volatile.clear()
 	toxic_counter = 0
 	last_move = 0
+	last_selected = 0
 	last_hit_by_move = 0
 	last_damage = 0
 	last_attacker = null
@@ -83,10 +92,48 @@ func reset_on_entry() -> void:
 	used_moves.clear()
 
 
-## Poids au combat en hectogrammes (Allègement en retire, 0,1 kg au moins).
+## Poids au combat en hectogrammes (Allègement en retire, 0,1 kg au moins ; Morphing donne celui de
+## la cible).
 func weight() -> int:
 	var data := pokemon.personal()
-	return maxi((data.weight if data else 0) - weight_lost, 1)
+	var base: int = data.weight if data else 0
+	if has("transformed"):
+		base = get_effect("transformed").weight
+	return maxi(base - weight_lost, 1)
+
+
+## Remplace une capacité le temps de la présence au combat (Copie) : PP de base, sans PP Plus,
+## bornés par `pp_cap` s'il n'est pas nul (0x021D51A8).
+func replace_move(slot: int, id: int, pp_cap := 0) -> void:
+	if not replaced_moves.has(slot) and not replaced_moves.has(-1):
+		replaced_moves[slot] = pokemon.moves[slot].duplicate()
+	var pp := MoveData.max_pp(id, 0)
+	pokemon.moves[slot] = {"id": id, "pp": mini(pp, pp_cap) if pp_cap > 0 else pp, "pp_ups": 0}
+
+
+## Remplace toutes les capacités (Morphing : celles de la cible, 5 PP chacune au plus).
+func replace_all_moves(ids: Array[int], pp_cap: int) -> void:
+	if not replaced_moves.has(-1):
+		var original: Array[Dictionary] = pokemon.moves.duplicate(true)
+		for slot: int in replaced_moves:
+			original[slot] = replaced_moves[slot]
+		replaced_moves = {-1: original}
+	var moves: Array[Dictionary] = []
+	for id in ids:
+		var pp := MoveData.max_pp(id, 0)
+		moves.append({"id": id, "pp": mini(pp, pp_cap), "pp_ups": 0})
+	pokemon.moves = moves
+
+
+## Rend les capacités de l'équipe (le Pokémon quitte le terrain, ou fin du combat).
+func restore_moves() -> void:
+	if replaced_moves.has(-1):
+		pokemon.moves = replaced_moves[-1]
+	else:
+		for slot: int in replaced_moves:
+			if slot < pokemon.moves.size():
+				pokemon.moves[slot] = replaced_moves[slot]
+	replaced_moves.clear()
 
 
 func name() -> String:

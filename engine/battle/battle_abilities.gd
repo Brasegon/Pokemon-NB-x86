@@ -169,13 +169,15 @@ const TURBOBLAZE := 163
 const TERAVOLT := 164
 ## Talents qui ignorent ceux de la cible (Brise Moule, TurboBrasier, Téra-Voltage).
 const BREAKERS: Array[int] = [MOLD_BREAKER, TURBOBLAZE, TERAVOLT]
-## Talents qu'un Brise Moule ignore (ceux qui protègent la cible).
+## Talents qu'un Brise Moule ignore (liste 0x0689E450 de l'overlay 95, lue par le filtre 0x021DB148
+## qu'il pose pendant sa capacité).
 const BREAKABLE: Array[int] = [STURDY, DAMP, LIMBER, SAND_VEIL, VOLT_ABSORB, WATER_ABSORB, OBLIVIOUS,
 	INSOMNIA, IMMUNITY, FLASH_FIRE, SHIELD_DUST, OWN_TEMPO, SUCTION_CUPS, WONDER_GUARD, LEVITATE,
 	CLEAR_BODY, LIGHTNING_ROD, INNER_FOCUS, MAGMA_ARMOR, WATER_VEIL, SOUNDPROOF, THICK_FAT, KEEN_EYE,
-	HYPER_CUTTER, MARVEL_SCALE, VITAL_SPIRIT, WHITE_SMOKE, SHELL_ARMOR, BATTLE_ARMOR, TANGLED_FEET,
-	MOTOR_DRIVE, SNOW_CLOAK, HEATPROOF, SIMPLE, DRY_SKIN, LEAF_GUARD, UNAWARE, FILTER, STORM_DRAIN,
-	SOLID_ROCK, FLOWER_GIFT, CONTRARY, MULTISCALE, BIG_PECKS, WONDER_SKIN, SAP_SIPPER]
+	HYPER_CUTTER, STICKY_HOLD, MARVEL_SCALE, VITAL_SPIRIT, WHITE_SMOKE, SHELL_ARMOR, BATTLE_ARMOR,
+	TANGLED_FEET, MOTOR_DRIVE, SNOW_CLOAK, HEATPROOF, SIMPLE, DRY_SKIN, LEAF_GUARD, UNAWARE, FILTER,
+	STORM_DRAIN, SOLID_ROCK, FLOWER_GIFT, CONTRARY, FRIEND_GUARD, HEAVY_METAL, LIGHT_METAL, MULTISCALE,
+	TELEPATHY, BIG_PECKS, WONDER_SKIN, MAGIC_BOUNCE, SAP_SIPPER]
 ## Talents écrits dans ce fichier (pour le décompte de la documentation).
 const HANDLED := [STENCH, DRIZZLE, SPEED_BOOST, BATTLE_ARMOR, STURDY, DAMP, LIMBER, SAND_VEIL, STATIC,
 	VOLT_ABSORB, WATER_ABSORB, OBLIVIOUS, CLOUD_NINE, COMPOUND_EYES, INSOMNIA, COLOR_CHANGE, IMMUNITY,
@@ -584,6 +586,12 @@ func redirect(mon: BattleMon, target: BattleMon, data: MoveData, move_type: int)
 		if each != mon and _target_ability(each, mon) == drawing[move_type]:
 			return each
 	return target
+
+
+## Miroir Magik (0x021DCACC) : renvoie les capacités que Reflet Magik renvoie (sauf face à un
+## Brise Moule).
+func bounces(holder: BattleMon, attacker: BattleMon) -> bool:
+	return _target_ability(holder, attacker) == MAGIC_BOUNCE
 
 
 ## Le talent de la cible arrête la capacité (Lévitation, Absorb Volt...) ; vrai si elle est arrêtée.

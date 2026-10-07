@@ -386,6 +386,10 @@ ov93:0x021BC8E8   battle_speed                    vitesse d'un Pokémon
 ov93:0x021BCC80   battle_run_action               exécute une action (1 attaque, 2 objet, 3 changement, 4 fuite, 5 déplacement, 6 rotation, 7 rechargement)
 ov93:0x021BD388   battle_shift_center             combat triple : le Pokémon d'un bord passe au milieu (message 231)
 ov93:0x021BD5AC   battle_escape                   la fuite réussit-elle
+ov93:0x021BDE38   battle_use_move                 emploi d'une capacité : conditions, événements 0x18 et 0x19, PP, Saisie, effets
+ov93:0x021BE348   called_move_blocked             capacité appelée (Métronome...) : Anti-Soin (drapeau 12) et Gravité (drapeau 9)
+ov93:0x021BE4F0   snatch_use                      Saisie : le voleur lance la capacité (754)
+ov93:0x021BEAB4   snatch_check                    événement 0x1A : Saisie vole-t-elle la capacité (drapeau 5)
 ov93:0x021BFA00   battle_accuracy                 précision : la capacité touche-t-elle
 ov93:0x021C0D30   battle_damage_targets           dégâts sur la liste des cibles : x 0,75 si la capacité en visait plusieurs, adversaires puis alliés
 ov93:0x021C154C   effectiveness_message           efficacité d'une seule cible : « C'est super efficace ! » ou « pas très efficace »
@@ -393,8 +397,16 @@ ov93:0x021C1E14   battle_damage                   dégâts d'une capacité
 ov93:0x021C45B4   battle_recenter_triple          combat triple : un contre un aux coins opposés, les deux glissent au milieu
 ov93:0x021C50A8   battle_switch_out               sortie d'un Pokémon (changement, rotation) : événement 0xA3
 ov93:0x021C57E0   effectiveness_messages          efficacité d'un groupe de cibles : sans noms, ou une, deux, trois cibles nommées (fichier 14)
+ov93:0x021C6278   move_call_event                 événement 0x18 : capacité appelée (variable 0x12), sa cible (0x0D), échec (0x41)
 ov93:0x021C6370   battle_confusion_damage         dégâts de la confusion (puissance 40)
+ov93:0x021C63F8   move_call_message               événement 0x19 : message de la capacité appelée (Métronome 120, Force-Nature 121)
+ov93:0x021C7FD0   called_move_target              cible d'une capacité appelée
+ov93:0x021C804C   others_all_acted                tous les autres ont-ils agi ce tour (Saisie, Reflet Magik échouent)
+ov93:0x021C80B4   battle_last_move                dernière capacité lancée au combat (champ 0x1F74 du serveur, Photocopie)
 ov93:0x021C80FC   battle_rule                     type de combat : 0 simple, 1 double, 2 triple, 3 rotatif
+ov93:0x021C88B8   server_work                     travaux du serveur (selon le type : 4 message, 0x25 capacité remplacée, 0x33 Morphing...)
+ov93:0x021C9EAC   server_set_move                 travail 0x25 : une capacité remplace une autre (Copie, Gribouille)
+ov93:0x021CA41C   server_transform                travail 0x33 : Morphing
 ov93:0x021CB274   battle_exp_share                partage de l'expérience
 ov93:0x021CB4FC   battle_exp_gain                 expérience reçue
 ov93:0x021CBAD4   battle_capture                  calcul de la capture
@@ -403,6 +415,13 @@ ov93:0x021CBCE8   capture_ball                    multiplicateur des Balls
 ov93:0x021CBE48   capture_critical                capture critique
 ov93:0x021CE890   battle_trainer_speech           paroles du dresseur en combat (table 0x021EFF18)
 ov93:0x021D1FD0   client_move                     client : commande 0x31 (animation d'une capacité)
+ov93:0x021D517C   move_slot_set                   écrit une capacité : copie du combat (Copie, Morphing) ou de l'équipe (Gribouille)
+ov93:0x021D5540   mon_move_pp                     PP d'une capacité connue (copie du combat)
+ov93:0x021D56F0   mon_knows_move                  le Pokémon connaît-il la capacité
+ov93:0x021D66E4   mon_record_move                 retient la capacité choisie (+0x14A), la capacité lancée (+0x14C) et la cible
+ov93:0x021D6748   mon_last_move_used              dernière capacité lancée (+0x14C ; Mimique)
+ov93:0x021D6758   mon_last_move_selected          dernière capacité choisie (+0x14A ; Encore, Entrave, Dépit, Copie, Gribouille)
+ov93:0x021D6BF0   mon_transform                   Morphing : recopie la structure de la cible sauf ses 0xEC premiers octets, 5 PP par capacité
 ov93:0x021D7614   battle_mul_clamp                multiplicateurs bornés de 0x29 à 0x20000
 ov93:0x021D784C   battle_rand                     tirage dans [0, n) du générateur du combat
 ov93:0x021D7884   battle_stage_ratio              crans d'une statistique (table 0x021F03E8)
@@ -413,13 +432,19 @@ ov93:0x021D79E4   battle_base_damage              dégâts de base
 ov93:0x021D7AB0   fx_mul_round                    arrondi des multiplicateurs (au-delà de 0x800 vers le haut)
 ov93:0x021D7B44   battle_hit_count                nombre de coups (table 0x021F03C1)
 ov93:0x021D7B74   battle_weather_damage           dégâts du sable et de la grêle (1/16)
+ov93:0x021D7DE4   metronome_pick                  Métronome : capacité tirée parmi 1 à 0x22F, hors liste 0x0689E3FC
 ov93:0x021D7E54   battle_exp_yield                expérience donnée
 ov93:0x021D7F5C   battle_prize                    somme gagnée
 ov93:0x021D7F98   battle_money_lost               somme perdue
+ov93:0x021D805C   default_target                  cible d'une capacité selon ses données et le type de combat
 ov93:0x021D8424   ability_handler_lookup          cherche un talent dans la table des gestionnaires (0x9E entrées)
+ov93:0x021DB148   mold_breaker_filter             Brise Moule : fait taire les talents de la liste 0x0689E450
 ov93:0x021DB8DC   ability_pressure_pp             Pression : un PP de plus (porteur visé, terrain, ou liste 0x0689E2C4)
 ov93:0x021DCE64   item_handler_lookup             cherche un objet tenu dans la table des gestionnaires (171 entrées et une fin)
 ov93:0x021E027C   move_handler_lookup             cherche une capacité à part dans la table des gestionnaires (0x102 entrées)
+ov93:0x021E86E4   magic_coat_side                 Reflet Magik, Miroir Magik : renvoie Picots, Pics Toxik, Piège de Roc (événement 0x1F)
+ov93:0x021E8738   magic_coat_target               Reflet Magik, Miroir Magik : renvoie une capacité au drapeau 4 qui vise le porteur (événement 0x2D)
+ov93:0x021E87A4   magic_coat_message              « X repousse Y ! Retour à l'envoyeur ! » (764)
 ov93:0x021EB2CC   intro_select                    choisit le début du combat selon le type de combat et l'adversaire
 ov93:0x021EB524   intro_fade_in                   ouverture depuis le noir (16 à 0, un cran toutes les 2 images)
 ov93:0x021EB630   intro_wild                      début d'un combat sauvage (9 étapes)
@@ -432,6 +457,12 @@ ov93:0x021ED0B8   client_move_effect_setup        prépare l'effet d'une capacit
 ov93:0x021ED0F8   client_move_effect_task         ferme la boîte, joue l'effet de la capacité, attend sa fin
 ov93:0x021ED9A4   gauge_enter                     la jauge entre
 ov93:0x021EE0A4   tray_ball_state                 état d'une Ball de la rangée : vide, en forme, K.O., statut
+ov93:0x021EEE20   std_message_side                fichier 15 : la ligne suivante pour le camp d'en face (table 0x021F3940)
+ov93:0x021EEE94   set_message_select              message du fichier 14 : fonction de variantes (table 0x021F3978)
+ov93:0x021EEF38   message_mon_count               nombre de noms de Pokémon d'un message (balises 0x0101, 0x0102, 0x010C)
+ov93:0x021EF16C   set_message_default             message du fichier 14 : 7 variantes avec deux noms, sinon 3
+ov93:0x021EF1A4   set_message_variant3            3 variantes selon le camp du premier Pokémon
+ov93:0x021EF220   set_message_variant7            7 variantes selon les camps des deux premiers Pokémon
 
 # Affichage du combat (overlay 94)
 ov94:0x021F6500   battle_platforms                socles (fichier 2 de a/1/5/2)
@@ -591,6 +622,8 @@ ov93:0x021F041C   type_chart                      table des types 17 x 17 (0 auc
 ov93:0x021F0E14   ability_handlers                gestionnaires des 158 talents (une table, lue jusqu'à 0x9E par 0x021D8424)
 ov93:0x021F1E44   item_handlers                   gestionnaires des 171 objets tenus
 ov93:0x021F2FD0   move_handlers                   gestionnaires des 258 capacités à part (une table, borne 0x102 en 0x021E02EC)
+ov93:0x021F3940   side_messages                   27 messages du fichier 15 qui ont une ligne pour le camp d'en face
+ov93:0x021F3978   set_message_functions           14 messages du fichier 14 et leur fonction de variantes
 
 # Overlay 94
 ov94:0x02209D6C   effect_vm_descriptor            descripteur de la machine des effets
@@ -616,6 +649,15 @@ ov94:0x0220ACA0   camera_targets                  points visés des prises de vu
 
 # Overlay 95
 ov95:0x0689E2C4   pressure_moves                  Saisie, Possessif, Picots, Pics Toxik, Piège de Roc : Pression compte tous les adversaires
+ov95:0x0689E2CE   mimic_excluded                  capacités que Copie ne copie pas
+ov95:0x0689E2DA   encore_excluded                 capacités sur lesquelles Encore échoue
+ov95:0x0689E31C   me_first_excluded               capacités que Moi d'Abord ne copie pas
+ov95:0x0689E330   call_excluded                   capacités jamais appelées (Blabla Dodo, Assistance, Photocopie)
+ov95:0x0689E346   sleep_talk_excluded             capacités que Blabla Dodo n'appelle pas
+ov95:0x0689E3AC   copycat_excluded                capacités que Photocopie n'appelle pas
+ov95:0x0689E3D4   assist_excluded                 capacités qu'Assistance n'appelle pas (copie de 0x0689E3AC)
+ov95:0x0689E3FC   metronome_excluded              41 capacités que Métronome n'appelle pas
+ov95:0x0689E450   breakable_abilities             55 talents qu'un Brise Moule fait taire
 
 [commandes de script]
 

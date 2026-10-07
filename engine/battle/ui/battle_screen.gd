@@ -373,6 +373,8 @@ func _play(event: Dictionary) -> void:
 			await _shift(event)
 		"rotate":
 			await _rotate(event)
+		"transform":
+			_transform(event)
 		"request":
 			await _answer(event.request)
 
@@ -514,6 +516,23 @@ func _send_out(event: Dictionary) -> void:
 	var place := _prepare_pokemon(event)
 	await play_effect(BattleEffects.SWITCH_IN, place)
 	_slide_gauge(place, true)
+
+
+## Morphing (commande 0x53 du client) : le sprite du Pokémon devient celui de sa cible (il garde son
+## nom et son chromatisme).
+func _transform(event: Dictionary) -> void:
+	var place := _event_place(event)
+	var old: BattleSprite = slots.get(place)
+	if old == null or old.pokemon == null:
+		return
+	var shown := Pokemon.new()
+	shown.species = event.species
+	shown.form = event.form
+	shown.gender = event.gender
+	shown.pid = old.pokemon.pid
+	shown.ot_id = old.pokemon.ot_id
+	shown.nickname = old.pokemon.name()
+	_put_sprite(place, BattleSprite.for_pokemon(shown, _side_of_place(place) == BattleSide.PLAYER))
 
 
 func _withdraw(place: int) -> void:

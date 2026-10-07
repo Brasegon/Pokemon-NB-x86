@@ -48,6 +48,7 @@ func _initialize() -> void:
 	_test_special_moves()
 	_test_attack_moves()
 	_test_team_moves()
+	_test_call_moves()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -425,8 +426,8 @@ func _test_triple_adjacency() -> void:
 	var battle := Battle.against_trainer(state, 506, {"random": GameRandom.new(61)})
 	_check(battle.format == Battle.Format.TRIPLE and battle.slot_count() == 3, "la fiche 506 est un combat triple")
 	for slot in 3:
-		battle._send_out(battle.player(), slot, slot)
-		battle._send_out(battle.enemy(), slot, slot)
+		battle.send_out(battle.player(), slot, slot)
+		battle.send_out(battle.enemy(), slot, slot)
 	var left := battle.mon_at(BattleSide.PLAYER, 0)
 	var center := battle.mon_at(BattleSide.PLAYER, 1)
 	_check(battle.column(BattleSide.ENEMY, 0) == 2 and battle.column(BattleSide.PLAYER, 0) == 0, "colonnes : place 0 du joueur à gauche, place 0 d'en face à droite")
@@ -466,8 +467,8 @@ func _test_spread_and_screens() -> void:
 	var foe := Pokemon.create(504, 40, {"random": GameRandom.new(64)})
 	var battle := Battle.wild(state, foe, {"random": GameRandom.new(65), "partner": Pokemon.create(504, 40, {"random": GameRandom.new(66)})})
 	for slot in 2:
-		battle._send_out(battle.player(), slot, slot)
-		battle._send_out(battle.enemy(), slot, slot)
+		battle.send_out(battle.player(), slot, slot)
+		battle.send_out(battle.enemy(), slot, slot)
 	var attacker := battle.mon_at(BattleSide.PLAYER, 0)
 	var target := battle.mon_at(BattleSide.ENEMY, 0)
 	var move := MoveData.of(157)
@@ -490,8 +491,8 @@ func _test_rotation() -> void:
 	var battle := Battle.against_trainer(state, 513, {"random": GameRandom.new(74)})
 	_check(battle.format == Battle.Format.ROTATION, "la fiche 513 est un combat rotatif")
 	for slot in 3:
-		battle._send_out(battle.player(), slot, slot)
-		battle._send_out(battle.enemy(), slot, slot)
+		battle.send_out(battle.player(), slot, slot)
+		battle.send_out(battle.enemy(), slot, slot)
 	_check(battle.fighters(BattleSide.PLAYER).size() == 1 and battle.all_active().size() == 2, "seul le Pokémon de devant combat")
 	var front := battle.mon_at(BattleSide.PLAYER, 0)
 	var left := battle.mon_at(BattleSide.PLAYER, 1)
@@ -524,8 +525,8 @@ func _duel(moves: Array[int], seed: int, foe_species := 506) -> Battle:
 	state.party[0].set_moves(moves)
 	var foe := Pokemon.create(foe_species, 50, {"random": GameRandom.new(seed + 1)})
 	var battle := Battle.wild(state, foe, {"random": GameRandom.new(seed + 2)})
-	battle._send_out(battle.player(), 0, 0)
-	battle._send_out(battle.enemy(), 0, 0)
+	battle.send_out(battle.player(), 0, 0)
+	battle.send_out(battle.enemy(), 0, 0)
 	return battle
 
 
@@ -668,8 +669,8 @@ func _double_duel(moves: Array[int], seed: int) -> Battle:
 	var first := Pokemon.create(504, 50, {"random": GameRandom.new(seed + 3)})
 	var battle := Battle.wild(state, first, {"random": GameRandom.new(seed + 4), "partner": Pokemon.create(504, 50, {"random": GameRandom.new(seed + 5)})})
 	for slot in 2:
-		battle._send_out(battle.player(), slot, slot)
-		battle._send_out(battle.enemy(), slot, slot)
+		battle.send_out(battle.player(), slot, slot)
+		battle.send_out(battle.enemy(), slot, slot)
 	battle.auto_answer = _auto
 	return battle
 
@@ -917,6 +918,131 @@ func _play_screen(battle: Battle, command: int) -> Dictionary:
 	screen.queue_free()
 	await process_frame
 	return {"panels": seen.keys(), "trainer": trainer}
+
+
+## Le message (fichier, ligne) a-t-il été produit par le combat ?
+static func _said(battle: Battle, file: int, line: int) -> bool:
+	for event in battle.events:
+		if event.type == "message" and event.file == file and event.line == line:
+			return true
+	return false
+
+
+## Capacités qui en lancent une autre (événement 0x18), qui copient (Copie, Gribouille, Morphing),
+## Saisie et Reflet Magik.
+func _test_call_moves() -> void:
+	var battle := _duel([118, 267, 383, 119], 120)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	var pp := me.pp(0)
+	_use(battle, me, 0)
+	_check(me.last_selected == 118 and me.last_move != 118 and me.last_move not in BattleMoves.METRONOME_EXCLUDED
+		and battle.last_move_used == me.last_move and me.pp(0) == pp - 1 and _said(battle, BWFiles.TEXT_BATTLE, 120),
+		"Métronome : une capacité au hasard hors liste, « Métronome lance Y ! », PP pris à Métronome")
+	battle.terrain = 10
+	_use(battle, me, 1)
+	_check(me.last_move == 157 and _said(battle, BWFiles.TEXT_BATTLE, 121), "Force-Nature : Éboulement sur le terrain 10")
+	battle.last_move_used = 33
+	var before := foe.hp()
+	_use(battle, me, 2)
+	_check(me.last_move == 33 and foe.hp() < before, "Photocopie : la dernière capacité lancée au combat")
+	foe.last_move = 52
+	_use(battle, me, 3)
+	_check(me.last_move == 52, "Mimique : la dernière capacité lancée par la cible")
+	foe.last_move = 14
+	me.last_move = 0
+	_use(battle, me, 3)
+	_check(me.last_move == 119, "Mimique échoue sur une capacité qui ne se copie pas (drapeau 6)")
+
+	battle = _duel([214, 33, 76, 118], 124)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	me.pokemon.status = Pokemon.Status.SLEEP
+	me.pokemon.sleep_turns = 3
+	_use(battle, me, 0)
+	_check(me.last_move == 33, "Blabla Dodo : endormi, une autre de ses capacités (ni Lance-Soleil ni Métronome)")
+	me.pokemon.status = Pokemon.Status.NONE
+	_use(battle, me, 0)
+	_check(me.last_move == 214, "Blabla Dodo échoue s'il n'est pas endormi")
+
+	battle = _duel([274, 382, 102, 166], 128)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	var friend := Pokemon.create(506, 50, {"random": GameRandom.new(129)})
+	friend.set_moves([52, 118])
+	battle.player().party.append(friend)
+	_use(battle, me, 0)
+	_check(me.last_move == 52, "Assistance : une capacité d'un autre Pokémon de l'équipe (hors liste)")
+	foe.pokemon.set_moves([52])
+	battle.queue = [{"action": Battle.Action.FIGHT, "mon": foe, "move": 0}]
+	_use(battle, me, 1)
+	_check(me.last_move == 52 and not me.has("me_first"), "Moi d'Abord : l'attaque que la cible va lancer")
+	var plain := battle.moves.move_power(me, foe, MoveData.of(52), Stats.Type.FIRE)
+	me.set_effect("me_first")
+	_check(battle.moves.move_power(me, foe, MoveData.of(52), Stats.Type.FIRE) == BattleCalc.fx_mul(plain, 0x1800),
+		"Moi d'Abord : puissance x 1,5 (0x1800)")
+	me.clear_effect("me_first")
+	battle.queue.clear()
+	foe.last_selected = 33
+	_use(battle, me, 2)
+	_check(me.pokemon.moves[2].id == 33 and me.pp(2) == MoveData.max_pp(33, 0), "Copie : la capacité de la cible remplace Copie, PP de base")
+	_use(battle, me, 3)
+	_check(me.pokemon.moves[3].id == 166, "Gribouille échoue sur une capacité déjà connue")
+	foe.last_selected = 45
+	me.pokemon.moves[3] = {"id": 166, "pp": 1, "pp_ups": 0}
+	_use(battle, me, 3)
+	_check(me.pokemon.moves[3].id == 45, "Gribouille : la capacité de la cible pour de bon")
+	me.restore_moves()
+	_check(me.pokemon.moves[2].id == 102 and me.pokemon.moves[3].id == 45, "Copie rendue en quittant le terrain, Gribouille gardé")
+
+	battle = _duel([144, 289, 277, 33], 132)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.set_moves([14, 45, 191, 105])
+	var own_moves := me.pokemon.move_ids()
+	_use(battle, me, 0)
+	_check(me.has("transformed") and me.types == foe.types and me.ability == foe.ability and me.pokemon.move_ids() == foe.pokemon.move_ids()
+		and me.pp(0) == 5 and me.raw_stat(Stats.Stat.ATTACK) == foe.raw_stat(Stats.Stat.ATTACK), "Morphing : types, talent, statistiques et capacités (5 PP)")
+	battle._finish()
+	_check(me.pokemon.move_ids() == own_moves, "Morphing : les capacités reviennent après le combat")
+
+	battle = _duel([144, 289, 277, 33], 136)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.set_moves([14, 45, 191, 105])
+	battle.queue.clear()
+	_use(battle, me, 1)
+	_check(not me.has("snatch"), "Saisie échoue si tous les autres ont déjà agi")
+	battle.queue = [{"action": Battle.Action.FIGHT, "mon": foe, "move": 0}]
+	_use(battle, me, 1)
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
+	_check(me.stage(Stats.Stat.ATTACK) == 2 and foe.stage(Stats.Stat.ATTACK) == 0 and not me.has("snatch"),
+		"Saisie : Danse-Lames est volée par le lanceur")
+	_use(battle, me, 2)
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 1, "mon": foe})
+	_check(foe.stage(Stats.Stat.ATTACK) == -1 and me.stage(Stats.Stat.ATTACK) == 2 and _said(battle, BWFiles.TEXT_BATTLE_SET, 764),
+		"Reflet Magik : Rugissement renvoyé au lanceur")
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 2, "mon": foe})
+	_check(battle.enemy().conditions.get("spikes", 0) == 1 and battle.player().conditions.get("spikes", 0) == 0,
+		"Reflet Magik : Picots renvoyés sur le côté du lanceur")
+	battle.queue.clear()
+	me.clear_effect("magic_coat")
+	me.ability = BattleAbilities.MAGIC_BOUNCE
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 1, "mon": foe})
+	_check(foe.stage(Stats.Stat.ATTACK) == -2, "Miroir Magik : renvoie aussi Rugissement")
+
+	battle = _double_duel([191, 227, 50, 33], 140)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	_use(battle, me, 0)
+	_check(battle.enemy().conditions.get("spikes", 0) == 1, "Picots en double : une seule couche")
+	foe.pokemon.set_moves([118, 119])
+	foe.last_selected = 118
+	foe.last_move = 33
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 1, "mon": me, "target": foe.position()})
+	_check(foe.has("encore") and foe.get_effect("encore").move == 118, "Encore : la capacité choisie (Métronome), pas celle qu'il a appelée")
+	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 2, "mon": me, "target": foe.position()})
+	_check(foe.has("disable") and foe.get_effect("disable").move == 118, "Entrave : la capacité choisie")
 
 
 ## Vérification qui ne s'affiche qu'en cas d'échec (boucles).

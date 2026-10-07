@@ -1250,6 +1250,10 @@ les autres sont écrites une à une.
   combat (aucune archive ne contient de scripts d'IA) ; le portage note les capacités selon les
   indicateurs de la fiche (+0x0C : éviter l'inutile, préférer les dégâts et le K.O., jouer les
   statuts au bon moment, se préparer au premier tour) et soigne sous le quart des PV.
+- **Brise Moule**, TurboBrasier, Téra-Voltage (0x021DB1E8) : pendant la capacité du porteur
+  (événements 0x03 à 0x04), un filtre (0x021DB148) fait taire les talents de la liste 0x0689E450
+  (overlay 95, 55 entrées) : ceux qui protègent la cible, Glue, Garde Amie, Heavy Metal, Light Metal,
+  Télépathe et Miroir Magik compris.
 - **Pression** (réaction à l'événement 0x4E, 0x021DB8DC) : un PP de plus par porteur, seulement si
   le lanceur est d'en face, et si le porteur est visé, ou si la capacité vise le terrain (cible 10),
   ou si elle est dans la liste 0x0689E2C4 (Saisie, Possessif, Picots, Pics Toxik, Piège de Roc). Une
@@ -1391,10 +1395,42 @@ ceux du fichier 14 (variante selon le camp) ; « état » : condition passagère
 | Vœu Soin, Danse-Lune | 0x021E5620, 0x021E55C0 | il faut un remplaçant ; le lanceur est K.O., celui qui prend sa place est soigné (697 ; Danse-Lune rend aussi les PP, 694) |
 | Relais | 0x021E5B18 | il faut un remplaçant, qui garde les crans et les effets passagers (clone, confusion, Racines, Vampigraine...) |
 | Pouvoir Antique, Vent Argenté, Vent Mauvais | 0x021E6F2C | justes par leurs données : 10 % de chances de +1 dans toutes les statistiques |
+| Métronome | 0x021E6A24, 0x021E6A78 | capacité tirée (0x021D7DE4) parmi 1 à 0x22F, sauf les 41 de la liste 0x0689E3FC ; « Métronome lance Y ! » (fichier 15, 120) |
+| Force-Nature | 0x021E6AC0, 0x021E6B4C | selon le terrain : 0, 5 Canon Graine (402) ; 1-3, 8, 15 Séisme ; 6, 11, 12 Hydrocanon ; 7 Blizzard ; 9 Boue-Bombe (426) ; 10 Éboulement ; 13 Laser Glace ; sinon Triplattaque ; « Force-Nature provoque Y. » (121) |
+| Blabla Dodo | 0x021E1B74, 0x021E1B98, 0x021E6C7C | endormi seulement (sinon échec, même réveillé ce tour) ; une de ses capacités au hasard, PP ou non, sauf les listes 0x0689E330 et 0x0689E346 et celles en deux tours (drapeau 1) |
+| Assistance | 0x021E6B94 | une capacité au hasard des autres membres de l'équipe de son dresseur, K.O. compris, sauf 0x0689E330 et 0x0689E3D4 (copie de 0x0689E3AC) |
+| Photocopie | 0x021E6EDC | la dernière capacité lancée au combat (0x021C80B4, champ 0x1F74 du serveur), sauf 0x0689E330 et 0x0689E3AC |
+| Mimique | 0x021E6D4C | sur la cible choisie (sinon celle d'en face), la dernière capacité qu'elle a lancée (+0x14C), si elle a le drapeau 6 |
+| Moi d'Abord | 0x021E6DD8, 0x021E6EB4 | la cible n'a pas encore agi et va attaquer : sa capacité (hors liste 0x0689E31C) part sur elle, puissance x 0x1800 (événement 0x38) |
+| Copie | 0x021E0938 | la dernière capacité choisie par la cible (+0x14A, hors liste 0x0689E2CE) remplace Copie dans la copie « combat » de la capacité (travail 0x25, 0x021D517C : PP de base) ; « X apprend Y ! » (688) |
+| Gribouille | 0x021E0A20 | de même, hors Gribouille, Lutte et Babil, mais dans la copie de l'équipe : pour de bon (691) |
+| Morphing | 0x021E5564, 0x021CA41C | échoue si l'un est déjà transformé ou si la cible a un clone ; 0x021D6BF0 recopie la structure de la cible sauf ses 0xEC premiers octets : types, statistiques sauf les PV, crans, talent, capacités (5 PP chacune) ; nouveau sprite (commande 0x53 du client) ; message à 7 variantes (644) |
+| Saisie | 0x021E3540... | échoue si tous les autres ont déjà agi (0x021C804C) ; « attend que son ennemi agisse » (751) ; jusqu'à la fin du tour, vole la première capacité d'un autre qui a le drapeau 5 (événement 0x1A, 0x021BEAB4) et la lance lui-même (0x021BE4F0 ; 754, à 7 variantes) |
+| Reflet Magik | 0x021E3454... | échoue si tous les autres ont déjà agi ; « s'entoure du Reflet Magik » (761) ; jusqu'à la fin du tour, renvoie les capacités au drapeau 4 qui le visent (événement 0x2D, 0x021E8738), et Picots, Pics Toxik, Piège de Roc lancés d'en face (événement 0x1F, 0x021E86E4) ; « repousse Y ! Retour à l'envoyeur ! » (764) ; une capacité renvoyée ne l'est pas une seconde fois |
+
+**Capacités qui en lancent une autre** (emploi d'une capacité, 0x021BDE38) : après les conditions
+d'action, l'événement 0x18 (0x021C6278) laisse Métronome, Force-Nature, Blabla Dodo, Assistance,
+Photocopie, Moi d'Abord et Mimique poser la capacité appelée (variable 0x12) et sa cible (0x0D), ou
+l'échec (0x41). Échec : « X utilise Y ! », PP pris, « Mais cela échoue ! ». Sinon « X utilise Y ! »,
+l'animation de l'appelante (commande 0x30 du client), puis la capacité appelée reste soumise à
+Anti-Soin (drapeau 12) et à Gravité (drapeau 9) (0x021BE348), les PP sont pris à l'appelante (avec
+les cibles de l'appelée pour Pression), et l'événement 0x19 (0x021C63F8) donne le message de
+Métronome ou de Force-Nature, sinon « X utilise Z ! ». La cible d'une capacité appelée
+(0x021C7FD0, 0x021D805C) : en combat simple l'adversaire (ou soi) ; à plusieurs, au hasard parmi
+les adversaires voisins (tous en triple pour une capacité à distance), ou parmi les alliés. Chaque
+Pokémon garde la dernière capacité choisie (+0x14A : Métronome ; lue par Encore, Entrave, Dépit,
+Copie, Gribouille et les objets de choix) et la dernière lancée (+0x14C : celle qu'il a appelée ;
+lue par Mimique et l'Écho de l'objet Métronome) ; le serveur garde la dernière lancée au combat
+(0x1F74, Photocopie). Encore échoue sur la liste 0x0689E2DA (Encore, Mimique, Morphing, Copie,
+Gribouille) ou sans PP (0x021D5540) ; il pose 3 tours et Entrave 4, un de plus si le bit 1 des
+indicateurs du tour de la cible est mis (0x021D5B50, rôle non identifié).
 
 Corrigés en passant : messages du premier tour de Rebond (544), Piqué (550), Coud'Krâne (556) et
 Revenant (541), qui étaient ceux d'un Pokémon sauvage ; Prélèvement Destin et Rancune s'arrêtent à
-la capacité suivante du lanceur.
+la capacité suivante du lanceur ; Imitation (619) et Copie Type (1089) ont des messages à 7 variantes ;
+Picots, Pics Toxik et Piège de Roc ne posent qu'une couche en combat double ; Hurlement et Cyclone
+choisissent le remplaçant parmi l'équipe du dresseur de la place, qui passe par la sortie
+ordinaire (Médic Nature, Régé-Force).
 
 ### Formules du combat (`battle_calc.gd`)
 
@@ -1429,6 +1465,15 @@ combat (poches 22-27), 18 équipe en combat (invites 6, 7, 9, 10 ; PP 53 ; noms 
 OUBLIER 68, RETOUR 69), 20 démonstration de capture, 189-191 dresseurs, 204 nouvelle capacité.
 Mots variables : {0102:n} Pokémon, {0100:n} dresseur, {0107:n} capacité, {0109:n} objet, {0106:n}
 talent, {010C:n} surnom, {0200:n} / {0202:n} / {0204:n} nombres.
+
+Variante d'un message du fichier 14 (client, 0x021EEE94 puis 0x021EF16C) : 0x021EEF38 compte les
+noms de Pokémon du texte (balises 0x0101, 0x0102, 0x010C) ; avec deux noms, 7 variantes selon les
+camps des deux premiers mots (0x021EF220), sinon 3 selon le premier (0x021EF1A4). La table
+0x021F3978 (14 messages) passe outre : 0x1B, 0x5A, 0x99, 0xAE, 0x3AA, 0x21 ont leur propre
+fonction ; Coup d'Main (0x414), Boost (0x417), 0x14D, 0x471, 9, 12, 18, 21 ont 3 variantes malgré
+leurs deux noms. Fichier 15 : la table 0x021F3940 (27 messages, ceux d'un côté du terrain : Mur
+Lumière, Garde Large...) prend la ligne suivante quand le Pokémon du premier mot n'est pas du côté
+du joueur (0x021EEE20, test 0x021B8B70).
 
 ### Affichage du combat (overlay 94, `engine/battle/ui/`)
 
