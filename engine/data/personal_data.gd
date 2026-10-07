@@ -37,9 +37,11 @@ var egg_groups: Array[int] = [0, 0]
 ## Talents 1, 2 et caché (0 = aucun).
 var abilities: Array[int] = [0, 0, 0]
 var flee_rate := 0
-## Fichier de la première forme alternative (0 = pas de formes), nombre de formes.
+## Fichier de la première forme alternative (0 = pas de formes), nombre de formes ; place de la
+## première forme parmi les sprites des formes (+0x1E, paramètre 0x1F de 0x0201AE38).
 var form_index := 0
 var form_count := 0
+var sprite_form_index := 0
 var color := 0
 var height := 0
 ## Poids en hectogrammes (paramètre 38, +0x26) : Nœud Herbe et Balayage s'en servent.
@@ -101,6 +103,7 @@ static func parse(bytes: PackedByteArray) -> PersonalData:
 	data.abilities = [bytes[0x18], bytes[0x19], bytes[0x1A]]
 	data.flee_rate = bytes[0x1B]
 	data.form_index = bytes.decode_u16(0x1C)
+	data.sprite_form_index = bytes.decode_u16(0x1E)
 	data.form_count = bytes[0x20]
 	data.color = bytes[0x21] & 0x3F
 	data.base_exp = bytes.decode_u16(0x22)

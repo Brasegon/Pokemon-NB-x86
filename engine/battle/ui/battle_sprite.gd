@@ -139,11 +139,11 @@ var _acting := false
 
 static func for_pokemon(shown: Pokemon, back: bool) -> BattleSprite:
 	var sprites: NARC = Autoloads.rom().narc(BWFiles.POKEMON_SPRITES)
-	var cell_sprite := PokemonSprites.create_animated(sprites, shown.species, back, shown.is_shiny()) if sprites else null
+	var cell_sprite := PokemonSprites.create_animated(sprites, shown.species, back, shown.is_shiny(), shown.form) if sprites else null
 	var sprite := BattleSprite.new()
 	sprite.name = shown.name()
 	sprite.pokemon = shown
-	sprite.metadata = PokemonSprites.metadata(sprites, shown.species, back) if sprites else {}
+	sprite.metadata = PokemonSprites.metadata(sprites, shown.species, back, shown.form) if sprites else {}
 	sprite._attach(cell_sprite)
 	return sprite
 

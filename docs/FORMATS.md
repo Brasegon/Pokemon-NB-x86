@@ -156,6 +156,14 @@ palette) ne touche qu'à cette petite texture.
 
 Le sprite fixe 96x96 est rangé en 4 OBJ consécutifs : 64x64, 32x64, 64x32, 32x32.
 
+Formes : après les 650 espèces viennent deux Œufs (650, 651), puis, à partir de l'entrée 652, les
+formes alternatives (forme 1 et suivantes) de chaque espèce qui en a, à la place que donne le mot
++0x1E de sa fiche (paramètre 0x1F de 0x0201AE38) : Zarbi 0 (B à Z, !, ?), Morphéo 27, Deoxys 30,
+Cheniti 33, Cheniselle 35, Ceriflor 37, Sancoki 38, Tritosor 39, Motisma 40, Giratina 45, Shaymin 46,
+Bargantua 47, Darumacho 48, Vivaldaim 49, Haydaim 52, Meloetta 55, Genesect 56 ; entrée = 652 +
+place + forme - 1, pour une forme inférieure au nombre de formes (+0x20). Vérifié sur la ROM (planche
+des 64 entrées : chaque forme est à sa place). Arceus a 17 formes mais pas de sprite à part.
+
 ## Textes de la Gen 5 (`engine/text/msg_file.gd`)
 
 En-tête : nombre de sections (u16), nombre de lignes (u16), taille, inconnu, puis la position de chaque
@@ -1273,10 +1281,9 @@ les autres sont écrites une à une.
   | Miroir Magik | 0x021DCACC | comme Reflet Magik, sans limite de tour |
   | Mode Transe | 0x021DC6D8 | fin du tour (0x78) : Darumacho (555) en Mode Transe à la moitié de ses PV ou moins (forme 1 ; fichier 15, 185), sinon en Mode Normal (186) |
 
-  Les formes de combat (travail 0x39 : Météo, Mode Transe, ChantAntique) donnent les statistiques et
-  types de la forme ; le portage les rend quand le Pokémon quitte le terrain et à la fin du combat.
-  Le sprite d'une forme n'est pas encore lu (l'archive `a/0/0/4` range 64 formes après les 650
-  espèces).
+  Les formes de combat (travail 0x39 : Météo, Mode Transe, ChantAntique) donnent les statistiques,
+  les types et le sprite de la forme ; le portage les rend quand le Pokémon quitte le terrain et à la
+  fin du combat.
 - **Pression** (réaction à l'événement 0x4E, 0x021DB8DC) : un PP de plus par porteur, seulement si
   le lanceur est d'en face, et si le porteur est visé, ou si la capacité vise le terrain (cible 10),
   ou si elle est dans la liste 0x0689E2C4 (Saisie, Possessif, Picots, Pics Toxik, Piège de Roc). Une
