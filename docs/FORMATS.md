@@ -64,6 +64,28 @@ d'une lecture en +4).
 - **Overlay 10** (0x02155100) : le cœur du terrain (chargement des matrices, des scripts, des
   événements). **Overlay 21** (0x02187EA0) : le chargeur des morceaux de carte et le calcul des
   hauteurs (voir *Permissions* plus bas).
+- **Sections de l'ARM9** (`Rom.arm9_layout()` de `tools/re/nds.py`) : les paramètres du module
+  (+0 et +4 début et fin d'une liste, +8 début des données, +0C et +10 bss) décrivent des sections
+  recopiées au démarrage, rangées après le code fixe (0x02004000-0x020A9E20). Entrées de 16 octets :
+  adresse, taille, l'adresse encore, taille du bss. ITCM en 0x01FF8000 (0x820 octets), DTCM en
+  0x02FE0000 (0xA0, plus 0x20 de bss), et 0x20 octets en 0x02400000 et en 0x06898000, juste devant
+  les overlays 139 à 142 (0x02400020, 0x02400040) et 95 (0x06898020, en VRAM). Les tailles
+  s'additionnent exactement jusqu'à la liste (0x900 octets). Le bss du code fixe va de 0x020A9E20
+  à 0x02154260, où commencent les overlays.
+- **ARM9i** (en-tête 1C0 : code propre à la DSi, chargé en 0x02400000) : chiffré dans la ROM, il
+  n'est pas lu. 62 appels de l'ARM9 visent des adresses 0x027xxxxx où rien n'est chargé (par
+  exemple 0x02088230 → 0x02704318) : sans doute du code propre à la DSi (non vérifié).
+- **Projet Ghidra** (`tools/re/ghidra_project.py`) : 6 495 fonctions dans l'ARM9 et 26 325 dans
+  les overlays, dont 5 243 trouvées par leurs pointeurs (tables, fonctions de rappel). Restent
+  inconnues de Ghidra les fonctions qu'un overlay n'atteint que dans un autre overlay : 8 964
+  appels, et 199 commandes de script de l'overlay 21 rangées dans la table de l'overlay 10
+  (`tools/re/decomp.py` les crée à la demande). L'ARM9 appelle aussi des overlays directement (118
+  appels, par exemple 0x0205AE64 → 0x02165FE0). **Noms** (`tools/re/names.txt`, appliqués par
+  `ghidra_names.py`) : 1 122 fonctions (les 678 des tables de commandes, dont 225 que Ghidra n'avait
+  pas trouvées, et celles de ce document) et 79 données. Deux tables de l'overlay 93 (0x021F03E8,
+  0x021F0402) étaient lues comme des fonctions. Limite : une table que le code atteint par une
+  réserve de littéraux reste `DAT_...` dans le pseudo-C (la valeur vise l'overlay, que Ghidra ne
+  relie pas à son espace).
 
 ## Formats 2D Nitro (`engine/nds/gfx/`)
 
@@ -752,11 +774,13 @@ les PNJ « t4x4flip » ont 7 images, la droite étant la gauche retournée.
 **Machine virtuelle** (ARM9) : 0x0201121C la crée, 0x02011298 l'exécute. Structure : +4 table des
 commandes, +8 nombre de commandes, +0C profondeur de la pile d'appels, +0D état (0 arrêtée,
 1 en marche, 2 en attente d'une fonction), +10 fonction d'attente, +14 position dans le script,
-+18 pile d'appels, +20 contexte. Chaque tour : numéro de commande (u16, 0x02011330), arrêt s'il
-dépasse le nombre de commandes, appel de `table[numéro](machine, contexte)` ; la commande renvoie 1
-pour rendre la main (attente), 0 pour continuer. Utilitaires : 0x02011330 lit un u16, 0x0201134C un
-u32, 0x020113B0 saute, 0x020113B4 appelle (empile la position), 0x020113C4 revient, 0x020113D0 met
-la machine en attente d'une fonction, 0x02011290 l'arrête.
++18 pile d'appels, +20 contexte, +24 et +28 une fonction de contrôle et son argument (installés par
+0x02011328). Chaque tour : numéro de commande (u16, 0x02011330), arrêt s'il dépasse le nombre de
+commandes, appel de la fonction de contrôle si elle existe (machine, contexte, argument, numéro ;
+si elle renvoie 0 la machine s'arrête, 0x020112EE), puis de `table[numéro](machine, contexte)` ; la
+commande renvoie 1 pour rendre la main (attente), 0 pour continuer. Utilitaires : 0x02011330 lit un
+u16, 0x0201134C un u32, 0x020113B0 saute, 0x020113B4 appelle (empile la position), 0x020113C4
+revient, 0x020113D0 met la machine en attente d'une fonction, 0x02011290 l'arrête.
 
 **Table des commandes** : 609 fonctions en 0x021705BC (overlay 10), nombre lu en 0x02170568 ;
 installée par 0x02158B9C. 9 entrées sont vides (137, 143-145, 153, 154, 156, 157, 435). Les
@@ -835,7 +859,7 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 6D | valeurs : personnage, x, y, z, direction | placer un personnage au centre d'une case (0x0216E014 ; y en cases), sans changer son entrée des événements. 0x0216DE24 le cherche par son numéro, héros compris : 0x0216DE70 l'appelle avec 0xFF pour trouver le héros. Dans la chambre, avant le combat contre Bianca, il pose le héros en (4, 6) |
 | 74 | | le PNJ se tourne vers le héros |
 | 85 | valeurs : dresseur, dresseur 2, ? | combat de dresseurs (0x0216E7A8) ; sans dresseur 2, le même si c'est un dresseur de combat double (0x0215A454). Le script attend la fin du combat (écran de combat posé sur le terrain) ; combats doubles pas encore faits : on affronte le premier dresseur |
-| 8C | | après une défaite : l'événement 0x0215F5DC remplace le script (0x0215F678 le crée, 0x0215B34C arrête la machine) : fondu au noir, équipe soignée, retour au dernier lieu de soin (la maison du héros tant qu'aucun Centre n'a été visité) |
+| 8C | | après une défaite : l'événement 0x0215F5DC remplace le script (0x0215F678 le crée, puis la commande, 0x0215B34C, arrête la machine) : fondu au noir, équipe soignée, retour au dernier lieu de soin (la maison du héros tant qu'aucun Centre n'a été visité) |
 | 8D | variable | 0 si le joueur a perdu le dernier combat, sinon 1 : 0x0216EF38(résultat, 1) lit la table 0x02172568 (5 octets par résultat) ; colonne 1 nulle pour les résultats 0 et 2 (défaite) |
 | 8E | | transition de retour du combat (0x021BE8B8) |
 | 98 | u16 | musique d'événement (0x0202991C ; 1161 = `SEQ_BGM_E_FRIEND`), avec la marque 0xD (0x021590E4) et l'état 2 du gestionnaire de son (0x02028B38). Le moteur ne change pas la musique de zone tant que la marque est posée : supposé d'après ces marques, pas encore vérifié dans 0x02028990 |
@@ -1316,8 +1340,8 @@ scripts du terrain) avec les 78 commandes de l'overlay 94 (descripteur 0x02209D6
 code (lecteur u32 0x0201134C) ; `tools/re/effscripts.py` désassemble les scripts.
 
 - **Fichiers** : `a/0/6/6` pour les effets 0 à 560 (capacités, fichier = n° de l'effet),
-  `a/0/6/7` pour les effets du système (561 et suivants, fichier n - 561), chargés par 0x021F955C et
-  0x021FC334. Un fichier : u32 nombre de variantes, 14 décalages u32 par variante (une par
+  `a/0/6/7` pour les effets du système (561 et suivants, fichier n - 561), chargés par 0x021F955C
+  (dans 0x021F9498) et 0x021FC334 (dans la commande 0x4A, 0x021FC314). Un fichier : u32 nombre de variantes, 14 décalages u32 par variante (une par
   combinaison de places), puis les scripts ; le combat simple prend le premier décalage (0x021F9498).
   Une commande : n° sur 16 bits, puis ses paramètres u32 (nombre fixe par commande).
 - **Machine** (0x02011298) : état 0 arrêt, 1 en marche, 2 attente. Une image : si une attente est
@@ -1381,10 +1405,11 @@ du dresseur battu.
 ### Caméra des effets (`battle_camera.gd`, `battle_motion.gd`)
 
 Objet de 0xB8 octets (0x021F6DDC), en virgule fixe (1.0 = 4096), mis à jour à chaque image
-(0x021F71DC). Commandes : 0x00 plan (0 immédiat, 1 interpolé ; plans du switch 0x021F9C74 : 0 et 1
-sur les Pokémon, tables 0x0220AC88 / 0x0220ACA0 ; 8 vue par défaut ; 13 caméra sauvée par 0x05 ;
-14, 18, 19 table 0x0220AC40 ; en combat simple, 9, 10 et 21 visent le lanceur, 11 et 12 la cible) ;
-0x01 œil et point visé donnés (ou relatifs) ; 0x02 orbite ; 0x03 tremblement ; 0x04 mode des sprites.
+(0x021F71DC). Commandes : 0x00 plan (0x021F9A58 ; 0 immédiat, 1 interpolé ; plans de son switch
+en 0x021F9C74 : 0 et 1 sur les Pokémon, tables 0x0220AC88 / 0x0220ACA0 ; 8 vue par défaut ; 13
+caméra sauvée par 0x05 ; 14, 18, 19 table 0x0220AC40 ; en combat simple, 9, 10 et 21 visent le
+lanceur, 11 et 12 la cible) ; 0x01 œil et point visé donnés (ou relatifs) ; 0x02 orbite ; 0x03
+tremblement ; 0x04 mode des sprites.
 
 - Déplacement (0x021F6EE8) : vitesse = écart / images sur chaque axe (au moins ±1), pas constant
   borné au but ; `skip` images sautées entre deux pas ; `brake` : au bout de ce nombre de pas, les

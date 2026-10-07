@@ -12,8 +12,10 @@ import sys
 # Racine du dépôt (ce fichier est dans tools/re/).
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Sortie en UTF-8, même redirigée vers un fichier ou vers un terminal Git Bash.
+# Sorties en UTF-8 (messages d'erreur compris), même redirigées vers un fichier ou vers un
+# terminal Git Bash.
 sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
 
 
 def u16(b, o):
@@ -102,7 +104,8 @@ class Rom:
         for i in range(table_size // 32):
             e = struct.unpack_from("<8I", self.data, table_offset + 32 * i)
             self.overlay_table.append({"id": e[0], "ram": e[1], "ram_size": e[2], "bss_size": e[3],
-                                       "file_id": e[6], "compressed": bool(e[7] >> 24 & 1)})
+                                       "sinit": (e[4], e[5]), "file_id": e[6],
+                                       "compressed": bool(e[7] >> 24 & 1)})
 
     def _read_dir(self, fnt, dir_id, prefix):
         entries, file_id = struct.unpack_from("<IH", self.data, fnt + 8 * (dir_id & 0xFFF))
@@ -136,6 +139,28 @@ class Rom:
             end = compressed_end - self.arm9_ram
             code = blz_decompress(code[:end]) + code[end:]
         return self.arm9_ram, code
+
+    def arm9_layout(self):
+        """Découpage de l'ARM9 décompressé, d'après les paramètres du module :
+        (adresse, code fixe, (début, fin) de son bss, sections recopiées au démarrage).
+
+        Les sections (ITCM en 0x01FF8000, DTCM en 0x02FE0000...) suivent le code fixe dans le
+        fichier, dans l'ordre de leur liste : entrées de 16 octets (adresse, taille, l'adresse
+        encore, taille du bss). Leurs tailles s'additionnent exactement jusqu'au début de la liste.
+        Le bss du code fixe commence là où ces données commencent (elles sont recopiées ailleurs
+        au démarrage, la place est ensuite réutilisée). Chaque section : (adresse, contenu, taille
+        du bss)."""
+        ram, code = self.arm9()
+        params = code.find(bytes.fromhex("2106C0DEDEC00621")) - 0x1C
+        list_start, list_end, data_start, bss_start, bss_end = struct.unpack_from("<5I", code, params)
+        sections = []
+        pos = data_start - ram
+        for entry in range(list_start - ram, list_end - ram, 16):
+            address, size, _, bss_size = struct.unpack_from("<4I", code, entry)
+            sections.append((address, code[pos:pos + size], bss_size))
+            pos += size
+        assert pos == list_start - ram, "sections de l'ARM9 mal découpées"
+        return ram, code[:data_start - ram], (bss_start, bss_end), sections
 
     def overlay(self, index):
         """(adresse en mémoire, contenu décompressé) de l'overlay ARM9 n° index."""
