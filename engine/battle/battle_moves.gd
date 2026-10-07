@@ -75,6 +75,8 @@ const ENCORE_EXCLUDED: Array[int] = [227, 119, 144, 102, 166]
 const SKETCH_EXCLUDED: Array[int] = [166, 165, 448]
 ## Morphing : les capacités copiées ont 5 PP au plus (0x021D6BF0).
 const TRANSFORM_PP := 5
+## Cran monté par un objet : premier des messages du fichier 14 (Attaque +1).
+const ITEM_STAT_UP := 938
 ## Capacités à part (table 0x021F2FD0 du jeu) entièrement écrites dans ce fichier, pour le décompte
 ## de tools/re/battle_coverage.gd ; les autres se comportent selon leurs seules données.
 const HANDLED: Array[int] = [
@@ -84,13 +86,14 @@ const HANDLED: Array[int] = [
 	174, 175, 176, 179, 180, 182, 187, 191, 193, 194, 195, 197, 199, 200, 203, 205, 206, 210, 212,
 	213, 214, 215, 216, 217, 218, 219, 220, 222, 226, 227, 228, 229, 234, 235, 236, 237, 239, 243,
 	244, 246, 248, 250, 251, 252, 253, 254, 255, 256, 259, 262, 263, 264, 265, 266, 267, 268, 269,
-	270, 272, 273, 274, 277, 279, 280, 282, 283, 284, 286, 287, 288, 289, 290, 291, 293, 300, 301,
-	311, 312, 316, 318, 323, 327, 328, 335, 340, 343, 346, 353, 355, 356, 357, 358, 360, 361, 362,
-	364, 366, 367, 368, 369, 371, 372, 375, 376, 378, 379, 380, 381, 382, 383, 384, 385, 386, 387,
-	388, 389, 390, 391, 392, 393, 419, 432, 433, 445, 446, 447, 448, 449, 461, 462, 463, 466, 467,
-	469, 470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 481, 484, 485, 486, 487, 492, 493, 494,
-	495, 496, 497, 498, 499, 500, 501, 502, 504, 506, 509, 511, 512, 513, 514, 515, 521, 525, 533,
-	535, 537, 540, 542, 546, 547, 548, 553, 554, 558, 559]
+	270, 271, 272, 273, 274, 277, 278, 279, 280, 282, 283, 284, 286, 287, 288, 289, 290, 291, 293,
+	300, 301, 311, 312, 316, 318, 323, 327, 328, 335, 340, 343, 346, 353, 355, 356, 357, 358, 360,
+	361, 362, 363, 364, 365, 366, 367, 368, 369, 371, 372, 374, 375, 376, 378, 379, 380, 381, 382,
+	383, 384, 385, 386, 387, 388, 389, 390, 391, 392, 393, 415, 419, 432, 433, 445, 446, 447, 448,
+	449, 450, 461, 462, 463, 466, 467, 469, 470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 481,
+	484, 485, 486, 487, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 504, 506, 509, 510,
+	511, 512, 513, 514, 515, 516, 521, 525, 533, 535, 537, 540, 542, 546, 547, 548, 553, 554, 558,
+	559]
 
 ## Le combat, gardé par une référence faible : il possède ce module (pas de cycle de références).
 var battle: Battle:
@@ -278,6 +281,11 @@ func use_move(mon: BattleMon, action: Dictionary) -> void:
 		mon.clear_effect("rage")
 	await _execute(mon, data, targets, forced, chosen)
 	mon.clear_effect("me_first")
+	# Don Naturel, Dégommage (événement 0x27, fin de la capacité) : l'objet est consommé, même raté.
+	if mon.has("item_thrown"):
+		if mon.pokemon.held_item == mon.get_effect("item_thrown"):
+			battle.items.consume(mon)
+		mon.clear_effect("item_thrown")
 
 
 ## « X utilise Y ! » (fichier 13 : trois messages par capacité).
@@ -855,6 +863,9 @@ func _damaging_move(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 		battle.say_mon(BattleText.AVOIDED, target)
 		_after_failed(mon, data)
 		return
+	if data.id == 374 and mon.has("item_thrown"):
+		# Dégommage (0x021E5CF4) : « X lance son objet : Y ! » (779).
+		battle.say_mon(779, mon, {1: _item_name(mon.get_effect("item_thrown"))})
 	if data.category == MoveData.Category.OHKO:
 		push_anim(mon, target, data.id)
 		if battle.abilities.has_ability(target, BattleAbilities.STURDY):
@@ -1080,7 +1091,7 @@ func _after_damage(mon: BattleMon, target: BattleMon, data: MoveData, total: int
 		mon.set_effect("recharge")
 	elif data.has_flag(MoveData.Flag.RECHARGE):
 		mon.set_effect("recharge")
-	_special_after(mon, target, data, total)
+	_special_after(mon, target, data, total, substitute_hit)
 	if last:
 		battle.items.after_attack(mon, target, data, total)
 
@@ -1141,6 +1152,11 @@ func _critical(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 ## Type d'une capacité pour ce lanceur (Puissance Cachée, Ball'Météo, Jugement, Normalise...).
 func move_type_of(mon: BattleMon, data: MoveData) -> int:
 	match data.id:
+		363:
+			# Don Naturel (0x021E332C) : le type de la baie tenue.
+			var berry := ItemData.of(mon.pokemon.held_item) if BattleItems.is_berry(mon.pokemon.held_item) else null
+			if berry:
+				return berry.natural_gift_type
 		237:
 			return _hidden_power_type(mon.pokemon)
 		449:
@@ -1315,6 +1331,11 @@ func move_power(mon: BattleMon, target: BattleMon, data: MoveData, move_type: in
 func special_power(mon: BattleMon, target: BattleMon, data: MoveData) -> int:
 	var power := data.power
 	match data.id:
+		363, 374:
+			# Don Naturel, Dégommage (événement 0x37) : la puissance que donne l'objet tenu.
+			var held := ItemData.of(mon.pokemon.held_item) if mon.pokemon.held_item != 0 else null
+			if held:
+				return held.natural_gift_power if data.id == 363 else held.fling_power
 		255:
 			# Relâche (0x021E1750) : 100 par Stockage.
 			return 100 * int(mon.get_effect("stockpile", 0))
@@ -1717,13 +1738,13 @@ func _cure_status(mon: BattleMon, message: int, words := {}) -> void:
 
 ## Change un cran de statistique (Stats.ALL_STATS : toutes). source : le lanceur (Brume, Corps Sain
 ## et autres protègent contre les baisses venant d'ailleurs). Renvoie vrai si un cran a changé.
-func change_stat(mon: BattleMon, source: BattleMon, stat: int, amount: int, secondary: bool) -> bool:
+func change_stat(mon: BattleMon, source: BattleMon, stat: int, amount: int, secondary: bool, item := 0) -> bool:
 	if mon.is_fainted() or amount == 0:
 		return false
 	if stat == Stats.ALL_STATS:
 		var any := false
 		for s in range(Stats.Stat.ATTACK, Stats.Stat.SPEED + 1):
-			any = change_stat(mon, source, s, amount, secondary) or any
+			any = change_stat(mon, source, s, amount, secondary, item) or any
 		return any
 	amount = battle.abilities.modify_stat_change(mon, amount)
 	if amount < 0 and source != mon:
@@ -1742,7 +1763,12 @@ func change_stat(mon: BattleMon, source: BattleMon, stat: int, amount: int, seco
 			battle.say_mon(BattleText.stat_message(stat, amount, true), mon)
 		return false
 	battle.push({"type": "stat", "side": mon.side, "slot": mon.slot, "up": changed > 0})
-	battle.say_mon(BattleText.stat_message(stat, changed, false), mon)
+	if item != 0 and changed > 0:
+		# Monté par un objet (travail 0xE du jeu, cause « objet ») : « {objet} de X fait augmenter... »
+		# (938 + 21 x (crans - 1) + 3 x statistique).
+		battle.say_mon(ITEM_STAT_UP + 21 * (mini(changed, 3) - 1) + 3 * (stat - 1), mon, {1: Autoloads.rom().text(BWFiles.TEXT_ITEM_NAMES, item)})
+	else:
+		battle.say_mon(BattleText.stat_message(stat, changed, false), mon)
 	if changed < 0 and source != mon:
 		battle.abilities.on_stat_dropped(mon, source)
 	return true
@@ -1863,6 +1889,23 @@ func _force_switch(mon: BattleMon, target: BattleMon, data: MoveData) -> void:
 ## Faux si la capacité échoue (le message est déjà donné).
 func _before_move(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 	match data.id:
+		363, 374:
+			# Don Naturel (0x021E32D0) : une baie qui a une puissance de Don Naturel ; Dégommage
+			# (0x021E5C74) : un objet qui a une puissance de Dégommage et n'est pas lié à l'espèce ; pas
+			# sous Maladresse, Embargo ni Zone Magique (0x021C81EC). L'objet part, même si la capacité
+			# rate.
+			var held := mon.pokemon.held_item
+			var held_data := ItemData.of(held) if held != 0 else null
+			var power := 0
+			if held_data and not battle.items.suppressed(mon):
+				if data.id == 363:
+					power = held_data.natural_gift_power if BattleItems.is_berry(held) else 0
+				elif not BattleItems.bound_to(mon.pokemon.species, held):
+					power = held_data.fling_power
+			if power == 0:
+				battle.say(BattleText.BUT_IT_FAILED)
+				return false
+			mon.set_effect("item_thrown", held)
 		255:
 			if int(mon.get_effect("stockpile", 0)) == 0:
 				battle.say(BattleText.BUT_IT_FAILED)
@@ -2439,6 +2482,45 @@ func _special_effect(mon: BattleMon, target: BattleMon, data: MoveData) -> bool:
 				return true
 			mon.set_effect("snatch" if data.id == 289 else "magic_coat")
 			battle.say_mon(751 if data.id == 289 else 761, mon)
+		271, 415:
+			# Tour de Magie, Passe-Passe (0x021E3760) : les objets s'échangent (682, puis « obtient... »,
+			# 685) ; échec lancé par un Pokémon sauvage, sans objet des deux côtés, avec une Lettre ou un
+			# objet lié à l'une des espèces ; Glue arrête l'échange (événement 0x2D : 210).
+			var mine := mon.pokemon.held_item
+			var theirs := target.pokemon.held_item
+			if _wild_thief(mon) or (mine == 0 and theirs == 0) or BattleItems.is_mail(mine) or BattleItems.is_mail(theirs) 					or BattleItems.bound_to(mon.pokemon.species, mine) or BattleItems.bound_to(mon.pokemon.species, theirs) 					or BattleItems.bound_to(target.pokemon.species, mine) or BattleItems.bound_to(target.pokemon.species, theirs):
+				battle.say(BattleText.BUT_IT_FAILED)
+				return true
+			if battle.abilities.holds_item(target, mon):
+				battle.abilities.announce(target)
+				battle.say_mon(210, target)
+				return true
+			battle.say_mon(682, mon)
+			if mine != 0:
+				battle.say_mon(685, target, {1: _item_name(mine)})
+			if theirs != 0:
+				battle.say_mon(685, mon, {1: _item_name(theirs)})
+			battle.items.change_item(target, mine)
+			battle.items.change_item(mon, theirs)
+		278:
+			# Recyclage (0x021E3EE4) : sans objet, le lanceur retrouve celui qu'il a consommé (733).
+			var recycled: int = battle.sides[mon.side].consumed.get(mon.party_index, 0)
+			if mon.pokemon.held_item != 0 or recycled == 0:
+				battle.say(BattleText.BUT_IT_FAILED)
+				return true
+			battle.sides[mon.side].consumed.erase(mon.party_index)
+			battle.say_mon(733, mon, {1: _item_name(recycled)})
+			battle.items.change_item(mon, recycled)
+		516:
+			# Passe-Cadeau (0x021E7B38) : le lanceur donne son objet à une cible qui n'en a pas (message à
+			# 7 variantes, 1111) ; pas de Lettre ni d'objet lié.
+			var gift := mon.pokemon.held_item
+			if gift == 0 or BattleItems.is_mail(gift) or target.pokemon.held_item != 0 					or BattleItems.bound_to(mon.pokemon.species, gift) or BattleItems.bound_to(target.pokemon.species, gift):
+				battle.say(BattleText.BUT_IT_FAILED)
+				return true
+			battle.items.change_item(mon, 0)
+			battle.say_pair(1111, target, mon, {2: _item_name(gift)})
+			battle.items.change_item(target, gift)
 		118, 119, 214, 267, 274, 383, 382:
 			# Elles lancent une autre capacité avant d'arriver ici (use_move()).
 			battle.say(BattleText.BUT_IT_FAILED)
@@ -2475,8 +2557,31 @@ func set_types(mon: BattleMon, type: int) -> void:
 
 
 ## Effets à part des capacités qui infligent des dégâts, après les dégâts.
-func _special_after(mon: BattleMon, target: BattleMon, data: MoveData, total: int) -> void:
+func _special_after(mon: BattleMon, target: BattleMon, data: MoveData, total: int, substitute_hit := false) -> void:
+	# Événements 0x83 et 0x4B (après les dégâts d'une cible) : rien à travers un clone.
+	var reached := total > 0 and not substitute_hit
 	match data.id:
+		365, 450:
+			# Picore, Piqûre (0x021E6550) : la baie de la cible est retirée (Glue l'empêche) et le lanceur
+			# la mange tout de suite (776).
+			var berry := target.pokemon.held_item
+			if reached and BattleItems.is_berry(berry) and battle.items.change_item(target, 0, mon):
+				battle.say_mon(776, mon, {1: _item_name(berry)})
+				battle.items.use_now(mon, berry, mon)
+		510:
+			# Calcination (0x021E74F4) : la baie de la cible brûle (1108).
+			var burnt := target.pokemon.held_item
+			if reached and BattleItems.is_berry(burnt) and battle.items.change_item(target, 0, mon):
+				battle.say_mon(1108, target, {1: _item_name(burnt)})
+		374:
+			# Dégommage (0x021E5D4C) : l'objet lancé est consommé ; s'il a un effet, la cible le reçoit
+			# tout de suite (Orbe Flamme, Roche Royale, baies...).
+			var thrown: int = mon.get_effect("item_thrown", 0)
+			if thrown != 0 and mon.pokemon.held_item == thrown:
+				battle.items.consume(mon)
+				var thrown_data := ItemData.of(thrown)
+				if reached and not target.is_fainted() and thrown_data and thrown_data.fling_effect != 0:
+					battle.items.use_now(target, thrown, mon)
 		265:
 			if total > 0 and target.status() == Pokemon.Status.PARALYSIS and not target.is_fainted():
 				_cure_status(target, BattleText.PARALYSIS_CURED)
@@ -2563,12 +2668,14 @@ func _special_after(mon: BattleMon, target: BattleMon, data: MoveData, total: in
 		369, 521:
 			_pivot(mon)
 		168, 343:
-			_steal_item(mon, target)
+			if reached:
+				_steal_item(mon, target)
 		282:
-			if target.pokemon.held_item != 0 and not target.is_fainted():
-				var item := target.pokemon.held_item
-				target.pokemon.held_item = 0
-				battle.say_pair(1050, mon, target, {2: Autoloads.rom().text(BWFiles.TEXT_ITEM_NAMES, item)})
+			# Sabotage (0x021E33C0) : l'objet de la cible tombe (1050), sauf objet lié, Glue ou lanceur
+			# sauvage.
+			var item := target.pokemon.held_item
+			if reached and item != 0 and not target.is_fainted() and not _item_locked(mon, target) and battle.items.change_item(target, 0, mon):
+				battle.say_pair(1050, mon, target, {2: _item_name(item)})
 	if data.id != 210:
 		mon.clear_effect("fury_cutter")
 
@@ -2809,15 +2916,35 @@ func _pivot_switch(mon: BattleMon) -> void:
 		await battle.switch_mon(mon, index)
 
 
+## Larcin, Implore (0x021E3694) : sans objet, le lanceur prend celui de la cible (travail 0x24 : Glue
+## l'empêche, 493 ; « X vole l'objet... », 1057), sauf objet lié ou lanceur sauvage (0x021E8688).
+## Le portage ne laisse pas voler l'objet d'un dresseur adverse (le jeu le rend-il après le combat ?
+## non vérifié).
 func _steal_item(mon: BattleMon, target: BattleMon) -> void:
-	if mon.pokemon.held_item != 0 or target.pokemon.held_item == 0 or battle.abilities.has_ability(target, BattleAbilities.STICKY_HOLD):
+	var item := target.pokemon.held_item
+	if mon.pokemon.held_item != 0 or item == 0 or _item_locked(mon, target):
 		return
 	if target.side == BattleSide.ENEMY and not battle.is_wild():
 		return
+	if not battle.items.change_item(target, 0, mon):
+		return
+	battle.say_pair(1057, mon, target, {2: _item_name(item)})
+	battle.items.change_item(mon, item)
+
+
+## Objet qu'on ne peut pas prendre (0x021E8688) : lanceur sauvage (0x021E8668 : combat sauvage, camp
+## d'en face), objet lié à l'espèce de la cible ou à celle du lanceur.
+func _item_locked(mon: BattleMon, target: BattleMon) -> bool:
 	var item := target.pokemon.held_item
-	target.pokemon.held_item = 0
-	mon.pokemon.held_item = item
-	battle.say_pair(1057, mon, target, {2: Autoloads.rom().text(BWFiles.TEXT_ITEM_NAMES, item)})
+	return _wild_thief(mon) or BattleItems.bound_to(target.pokemon.species, item) or BattleItems.bound_to(mon.pokemon.species, item)
+
+
+func _wild_thief(mon: BattleMon) -> bool:
+	return battle.is_wild() and mon.side == BattleSide.ENEMY
+
+
+func _item_name(item: int) -> String:
+	return Autoloads.rom().text(BWFiles.TEXT_ITEM_NAMES, item)
 
 
 ## Une capacité de statut sur un Pokémon de type qui l'ignore (Cage-Éclair sur un type Sol,

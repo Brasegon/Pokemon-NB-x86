@@ -23,6 +23,9 @@ var conditions := {}
 var items: Array[int] = []
 ## Dernier tour où un Pokémon de ce camp a été mis K.O. (Vengeance).
 var last_faint_turn := -2
+## Objet consommé par chaque membre de l'équipe (place dans l'équipe -> objet), que Recyclage
+## rend : le jeu le garde dans la structure du Pokémon pour tout le combat (+0x14).
+var consumed := {}
 
 
 func is_player() -> bool:

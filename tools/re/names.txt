@@ -394,17 +394,24 @@ ov93:0x021BFA00   battle_accuracy                 précision : la capacité touc
 ov93:0x021C0D30   battle_damage_targets           dégâts sur la liste des cibles : x 0,75 si la capacité en visait plusieurs, adversaires puis alliés
 ov93:0x021C154C   effectiveness_message           efficacité d'une seule cible : « C'est super efficace ! » ou « pas très efficace »
 ov93:0x021C1E14   battle_damage                   dégâts d'une capacité
+ov93:0x021C21F0   battle_set_item                 pose l'objet tenu ; consommé : retenu pour Recyclage (+0x14)
 ov93:0x021C45B4   battle_recenter_triple          combat triple : un contre un aux coins opposés, les deux glissent au milieu
 ov93:0x021C50A8   battle_switch_out               sortie d'un Pokémon (changement, rotation) : événement 0xA3
 ov93:0x021C57E0   effectiveness_messages          efficacité d'un groupe de cibles : sans noms, ou une, deux, trois cibles nommées (fichier 14)
 ov93:0x021C6278   move_call_event                 événement 0x18 : capacité appelée (variable 0x12), sa cible (0x0D), échec (0x41)
 ov93:0x021C6370   battle_confusion_damage         dégâts de la confusion (puissance 40)
 ov93:0x021C63F8   move_call_message               événement 0x19 : message de la capacité appelée (Métronome 120, Force-Nature 121)
+ov93:0x021C79F4   item_change_check               événement 0x9A : le changement d'objet est-il empêché (Glue)
 ov93:0x021C7FD0   called_move_target              cible d'une capacité appelée
 ov93:0x021C804C   others_all_acted                tous les autres ont-ils agi ce tour (Saisie, Reflet Magik échouent)
 ov93:0x021C80B4   battle_last_move                dernière capacité lancée au combat (champ 0x1F74 du serveur, Photocopie)
 ov93:0x021C80FC   battle_rule                     type de combat : 0 simple, 1 double, 2 triple, 3 rotatif
+ov93:0x021C81EC   items_usable                    objets utilisables : ni Maladresse, ni Embargo, ni Zone Magique
 ov93:0x021C88B8   server_work                     travaux du serveur (selon le type : 4 message, 0x25 capacité remplacée, 0x33 Morphing...)
+ov93:0x021C9B58   server_change_item              travail 0x20 : pose un objet (Glue empêche un autre de le retirer)
+ov93:0x021C9C60   server_swap_items               travail 0x24 : échange deux objets (Tour de Magie, Larcin)
+ov93:0x021C9DDC   server_use_item_now             travail 0x22 : objet employé tout de suite (événement 0x73)
+ov93:0x021C9E6C   server_consume_item             travail 0x23 : objet consommé
 ov93:0x021C9EAC   server_set_move                 travail 0x25 : une capacité remplace une autre (Copie, Gribouille)
 ov93:0x021CA41C   server_transform                travail 0x33 : Morphing
 ov93:0x021CB274   battle_exp_share                partage de l'expérience
@@ -418,6 +425,8 @@ ov93:0x021D1FD0   client_move                     client : commande 0x31 (animat
 ov93:0x021D517C   move_slot_set                   écrit une capacité : copie du combat (Copie, Morphing) ou de l'équipe (Gribouille)
 ov93:0x021D5540   mon_move_pp                     PP d'une capacité connue (copie du combat)
 ov93:0x021D56F0   mon_knows_move                  le Pokémon connaît-il la capacité
+ov93:0x021D66D0   mon_set_consumed_item           retient l'objet consommé (+0x14) et vide l'objet tenu (+0x12)
+ov93:0x021D66E0   mon_consumed_item               objet consommé (+0x14 ; Recyclage)
 ov93:0x021D66E4   mon_record_move                 retient la capacité choisie (+0x14A), la capacité lancée (+0x14C) et la cible
 ov93:0x021D6748   mon_last_move_used              dernière capacité lancée (+0x14C ; Mimique)
 ov93:0x021D6758   mon_last_move_selected          dernière capacité choisie (+0x14A ; Encore, Entrave, Dépit, Copie, Gribouille)
@@ -441,7 +450,11 @@ ov93:0x021D8424   ability_handler_lookup          cherche un talent dans la tabl
 ov93:0x021DB148   mold_breaker_filter             Brise Moule : fait taire les talents de la liste 0x0689E450
 ov93:0x021DB8DC   ability_pressure_pp             Pression : un PP de plus (porteur visé, terrain, ou liste 0x0689E2C4)
 ov93:0x021DCE64   item_handler_lookup             cherche un objet tenu dans la table des gestionnaires (171 entrées et une fin)
+ov93:0x021DCF18   item_temp_handler               gestionnaire provisoire d'un objet (Picore, Dégommage)
 ov93:0x021E027C   move_handler_lookup             cherche une capacité à part dans la table des gestionnaires (0x102 entrées)
+ov93:0x021E85D8   item_bound_to_species           objet lié à une espèce : Orbe Platiné, Plaques, Modules
+ov93:0x021E8668   wild_item_thief                 combat sauvage (sorte 0) et lanceur d'en face : il ne prend pas d'objet
+ov93:0x021E8688   item_untakeable                 l'objet de la cible ne peut pas être pris (lanceur sauvage, objet lié)
 ov93:0x021E86E4   magic_coat_side                 Reflet Magik, Miroir Magik : renvoie Picots, Pics Toxik, Piège de Roc (événement 0x1F)
 ov93:0x021E8738   magic_coat_target               Reflet Magik, Miroir Magik : renvoie une capacité au drapeau 4 qui vise le porteur (événement 0x2D)
 ov93:0x021E87A4   magic_coat_message              « X repousse Y ! Retour à l'envoyeur ! » (764)
@@ -558,7 +571,9 @@ ov95:0x0689CD40   target_list_initial             nombre de cibles de départ d'
 0x0209DF48        text_speed_table                vitesse du texte : lente 3, moyenne 1, rapide -2
 0x0209E220        hidden_power_types              types de la Puissance Cachée
 0x0209E2BC        nature_table                    5 s8 par nature (Attaque, Défense, Attaque Spéciale, Défense Spéciale, Vitesse)
+0x0209E884        mail_items                      les 12 Lettres (objets 137 à 148)
 0x0209E89C        item_ball_table                 objet → Ball (25 Balls)
+0x0209E900        berry_items                     les 64 baies (objets 149 à 212)
 0x0209EA38        tm_moves                        capacité de chaque CT et CS
 0x0209FE6C        trainer_special_classes         28 classes à part : classe, genre de musique, décor
 0x0209FEA4        trainer_class_gender            classes féminines (base du PID 0x78)
@@ -648,12 +663,15 @@ ov94:0x0220AC88   camera_eyes                     yeux des prises de vue
 ov94:0x0220ACA0   camera_targets                  points visés des prises de vue
 
 # Overlay 95
+ov95:0x0689E2BC   genesect_drives                 Modules liés à Genesect (116 à 119)
 ov95:0x0689E2C4   pressure_moves                  Saisie, Possessif, Picots, Pics Toxik, Piège de Roc : Pression compte tous les adversaires
 ov95:0x0689E2CE   mimic_excluded                  capacités que Copie ne copie pas
 ov95:0x0689E2DA   encore_excluded                 capacités sur lesquelles Encore échoue
 ov95:0x0689E31C   me_first_excluded               capacités que Moi d'Abord ne copie pas
 ov95:0x0689E330   call_excluded                   capacités jamais appelées (Blabla Dodo, Assistance, Photocopie)
 ov95:0x0689E346   sleep_talk_excluded             capacités que Blabla Dodo n'appelle pas
+ov95:0x0689E374   mental_herb_conditions          conditions qu'arrête l'Herbe Mental (amour, Tourmente, Entrave, Anti-Soin, Encore, Provoc)
+ov95:0x0689E38C   arceus_plates                   Plaques liées à Arceus (298 à 313)
 ov95:0x0689E3AC   copycat_excluded                capacités que Photocopie n'appelle pas
 ov95:0x0689E3D4   assist_excluded                 capacités qu'Assistance n'appelle pas (copie de 0x0689E3AC)
 ov95:0x0689E3FC   metronome_excluded              41 capacités que Métronome n'appelle pas

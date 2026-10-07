@@ -139,6 +139,27 @@ const CLAMPERL := 366
 const MASTER_BALL := 1
 ## « {objet} renforce {capacité} ! » (fichier 15), quand un joyau sert.
 const GEM_MESSAGE := 182
+## Messages des objets (fichier 14, objet dans le mot 1) : PV rendus (908), confusion (932), statut
+## soigné (selon le statut).
+const ITEM_HEALED := 908
+const ITEM_CONFUSION := 932
+const ITEM_CURES := {Pokemon.Status.POISON: 917, Pokemon.Status.PARALYSIS: 920, Pokemon.Status.SLEEP: 923,
+	Pokemon.Status.FREEZE: 926, Pokemon.Status.BURN: 929}
+## Lettres et baies (numéros d'objets).
+const MAIL_FIRST := 137
+const MAIL_LAST := 148
+const BERRY_FIRST := 149
+const BERRY_LAST := 212
+## Objets liés à une espèce (0x021E85D8).
+const GIRATINA := 487
+const ARCEUS := 493
+const GENESECT := 649
+const GRISEOUS_ORB := 112
+const PLATE_ITEM_FIRST := 298
+const PLATE_ITEM_LAST := 313
+const DRIVE_ITEM_FIRST := 116
+const DRIVE_ITEM_LAST := 119
+const POISON_BARB := 245
 const POKE_DOLL := 63
 const FLUFFY_TAIL := 64
 
@@ -180,15 +201,217 @@ func _name(item: int) -> String:
 	return Autoloads.rom().text(BWFiles.TEXT_ITEM_NAMES, item)
 
 
-## L'objet tenu est consommé (Délestage double la Vitesse ensuite).
+## L'objet tenu est consommé (Délestage double la Vitesse ensuite) ; le jeu le retient pour
+## Recyclage (+0x14 de la structure du Pokémon, 0x021D66D0), le temps du combat.
 func consume(mon: BattleMon) -> void:
+	var item := mon.pokemon.held_item
 	mon.pokemon.held_item = 0
 	mon.set_effect("unburden")
+	if item != 0:
+		battle.sides[mon.side].consumed[mon.party_index] = item
+
+
+## Change l'objet tenu (travail 0x20 du jeu, 0x021C9B58). Un autre Pokémon ne peut pas retirer
+## l'objet d'un porteur de Glue (événement 0x9A : « L'objet de X ne peut pas être volé ! », 493) ;
+## l'objet qui disparaît active Délestage ; un objet reçu peut servir tout de suite (0x021C18FC).
+## Faux si l'objet n'a pas changé.
+func change_item(mon: BattleMon, item: int, by: BattleMon = null) -> bool:
+	if item == 0 and by != null and by != mon and mon.pokemon.held_item != 0 and battle.abilities.holds_item(mon, by):
+		battle.abilities.announce(mon)
+		battle.say_mon(493, mon)
+		return false
+	mon.pokemon.held_item = item
+	mon.clear_effect("choice_lock")
+	if item == 0:
+		mon.set_effect("unburden")
+		return true
+	mon.clear_effect("unburden")
+	if not mon.is_fainted():
+		check_hp_berries(mon)
+		on_status(mon)
+	return true
+
+
+## Lettres (liste 0x0209E884 de l'ARM9, lue par 0x02021308) et baies (0x0209E900, 0x0202135C).
+static func is_mail(item: int) -> bool:
+	return item >= MAIL_FIRST and item <= MAIL_LAST
+
+
+static func is_berry(item: int) -> bool:
+	return item >= BERRY_FIRST and item <= BERRY_LAST
+
+
+## Objet lié à une espèce (0x021E85D8) : Orbe Platiné de Giratina, Plaques d'Arceus (0x0689E38C),
+## Modules de Genesect (0x0689E2BC). On ne peut ni le lui prendre, ni le lui donner, ni le lancer.
+static func bound_to(species: int, item: int) -> bool:
+	match species:
+		GIRATINA:
+			return item == GRISEOUS_ORB
+		ARCEUS:
+			return item >= PLATE_ITEM_FIRST and item <= PLATE_ITEM_LAST
+		GENESECT:
+			return item >= DRIVE_ITEM_FIRST and item <= DRIVE_ITEM_LAST
+	return false
+
+
+## Objet employé tout de suite, quels que soient les PV (événement 0x73, 0x021C6DA0) : baie mangée
+## par Picore ou Piqûre, objet reçu de Dégommage. `source` : celui qui l'a lancé.
+func use_now(mon: BattleMon, item: int, source: BattleMon) -> void:
+	var data := ItemData.of(item)
+	if mon.is_fainted() or data == null:
+		return
+	match item:
+		POISON_BARB:
+			battle.moves.set_status(mon, source, Pokemon.Status.POISON, true)
+			return
+	match data.hold_effect:
+		FLINCH:
+			# Roche Royale, Croc Rasoir (0x021DE494) : apeurement à coup sûr.
+			if not battle.abilities.prevents_flinch(mon):
+				mon.set_effect("flinch")
+		LIGHT_BALL:
+			battle.moves.set_status(mon, source, Pokemon.Status.PARALYSIS, true)
+		TOXIC_ORB:
+			battle.moves.set_status(mon, source, Pokemon.Status.POISON, true, true)
+		FLAME_ORB:
+			battle.moves.set_status(mon, source, Pokemon.Status.BURN, true)
+		WHITE_HERB:
+			_restore_stats(mon, item)
+		MENTAL_HERB:
+			_cure_mind(mon, item)
+		_:
+			_berry_effect(mon, item, true)
+
+
+## Effet d'une baie (le jeu : réactions aux événements 0x72 et 0x73 de chaque baie). `forced` :
+## mangée par Picore, Piqûre ou reçue de Dégommage (Baie Mepo : n'importe quelle capacité qui a perdu
+## des PP). Vrai si elle a servi.
+func _berry_effect(mon: BattleMon, item: int, forced := false) -> bool:
+	var data := ItemData.of(item)
+	if data == null or not is_berry(item):
+		return false
+	var effect := data.hold_effect
+	var words := {1: _name(item)}
+	match effect:
+		RESTORE_HP:
+			battle.heal(mon, data.hold_param)
+			battle.say_mon(ITEM_HEALED, mon, words)
+		RESTORE_PERCENT:
+			battle.heal(mon, maxi(mon.max_hp() * data.hold_param / 100, 1))
+			battle.say_mon(ITEM_HEALED, mon, words)
+		RESTORE_PP:
+			return _restore_pp(mon, item, forced)
+		CURE_CONFUSION:
+			if not mon.has("confusion"):
+				return false
+			mon.clear_effect("confusion")
+			battle.say_mon(ITEM_CONFUSION, mon, words)
+		CURE_ALL:
+			var cured := _cure_status_by_item(mon, item)
+			if mon.has("confusion"):
+				mon.clear_effect("confusion")
+				battle.say_mon(ITEM_CONFUSION, mon, words)
+				cured = true
+			return cured
+		MICLE:
+			mon.set_effect("micle")
+			battle.say_mon(1028, mon, words)
+		_:
+			if CURES.has(effect):
+				if mon.status() != CURES[effect]:
+					return false
+				return _cure_status_by_item(mon, item)
+			if effect >= FLAVOR_HEAL_FIRST and effect <= FLAVOR_HEAL_LAST:
+				battle.heal(mon, maxi(mon.max_hp() / maxi(data.hold_param, 1), 1))
+				battle.say_mon(ITEM_HEALED, mon, words)
+				# Saveur détestée (la nature baisse la statistique de la saveur) : confusion.
+				var disliked: int = [Stats.Stat.ATTACK, Stats.Stat.SPEED, Stats.Stat.SP_ATTACK, Stats.Stat.DEFENSE, Stats.Stat.SP_DEFENSE][effect - FLAVOR_HEAL_FIRST]
+				if Stats.nature_effect(mon.pokemon.nature, disliked) < 0:
+					battle.moves.inflict(mon, mon, MoveData.Ailment.CONFUSION, null, true)
+			elif effect >= PINCH_FIRST and effect <= PINCH_FIRST + 4:
+				return battle.moves.change_stat(mon, mon, PINCH_STATS[effect - PINCH_FIRST], 1, false, item)
+			elif effect == PINCH_FIRST + 5:
+				# Baie Lansat (0x021DD8A8) : coups critiques plus probables (1001).
+				if mon.has("lansat"):
+					return false
+				mon.set_effect("lansat")
+				battle.say_mon(1001, mon, words)
+			elif effect == PINCH_FIRST + 6:
+				# Baie Frista (0x021DD92C) : +2 dans une statistique tirée parmi celles qui peuvent monter.
+				var raisable: Array[int] = []
+				for stat in [Stats.Stat.ATTACK, Stats.Stat.DEFENSE, Stats.Stat.SP_ATTACK, Stats.Stat.SP_DEFENSE, Stats.Stat.SPEED]:
+					if mon.stage(stat) < BattleMon.MAX_STAGE:
+						raisable.append(stat)
+				if raisable.is_empty():
+					return false
+				return battle.moves.change_stat(mon, mon, raisable[battle.random.range_of(raisable.size())], 2, false, item)
+			else:
+				return false
+	return true
+
+
+## Statut soigné par une baie : message propre à chaque statut (917 à 929, avec l'objet).
+func _cure_status_by_item(mon: BattleMon, item: int) -> bool:
+	var status := mon.status()
+	if status == Pokemon.Status.NONE:
+		return false
+	mon.pokemon.status = Pokemon.Status.NONE
+	mon.pokemon.sleep_turns = 0
+	mon.badly_poisoned = false
+	battle.push({"type": "status", "side": mon.side, "slot": mon.slot, "status": 0})
+	battle.say_mon(ITEM_CURES.get(status, ITEM_CURES[Pokemon.Status.POISON]), mon, {1: _name(item)})
+	return true
+
+
+## Baie Mepo (0x021DD33C) : 10 PP à la première capacité qui n'en a plus, sinon à la première qui en
+## a perdu (`forced` seulement) ; « restaure les PP de... » (911).
+func _restore_pp(mon: BattleMon, item: int, forced: bool) -> bool:
+	var chosen := -1
+	for i in mon.pokemon.moves.size():
+		if mon.pp(i) == 0:
+			chosen = i
+			break
+	if chosen < 0 and forced:
+		for i in mon.pokemon.moves.size():
+			var move: Dictionary = mon.pokemon.moves[i]
+			if move.pp < MoveData.max_pp(move.id, move.get("pp_ups", 0)):
+				chosen = i
+				break
+	if chosen < 0:
+		return false
+	var slot: Dictionary = mon.pokemon.moves[chosen]
+	slot.pp = mini(slot.pp + 10, MoveData.max_pp(slot.id, slot.get("pp_ups", 0)))
+	battle.say_mon(911, mon, {1: _name(item), 2: Autoloads.rom().text(BWFiles.TEXT_MOVE_NAMES, slot.id)})
+	return true
+
+
+## Herbe Blanche (0x021DE240) : les crans baissés reviennent à 0 (« restaure ses stats », 1010).
+func _restore_stats(mon: BattleMon, item: int) -> bool:
+	var lowered := false
+	for stat in range(Stats.Stat.ATTACK, Stats.Stat.EVASION + 1):
+		if mon.stages[stat] < 0:
+			mon.stages[stat] = 0
+			lowered = true
+	if lowered:
+		battle.say_mon(1010, mon, {1: _name(item)})
+	return lowered
+
+
+## Herbe Mental (conditions 0x0689E374) : amour (« fait faner son amour », 935), Tourmente, Entrave,
+## Anti-Soin, Encore et Provoc s'arrêtent.
+func _cure_mind(mon: BattleMon, item: int) -> bool:
+	var cured := false
+	for effect in ["attract", "torment", "disable", "heal_block", "encore", "taunt"]:
+		if mon.has(effect):
+			mon.clear_effect(effect)
+			cured = true
+			if effect == "attract":
+				battle.say_mon(935, mon, {1: _name(item)})
+	return cured
 
 
 func _is_berry(mon: BattleMon) -> bool:
-	var data := ItemData.of(_item_of(mon)) if _item_of(mon) else null
-	return data != null and data.pocket_id == ItemData.Pocket.BERRIES
+	return is_berry(_item_of(mon))
 
 
 ## Tension : aucun adversaire au combat ne doit l'avoir pour pouvoir manger une baie.
@@ -420,35 +643,12 @@ func check_hp_berries(mon: BattleMon) -> void:
 	var item := _item_of(mon)
 	var half := mon.hp() * 2 <= mon.max_hp()
 	var quarter := mon.hp() * 4 <= mon.max_hp()
-	if effect == RESTORE_HP and half:
+	var heals := effect in [RESTORE_HP, RESTORE_PERCENT] or (effect >= FLAVOR_HEAL_FIRST and effect <= FLAVOR_HEAL_LAST)
+	var pinch := (effect >= PINCH_FIRST and effect <= PINCH_FIRST + 6) or effect == MICLE
+	if (heals and half) or (pinch and quarter):
+		# Les PV rendus et les messages viennent de la baie (« ... restaure son énergie », 908).
 		consume(mon)
-		battle.heal(mon, _param_of(item))
-		battle.say_mon(914, mon, {1: _name(item)})
-	elif effect == RESTORE_PERCENT and half:
-		consume(mon)
-		battle.heal(mon, maxi(mon.max_hp() * _param_of(item) / 100, 1))
-		battle.say_mon(914, mon, {1: _name(item)})
-	elif effect >= FLAVOR_HEAL_FIRST and effect <= FLAVOR_HEAL_LAST and half:
-		consume(mon)
-		battle.heal(mon, maxi(mon.max_hp() / _param_of(item), 1))
-		battle.say_mon(914, mon, {1: _name(item)})
-		# Saveur détestée (la nature baisse la statistique de la saveur) : confusion.
-		var disliked: int = [Stats.Stat.ATTACK, Stats.Stat.SPEED, Stats.Stat.SP_ATTACK, Stats.Stat.DEFENSE, Stats.Stat.SP_DEFENSE][effect - FLAVOR_HEAL_FIRST]
-		if Stats.nature_effect(mon.pokemon.nature, disliked) < 0:
-			battle.moves.inflict(mon, mon, MoveData.Ailment.CONFUSION, null, true)
-	elif effect >= PINCH_FIRST and effect <= PINCH_FIRST + 4 and quarter:
-		consume(mon)
-		battle.moves.change_stat(mon, mon, PINCH_STATS[effect - PINCH_FIRST], 1, false)
-	elif effect == PINCH_FIRST + 5 and quarter:
-		consume(mon)
-		mon.set_effect("lansat")
-	elif effect == PINCH_FIRST + 6 and quarter:
-		consume(mon)
-		battle.moves.change_stat(mon, mon, PINCH_STATS[battle.random.range_of(5)], 2, false)
-	elif effect == MICLE and quarter:
-		consume(mon)
-		mon.set_effect("micle")
-		battle.say_mon(1028, mon, {1: _name(item)})
+		_berry_effect(mon, item)
 
 
 static func _param_of(item: int) -> int:
@@ -464,11 +664,7 @@ func on_status(mon: BattleMon) -> void:
 	if CURES.has(effect) and mon.status() == CURES[effect] or effect == CURE_ALL and mon.status() != Pokemon.Status.NONE:
 		var item := _item_of(mon)
 		consume(mon)
-		mon.pokemon.status = Pokemon.Status.NONE
-		mon.pokemon.sleep_turns = 0
-		mon.badly_poisoned = false
-		battle.push({"type": "status", "side": mon.side, "slot": mon.slot, "status": 0})
-		battle.say_mon(1010, mon, {1: _name(item)})
+		_cure_status_by_item(mon, item)
 
 
 func on_confused(mon: BattleMon) -> void:

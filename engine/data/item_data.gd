@@ -32,6 +32,10 @@ var id := 0
 var price := 0
 var hold_effect := 0
 var hold_param := 0
+## Effet de Picore et de Dégommage (+0x04, +0x05) : non nul si l'objet fait quelque chose quand on
+## le mange ou qu'on le reçoit (le jeu emploie alors son gestionnaire, événement 0x73).
+var pluck_effect := 0
+var fling_effect := 0
 var fling_power := 0
 var natural_gift_power := 0
 var natural_gift_type := 0
@@ -86,6 +90,8 @@ static func parse(bytes: PackedByteArray) -> ItemData:
 	data.price = bytes.decode_u16(0) * 10
 	data.hold_effect = bytes[2]
 	data.hold_param = bytes[3]
+	data.pluck_effect = bytes[4]
+	data.fling_effect = bytes[5]
 	data.fling_power = bytes[6]
 	data.natural_gift_power = bytes[7]
 	var bits := bytes.decode_u16(8)

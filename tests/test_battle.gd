@@ -49,6 +49,7 @@ func _initialize() -> void:
 	_test_attack_moves()
 	_test_team_moves()
 	_test_call_moves()
+	_test_item_moves()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -1043,6 +1044,82 @@ func _test_call_moves() -> void:
 	_check(foe.has("encore") and foe.get_effect("encore").move == 118, "Encore : la capacité choisie (Métronome), pas celle qu'il a appelée")
 	battle.moves.use_move(me, {"action": Battle.Action.FIGHT, "move": 2, "mon": me, "target": foe.position()})
 	_check(foe.has("disable") and foe.get_effect("disable").move == 118, "Entrave : la capacité choisie")
+
+
+## Capacités qui jouent avec les objets tenus, et effets des objets employés tout de suite.
+func _test_item_moves() -> void:
+	var battle := _duel([363, 374, 365, 510], 150)
+	var me := battle.mon_at(BattleSide.PLAYER, 0)
+	var foe := battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.held_item = 0
+	me.pokemon.held_item = 158
+	_check(battle.moves.move_type_of(me, MoveData.of(363)) == ItemData.of(158).natural_gift_type, "Don Naturel : le type de la baie tenue")
+	var before := foe.hp()
+	_use(battle, me, 0)
+	_check(foe.hp() < before and me.pokemon.held_item == 0 and battle.player().consumed.get(0, 0) == 158,
+		"Don Naturel : la baie part et Recyclage la retient")
+	before = foe.hp()
+	_use(battle, me, 0)
+	_check(foe.hp() == before, "Don Naturel échoue sans baie")
+	foe.pokemon.hp = foe.max_hp()
+	me.pokemon.held_item = 273
+	_use(battle, me, 1)
+	_check(foe.status() == Pokemon.Status.BURN and me.pokemon.held_item == 0 and _said(battle, BWFiles.TEXT_BATTLE_SET, 779),
+		"Dégommage : Orbe Flamme lancé brûle la cible")
+	foe.pokemon.held_item = 158
+	foe.pokemon.hp = foe.max_hp()
+	me.pokemon.hp = me.max_hp() / 2
+	var half := me.hp()
+	_use(battle, me, 2)
+	_check(foe.pokemon.held_item == 0 and me.hp() == half + me.max_hp() * 25 / 100 and _said(battle, BWFiles.TEXT_BATTLE_SET, 776),
+		"Picore : la Baie Sitrus de la cible est mangée par le lanceur")
+	foe.pokemon.held_item = 155
+	foe.pokemon.hp = foe.max_hp()
+	foe.ability = BattleAbilities.STICKY_HOLD
+	_use(battle, me, 2)
+	_check(foe.pokemon.held_item == 155 and _said(battle, BWFiles.TEXT_BATTLE_SET, 493 + 1), "Glue : la baie ne peut pas être volée (variante « sauvage »)")
+	foe.ability = 0
+	foe.pokemon.hp = foe.max_hp()
+	_use(battle, me, 3)
+	_check(foe.pokemon.held_item == 0 and _said(battle, BWFiles.TEXT_BATTLE_SET, 1108 + 1), "Calcination : la baie de la cible brûle")
+
+	battle = _duel([282, 271, 278, 516], 154)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	foe = battle.mon_at(BattleSide.ENEMY, 0)
+	foe.pokemon.held_item = 234
+	me.pokemon.held_item = 0
+	_use(battle, me, 0)
+	_check(foe.pokemon.held_item == 0 and foe.has("unburden"), "Sabotage : l'objet de la cible tombe")
+	foe.pokemon.set_moves([282, 271, 168])
+	me.pokemon.held_item = 234
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 0, "mon": foe})
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 2, "mon": foe})
+	battle.moves.use_move(foe, {"action": Battle.Action.FIGHT, "move": 1, "mon": foe})
+	_check(me.pokemon.held_item == 234 and foe.pokemon.held_item == 0, "un Pokémon sauvage ne prend pas l'objet du joueur (0x021E8668)")
+	me.pokemon.held_item = 287
+	foe.pokemon.held_item = 155
+	_use(battle, me, 1)
+	_check(me.pokemon.held_item == 155 and foe.pokemon.held_item == 287 and _said(battle, BWFiles.TEXT_BATTLE_SET, 682),
+		"Tour de Magie : les objets s'échangent")
+	battle.player().consumed[0] = 158
+	me.pokemon.held_item = 0
+	_use(battle, me, 2)
+	_check(me.pokemon.held_item == 158 and not battle.player().consumed.has(0), "Recyclage : la baie consommée revient")
+	foe.pokemon.held_item = 0
+	_use(battle, me, 3)
+	_check(foe.pokemon.held_item == 158 and me.pokemon.held_item == 0, "Passe-Cadeau : la cible reçoit l'objet du lanceur")
+	_check(BattleItems.bound_to(493, 300) and BattleItems.bound_to(487, 112) and not BattleItems.bound_to(25, 112),
+		"objets liés : Plaques d'Arceus, Orbe Platiné de Giratina (0x021E85D8)")
+
+	battle = _duel([33], 158)
+	me = battle.mon_at(BattleSide.PLAYER, 0)
+	me.pokemon.held_item = 201
+	me.pokemon.hp = me.max_hp() / 4
+	battle.items.check_hp_berries(me)
+	_check(me.stage(Stats.Stat.ATTACK) == 1 and _said(battle, BWFiles.TEXT_BATTLE_SET, 938), "Baie Lichii : « fait augmenter son Attaque » (938)")
+	me.pokemon.held_item = 149
+	battle.moves.set_status(me, battle.mon_at(BattleSide.ENEMY, 0), Pokemon.Status.PARALYSIS)
+	_check(me.status() == Pokemon.Status.NONE and _said(battle, BWFiles.TEXT_BATTLE_SET, 920), "Baie Ceriz : « le sort de sa paralysie » (920)")
 
 
 ## Vérification qui ne s'affiche qu'en cas d'échec (boucles).

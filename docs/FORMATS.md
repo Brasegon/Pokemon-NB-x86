@@ -1406,6 +1406,15 @@ ceux du fichier 14 (variante selon le camp) ; « état » : condition passagère
 | Gribouille | 0x021E0A20 | de même, hors Gribouille, Lutte et Babil, mais dans la copie de l'équipe : pour de bon (691) |
 | Morphing | 0x021E5564, 0x021CA41C | échoue si l'un est déjà transformé ou si la cible a un clone ; 0x021D6BF0 recopie la structure de la cible sauf ses 0xEC premiers octets : types, statistiques sauf les PV, crans, talent, capacités (5 PP chacune) ; nouveau sprite (commande 0x53 du client) ; message à 7 variantes (644) |
 | Saisie | 0x021E3540... | échoue si tous les autres ont déjà agi (0x021C804C) ; « attend que son ennemi agisse » (751) ; jusqu'à la fin du tour, vole la première capacité d'un autre qui a le drapeau 5 (événement 0x1A, 0x021BEAB4) et la lance lui-même (0x021BE4F0 ; 754, à 7 variantes) |
+| Don Naturel | 0x021E32D0... | une baie avec une puissance de Don Naturel (+0x07 des données de l'objet), objets utilisables (ni Maladresse, ni Embargo, ni Zone Magique : 0x021C81EC) ; type (bits 0-4 de +0x08) et puissance de la baie ; elle part à la fin (événement 0x27), même ratée |
+| Dégommage | 0x021E5C74... | un objet avec une puissance de Dégommage (+0x06), pas lié à l'espèce du lanceur ; « lance son objet » (779) avant les dégâts ; consommé ; si son effet de Dégommage (+0x05) n'est pas nul, la cible l'emploie tout de suite |
+| Picore, Piqûre | 0x021E6550 | après les dégâts, la baie de la cible lui est retirée et le lanceur l'emploie tout de suite (776) |
+| Calcination | 0x021E74F4 | la baie de chaque cible touchée brûle (1108) |
+| Sabotage | 0x021E33C0 | l'objet de la cible tombe (1050) |
+| Larcin, Implore | 0x021E3694 | sans objet avant l'attaque, le lanceur prend celui de la cible (travail 0x24 ; 1057) |
+| Tour de Magie, Passe-Passe | 0x021E3760 | échange des objets (682, puis « obtient... », 685, pour chacun) ; échec sans objet, avec une Lettre, un objet lié, ou lancé par un Pokémon sauvage ; Glue : « Ça n'affecte pas X... » (210) |
+| Recyclage | 0x021E3EE4 | sans objet, le lanceur retrouve l'objet qu'il a consommé (733 ; +0x14 de la structure du Pokémon, 0x021D66E0) |
+| Passe-Cadeau | 0x021E7B38 | le lanceur donne son objet à une cible qui n'en a pas (message à 7 variantes, 1111) |
 | Reflet Magik | 0x021E3454... | échoue si tous les autres ont déjà agi ; « s'entoure du Reflet Magik » (761) ; jusqu'à la fin du tour, renvoie les capacités au drapeau 4 qui le visent (événement 0x2D, 0x021E8738), et Picots, Pics Toxik, Piège de Roc lancés d'en face (événement 0x1F, 0x021E86E4) ; « repousse Y ! Retour à l'envoyeur ! » (764) ; une capacité renvoyée ne l'est pas une seconde fois |
 
 **Capacités qui en lancent une autre** (emploi d'une capacité, 0x021BDE38) : après les conditions
@@ -1425,12 +1434,36 @@ lue par Mimique et l'Écho de l'objet Métronome) ; le serveur garde la dernièr
 Gribouille) ou sans PP (0x021D5540) ; il pose 3 tours et Entrave 4, un de plus si le bit 1 des
 indicateurs du tour de la cible est mis (0x021D5B50, rôle non identifié).
 
+**Objets qui changent de main** : le travail 0x20 (0x021C9B58) pose un objet ; quand un autre
+Pokémon retire l'objet d'un porteur, l'événement 0x9A laisse Glue l'en empêcher (« L'objet de X ne
+peut pas être volé ! », 493, événement 0x9B). Le travail 0x23 consomme l'objet et le retient pour
+Recyclage (0x021C21F0) ; 0x24 échange deux objets (0x021C9C60). On ne prend pas un objet
+(0x021E8688) quand le lanceur est le Pokémon sauvage (0x021E8668 : combat sauvage de sorte 0, camp
+d'en face), ni un objet lié à une espèce (0x021E85D8 : Orbe Platiné et Giratina, Plaques 298 à 313
+et Arceus, liste 0x0689E38C, Modules 116 à 119 et Genesect, 0x0689E2BC). Lettres : objets 137 à
+148 (liste 0x0209E884 de l'ARM9) ; baies : 149 à 212 (0x0209E900). Le portage ne laisse pas voler
+l'objet d'un dresseur adverse (le jeu le rend-il après le combat ? non vérifié).
+
+**Objet employé tout de suite** (travail 0x22, 0x021C9DDC : un gestionnaire provisoire de l'objet,
+0x021DCF18, reçoit l'événement 0x73) : les baies (soin, statut, confusion, crans, Lansat, Micle,
+Mepo), Herbe Blanche, Herbe Mental, Roche Royale et Croc Rasoir (apeurement à coup sûr), Balle
+Lumière (paralysie), Orbe Toxique, Orbe Flamme et Pic Venin (statut) ; les autres objets ne font
+rien. Messages des objets (fichier 14, objet dans le mot 1) : PV rendus 908 (Baies Oran, Sitrus et
+de saveur) ; PP 911 (Baie Mepo : la première capacité sans PP, ou, mangée de force, la première qui
+en a perdu) ; statut soigné 917 poison, 920 paralysie, 923 sommeil, 926 gel, 929 brûlure ;
+confusion 932 ; amour 935 ; cran monté par un objet 938 + 21 x (crans - 1) + 3 x statistique ;
+Lansat 1001 ; Herbe Blanche 1010 ; Micle 1028. Herbe Mental arrête l'amour, Tourmente, Entrave,
+Anti-Soin, Encore et Provoc (conditions 0x0689E374) ; Baie Frista monte de 2 une statistique tirée
+parmi celles qui peuvent monter (0x021DD92C).
+
 Corrigés en passant : messages du premier tour de Rebond (544), Piqué (550), Coud'Krâne (556) et
 Revenant (541), qui étaient ceux d'un Pokémon sauvage ; Prélèvement Destin et Rancune s'arrêtent à
 la capacité suivante du lanceur ; Imitation (619) et Copie Type (1089) ont des messages à 7 variantes ;
 Picots, Pics Toxik et Piège de Roc ne posent qu'une couche en combat double ; Hurlement et Cyclone
 choisissent le remplaçant parmi l'équipe du dresseur de la place, qui passe par la sortie
-ordinaire (Médic Nature, Régé-Force).
+ordinaire (Médic Nature, Régé-Force) ; messages des baies (Sitrus et Oran : 908, pas 914 qui est
+celui des Restes ; statuts : 917 à 929, pas 1010 qui est celui de l'Herbe Blanche ; crans : messages
+des objets) ; un Pokémon sauvage ne vole plus l'objet du joueur.
 
 ### Formules du combat (`battle_calc.gd`)
 

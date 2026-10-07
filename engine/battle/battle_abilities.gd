@@ -195,7 +195,7 @@ const HANDLED := [STENCH, DRIZZLE, SPEED_BOOST, BATTLE_ARMOR, STURDY, DAMP, LIMB
 	FLOWER_GIFT, BAD_DREAMS, SHEER_FORCE, CONTRARY, UNNERVE, DEFIANT, DEFEATIST, CURSED_BODY, WEAK_ARMOR,
 	MULTISCALE, TOXIC_BOOST, FLARE_BOOST, MOODY, OVERCOAT, POISON_TOUCH, REGENERATOR, BIG_PECKS,
 	SAND_RUSH, WONDER_SKIN, ANALYTIC, INFILTRATOR, MUMMY, MOXIE, JUSTIFIED, RATTLED, SAP_SIPPER,
-	PRANKSTER, SAND_FORCE, IRON_BARBS, VICTORY_STAR, TURBOBLAZE, TERAVOLT]
+	PRANKSTER, SAND_FORCE, IRON_BARBS, VICTORY_STAR, TURBOBLAZE, TERAVOLT, STICKY_HOLD, MAGIC_BOUNCE]
 
 ## Le combat, gardé par une référence faible : il possède ce module (pas de cycle de références).
 var battle: Battle:
@@ -586,6 +586,11 @@ func redirect(mon: BattleMon, target: BattleMon, data: MoveData, move_type: int)
 		if each != mon and _target_ability(each, mon) == drawing[move_type]:
 			return each
 	return target
+
+
+## Glue (0x021DB870) : un autre Pokémon ne peut pas lui retirer son objet (sauf un Brise Moule).
+func holds_item(holder: BattleMon, other: BattleMon) -> bool:
+	return _target_ability(holder, other) == STICKY_HOLD
 
 
 ## Miroir Magik (0x021DCACC) : renvoie les capacités que Reflet Magik renvoie (sauf face à un
