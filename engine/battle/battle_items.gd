@@ -141,6 +141,11 @@ const CLAMPERL := 366
 const MASTER_BALL := 1
 ## « {objet} renforce {capacité} ! » (fichier 15), quand un joyau sert.
 const GEM_MESSAGE := 182
+## Capture avec l'équipe pleine : messages du fichier 234 (le Pokédex) et drapeau de Boletta.
+const POKEDEX_TEXT := 234
+const PC_OWNER_UNKNOWN := 176
+const PC_OWNER_KNOWN := 177
+const PC_OWNER_FLAG := 0x96D
 ## Messages des objets (fichier 14, objet dans le mot 1) : PV rendus (908), confusion (932), statut
 ## soigné (selon le statut).
 const ITEM_HEALED := 908
@@ -1069,7 +1074,13 @@ func throw_ball(mon: BattleMon, ball: int) -> void:
 	pokemon.ot_name = battle.state.player_name
 	pokemon.status = pokemon.status if pokemon.status != Pokemon.Status.FREEZE else Pokemon.Status.NONE
 	battle.caught_pokemon = pokemon
-	battle.state.add_to_party(pokemon)
+	if not battle.state.add_to_party(pokemon):
+		# Équipe pleine (0x021B95B4 de l'overlay 92) : le PC, « X est envoyé dans la BOÎTE n du PC de
+		# Boletta ! » (fichier 234, 177 ; « de ??? », 176, tant que le drapeau 0x96D n'est pas mis).
+		var box := battle.state.store_in_pc(pokemon)
+		if box >= 0:
+			battle.say(PC_OWNER_KNOWN if battle.state.work.get_flag(PC_OWNER_FLAG) else PC_OWNER_UNKNOWN,
+				{0: pokemon.name(), 1: GameState.box_name(box)}, POKEDEX_TEXT)
 	battle.result = Battle.Result.CAUGHT
 
 

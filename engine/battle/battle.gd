@@ -77,6 +77,8 @@ var escape_attempts := 0
 var money_won := 0
 ## Pièces ramassées après Jackpot (niveau x 5 à chaque emploi), gagnées si le joueur gagne.
 var pay_day := 0
+## Style de combat « CHOIX » (options) : proposer de changer quand le dresseur envoie un Pokémon.
+var shift_style := true
 ## Pièce Rune ou Encens Veine tenu au combat par un Pokémon du joueur : la somme gagnée double.
 var money_doubled := false
 ## Pokémon capturé (et ajouté à l'équipe ou non).
@@ -384,6 +386,9 @@ func _ask(request: Dictionary) -> Variant:
 
 ## Joue tout le combat (coroutine).
 func run() -> void:
+	var settings := Autoloads.settings()
+	if settings:
+		shift_style = settings.get_value("jeu", "style_combat", STYLE_SHIFT) == STYLE_SHIFT
 	await _start()
 	while result == Result.NONE:
 		await _play_turn()
@@ -642,11 +647,12 @@ func _action_problem(action: Dictionary) -> Dictionary:
 	return {}
 
 
-## Fuite d'un combat sauvage (0x021BD5AC), tentée dès le choix : vrai si le combat s'arrête.
+## Fuite d'un combat sauvage (0x021BD5AC), tentée dès le choix : vrai si le combat s'arrête. Un
+## Pokémon K.O. ne fuit pas sans tirage (0x021BD658) et n'est pas retenu.
 func _try_escape(mon: BattleMon) -> bool:
 	var foe := foe_of(mon)
-	var free := abilities.always_escapes(mon) or items.always_escapes(mon)
-	if not free and moves.is_trapped(mon):
+	var free := not mon.is_fainted() and (abilities.always_escapes(mon) or items.always_escapes(mon))
+	if not free and not mon.is_fainted() and moves.is_trapped(mon):
 		say_mon(BattleText.CANT_ESCAPE, mon)
 		return false
 	var speed := mon.raw_stat(Stats.Stat.SPEED)
@@ -1022,6 +1028,11 @@ func learn_move(pokemon: Pokemon, move: int) -> void:
 
 
 const LEARN_TEXT := 204
+## « Y va être envoyé par... Voulez-vous changer de Pokémon ? » (fichier 15).
+const SHIFT_PROMPT := 20
+## Style de combat des options : « CHOIX » (le jeu le propose) ou « DÉFINI ».
+const STYLE_SHIFT := "choix"
+const STYLE_SET := "defini"
 
 
 ## Place d'un membre de l'équipe du joueur au combat (-1 : pas au combat).
@@ -1040,10 +1051,17 @@ func _replace_fainted() -> void:
 		var foe := foe_side.mon(slot)
 		if foe and foe.is_fainted() and not foe_side.reserves(slot).is_empty():
 			var next := ai.choose_replacement(foe_side, slot)
+			await _offer_shift(foe_side, next, slot)
 			await switch_in_replacement(foe_side, next, slot)
 	for slot in slot_count():
 		var mine := player().mon(slot)
 		if mine and mine.is_fainted() and not player().reserves(slot).is_empty():
+			# Combat sauvage : « UTILISER UN AUTRE POKÉMON » ou « FUITE » (fichier 16, 5 et 1). La fuite
+			# (0x021BC300) se tente avec le Pokémon K.O. ; ratée, il faut en envoyer un autre.
+			if is_wild() and not demo:
+				var choice: Variant = await _ask({"kind": "faint_choice", "slot": slot})
+				if choice is int and choice == 1 and _try_escape(mine):
+					return
 			var index: int = await _ask_switch(true, slot)
 			await switch_in_replacement(player(), index, slot)
 	if format == Format.ROTATION:
@@ -1070,6 +1088,25 @@ func _rotate_after_faint(side: BattleSide) -> void:
 		if choice is int and choice in choices:
 			incoming = choice
 	rotate(side, incoming)
+
+
+## Style de combat « CHOIX » (options, fichier 29) : contre un dresseur en combat simple, quand il va
+## envoyer un autre Pokémon, le joueur peut changer le sien d'abord (fichier 15, 20 ; « CHANGER DE
+## POKÉMON » ou « NE PAS CHANGER », fichier 16, 6 et 7).
+func _offer_shift(foe_side: BattleSide, next: int, slot: int) -> void:
+	if is_wild() or format != Format.SINGLE or demo or not shift_style:
+		return
+	var mine := player().mon(slot)
+	if mine == null or mine.is_fainted() or player().reserves(slot).is_empty() or result != Result.NONE:
+		return
+	var owner := foe_side.trainer_of_slot(slot)
+	say(SHIFT_PROMPT, {0: owner.class_name_text(), 1: owner.name(), 2: foe_side.party[next].name()})
+	var choice: Variant = await _ask({"kind": "shift_choice", "slot": slot})
+	if not (choice is int and choice == 0):
+		return
+	var index: int = await _ask_switch(false, slot)
+	if index >= 0:
+		await switch_mon(mine, index)
 
 
 ## Le joueur choisit un Pokémon de l'équipe pour une place (forcé : il ne peut pas renoncer).

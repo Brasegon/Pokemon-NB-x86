@@ -21,6 +21,12 @@ signal _answered(value: Variant)
 
 const PROMPT_CHOOSE := 6
 const PROMPT_ITEM_TARGET := 7
+## Boutons après un K.O. (fichier 16) : UTILISER UN AUTRE POKÉMON, FUITE ; CHANGER DE POKÉMON, NE
+## PAS CHANGER.
+const FAINT_ANOTHER_LINE := 5
+const FAINT_RUN_LINE := 1
+const SHIFT_YES_LINE := 6
+const SHIFT_NO_LINE := 7
 const PROMPT_RESTORE_MOVE := 104
 const PROMPT_FIGHT := 9
 const YES_LINE := 8
@@ -986,6 +992,9 @@ func effect_floats(slot: int) -> bool:
 ## de la capacité (+0x14 de ses données, 0x021D1FA0), variable 10 = variante.
 func _move_animation(event: Dictionary) -> void:
 	messages.close()
+	# Options : « ANIM. COMBAT : SANS » (fichier 29) ne montre pas les animations des capacités.
+	if not _animations_enabled():
+		return
 	var data := MoveData.of(event.move)
 	var values := {9: data.target if data else 0, 10: event.get("variant", 0)}
 	var attacker := place_of(event.side, event.get("slot", 0))
@@ -1152,6 +1161,10 @@ func _answer(request: Dictionary) -> void:
 			value = await _choose_move_to_forget(request.pokemon, request.move)
 		"yes_no":
 			value = await _ask_yes_no()
+		"faint_choice":
+			value = await _ask_two_buttons(FAINT_ANOTHER_LINE, FAINT_RUN_LINE)
+		"shift_choice":
+			value = await _ask_two_buttons(SHIFT_YES_LINE, SHIFT_NO_LINE)
 		"rotate":
 			value = await _choose_rotation(request.choices)
 	battle.answer(value)
@@ -1360,6 +1373,29 @@ func _choose_move_to_forget(pokemon: Pokemon, new_move: int) -> int:
 
 
 ## OUI (0) ou NON (1) ; Annuler répond NON.
+## Animations de combat des options (« AVEC » par défaut).
+static func _animations_enabled() -> bool:
+	var settings := Autoloads.settings()
+	return settings == null or bool(settings.get_value("jeu", "animations_combat", true))
+
+
+## Deux grands boutons de l'écran tactile (fichier 16) : 0 pour le premier, 1 pour le second (ou
+## Annuler).
+func _ask_two_buttons(first: int, second: int) -> int:
+	messages.close()
+	var panel := BattleButtonPanel.new()
+	var height := (BattleMovePanel.PANEL_SIZE.y - 4) / 2.0
+	var list: Array[Dictionary] = []
+	for i in 2:
+		list.append({"rect": Rect2(0, i * (height + 4), BattleMovePanel.PANEL_SIZE.x, height),
+			"lines": [Autoloads.rom().text(BWFiles.TEXT_BATTLE_UI, [first, second][i])],
+			"color": POCKET_COLORS[3] if i == 0 else POCKET_COLORS[0]})
+	panel.size = BattleMovePanel.PANEL_SIZE
+	panel.set_buttons(list)
+	var index: int = await _open(panel)
+	return 0 if index == 0 else 1
+
+
 func _ask_yes_no() -> int:
 	var menu := ChoiceMenu.new()
 	var rom: Node = Autoloads.rom()

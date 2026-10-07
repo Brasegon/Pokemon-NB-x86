@@ -1527,6 +1527,23 @@ ordinaire (Médic Nature, Régé-Force) ; messages des baies (Sitrus et Oran : 9
 celui des Restes ; statuts : 917 à 929, pas 1010 qui est celui de l'Herbe Blanche ; crans : messages
 des objets) ; un Pokémon sauvage ne vole plus l'objet du joueur.
 
+### Autour du combat (`battle.gd`, `game_state.gd`)
+
+- **Après un K.O. en combat sauvage** : deux boutons, « UTILISER UN AUTRE POKÉMON » et « FUITE »
+  (fichier 16, 5 et 1). La fuite (0x021BC300) passe par la fuite ordinaire (0x021BD524) avec le
+  Pokémon K.O. de la place 0 : sa Vitesse, sans fuite assurée (0x021BD658 ne la donne qu'à un
+  Pokémon en forme) ; ratée (« Impossible de fuir ! »), il faut en envoyer un autre.
+- **Style de combat** (options, fichier 29 : STYLE DE COMBAT, CHOIX 15 ou DÉFINI 16 ; ANIM. COMBAT,
+  AVEC 13 ou SANS 14) : en « CHOIX », contre un dresseur en combat simple, quand il va envoyer un
+  autre Pokémon, « Y va être envoyé par... Voulez-vous changer de Pokémon ? » (fichier 15, 20) et
+  les boutons CHANGER DE POKÉMON, NE PAS CHANGER (fichier 16, 6 et 7) ; le joueur change d'abord.
+- **Capture, équipe pleine** (après le combat, 0x021B95B4 de l'overlay 92) : le Pokémon va dans le
+  PC (0x020076D0 : la boîte courante, sinon la suivante qui a de la place ; 24 boîtes de 30, noms
+  par défaut BOÎTE 1 à 24 du fichier 9, lignes 6 à 29) ; « X est envoyé dans la BOÎTE n du PC de
+  Boletta ! » (fichier 234, 177), ou « de ??? » (176) tant que le drapeau 0x96D n'est pas mis. Le
+  surnom (« Donner un surnom au Pokémon X capturé ? », fichier 234, 175, overlay 207) attend l'écran
+  du surnom.
+
 ### Formules du combat (`battle_calc.gd`)
 
 Les nombres « fx » ont 12 bits après la virgule (0x1000 = 1,0). Arrondi des multiplicateurs

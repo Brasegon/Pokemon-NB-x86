@@ -54,6 +54,7 @@ func _initialize() -> void:
 	_test_last_abilities()
 	_test_last_items()
 	_test_bag_items()
+	_test_around_battle()
 	# L'écran de combat a besoin d'images : on attend que l'arbre tourne.
 	await process_frame
 	await _test_screen()
@@ -1354,6 +1355,55 @@ func _test_bag_items() -> void:
 	_check(battle.items.bag_problem({"item": 38, "target": 0, "move": 0}).get("line", -1) == 91
 		and battle.items.bag_problem({"item": 38, "target": 0, "move": 1}).is_empty(),
 		"Huile : « Ça n'aura aucun effet. » si la capacité choisie a tous ses PP (fichier 18, 91)")
+
+
+## Autour du combat : PC quand l'équipe est pleine, invites après un K.O. (fuite en combat sauvage,
+## style « CHOIX » contre un dresseur).
+func _test_around_battle() -> void:
+	var state := _player(498, 50, 220)
+	for i in 5:
+		state.party.append(Pokemon.create(506, 5, {"random": GameRandom.new(221 + i), "ot_id": state.trainer_id}))
+	var battle := Battle.wild(state, Pokemon.create(504, 2, {"random": GameRandom.new(230)}), {"random": GameRandom.new(231)})
+	battle.send_out(battle.player(), 0, 0)
+	var wild := battle.send_out(battle.enemy(), 0, 0)
+	state.add_item(4, 1)
+	wild.pokemon.hp = 1
+	for i in 20:
+		battle.items.throw_ball(battle.mon_at(BattleSide.PLAYER, 0), 4)
+		if battle.result == Battle.Result.CAUGHT:
+			break
+	_check(battle.result == Battle.Result.CAUGHT and state.party.size() == 6 and (state.boxes[0] as Array).size() == 1
+		and _said(battle, 234, 176), "capture avec l'équipe pleine : la BOÎTE 1 du PC (fichier 234, 176)")
+	var saved := GameState.from_dict(state.to_dict())
+	_check((saved.boxes[0] as Array).size() == 1 and (saved.boxes[0] as Array)[0].species == 504, "le PC est sauvegardé")
+
+	state = _player(498, 50, 232)
+	state.party.append(Pokemon.create(506, 5, {"random": GameRandom.new(233), "ot_id": state.trainer_id}))
+	battle = Battle.wild(state, Pokemon.create(504, 50, {"random": GameRandom.new(234)}), {"random": GameRandom.new(235)})
+	battle.auto_answer = func(b: Battle, request: Dictionary) -> Variant:
+		return 1 if request.kind == "faint_choice" else _auto(b, request)
+	var me := battle.send_out(battle.player(), 0, 0)
+	battle.send_out(battle.enemy(), 0, 0)
+	me.pokemon.hp = 0
+	me.pokemon.stats[Stats.Stat.SPEED] = 999
+	battle._replace_fainted()
+	_check(battle.result == Battle.Result.RUN, "K.O. en combat sauvage : « FUITE » (fichier 16, 1) avec la Vitesse du Pokémon K.O.")
+
+	state = _player(498, 50, 236)
+	state.party.append(Pokemon.create(506, 50, {"random": GameRandom.new(237), "ot_id": state.trainer_id}))
+	battle = Battle.against_trainer(state, 18, {"random": GameRandom.new(238), "format": Battle.Format.SINGLE})
+	battle.auto_answer = func(b: Battle, request: Dictionary) -> Variant:
+		return 0 if request.kind == "shift_choice" else _auto(b, request)
+	me = battle.send_out(battle.player(), 0, 0)
+	var foe := battle.send_out(battle.enemy(), 0, 0)
+	foe.pokemon.hp = 0
+	if battle.enemy().reserves(0).is_empty():
+		_check(false, "style « CHOIX » : le dresseur 18 doit avoir un second Pokémon")
+	else:
+		battle._replace_fainted()
+		_check(battle.mon_at(BattleSide.PLAYER, 0).party_index == 1 and _said(battle, BWFiles.TEXT_BATTLE, Battle.SHIFT_PROMPT),
+			"style « CHOIX » : changer de Pokémon avant que le dresseur envoie le sien (fichier 15, 20)")
+	battle._finish()
 
 
 ## Vérification qui ne s'affiche qu'en cas d'échec (boucles).

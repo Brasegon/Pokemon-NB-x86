@@ -71,6 +71,7 @@
 
 # Pokémon (ARM9)
 0x020056EC        rand_range                      tirage dans [0, n) du générateur 64 bits du jeu
+0x020076D0        pc_store_pokemon                range un Pokémon dans le PC : boîte courante, sinon la suivante qui a de la place
 0x02017638        pokemon_create                  crée un Pokémon (PID, IV, nature, sexe, talent...)
 0x02017E38        pokemon_get_param               lit un paramètre d'un Pokémon (structure de 0xDC octets)
 0x02017EF4        pokemon_is_shiny                chromatique : ID ^ ID secret ^ moitiés du PID < 8
@@ -380,6 +381,7 @@ ov74:0x021F5460   cutin_kind                      fiche d'un genre de coupure (t
 ov93:0x021B857C   battle_text_speed               vitesse d'écriture des messages (options)
 ov93:0x021B9CB0   illusion_setup                  Illusion : apparence du dernier membre de l'équipe en état de se battre
 ov93:0x021BBF48   battle_run_actions              exécute les actions dans l'ordre (ordre recalculé après les rotations)
+ov93:0x021BC300   battle_escape_after_faint       après un K.O. : la fuite avec le Pokémon K.O. de la place 0
 ov93:0x021BC3B8   battle_rotate                   rotation : un Pokémon en retrait passe devant (combat rotatif)
 ov93:0x021BC5B0   battle_action_keys              clés de l'ordre des actions : rang, priorité, priorité spéciale, vitesse
 ov93:0x021BC814   battle_action_order             ordre des actions
@@ -387,6 +389,7 @@ ov93:0x021BC8E8   battle_speed                    vitesse d'un Pokémon
 ov93:0x021BCC80   battle_run_action               exécute une action (1 attaque, 2 objet, 3 changement, 4 fuite, 5 déplacement, 6 rotation, 7 rechargement)
 ov93:0x021BD0E8   battle_action_next              fait agir un Pokémon juste après (Aires)
 ov93:0x021BD388   battle_shift_center             combat triple : le Pokémon d'un bord passe au milieu (message 231)
+ov93:0x021BD524   battle_run                      action 4 : fuite (« Impossible de fuir ! » sinon, tentatives + 1)
 ov93:0x021BD5AC   battle_escape                   la fuite réussit-elle
 ov93:0x021BDE38   battle_use_move                 emploi d'une capacité : conditions, événements 0x18 et 0x19, PP, Saisie, effets
 ov93:0x021BE348   called_move_blocked             capacité appelée (Métronome...) : Anti-Soin (drapeau 12) et Gravité (drapeau 9)
@@ -537,6 +540,10 @@ ov94:0x022085F0   gauge_caught_ball               petite Ball si l'espèce est d
 ov94:0x02208D4C   tray_create                     crée une rangée de Balls
 ov94:0x02209008   tray_hide                       la rangée disparaît d'un coup
 ov94:0x02209054   tray_update                     une image de la rangée de Balls
+
+# Après le combat (overlays 92 et 207)
+ov92:0x021B95B4   battle_results_apply            après le combat : équipe, argent, capture (PC si l'équipe est pleine : fichier 234, 176 ou 177)
+ov207:0x0220B4FC  capture_nickname_prompt         « Donner un surnom au Pokémon X capturé ? » (fichier 234, 175)
 
 # Overlay 95 (chargé en VRAM, 0x06898020) : gestionnaires et listes de cibles
 ov95:0x06898C10   side_condition_add              pose un effet de côté (table 0x0689D780)

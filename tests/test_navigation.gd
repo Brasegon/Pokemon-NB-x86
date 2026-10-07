@@ -154,7 +154,7 @@ func _initialize() -> void:
 	_press_times("bas", 11)
 	_press("valider")
 	_expect("res://scenes/options/options_menu.tscn")
-	_press_times("bas", 5)
+	_press_times("bas", 7)
 	_press("valider")
 	_expect("res://scenes/options/key_bindings.tscn")
 	_press("annuler")
