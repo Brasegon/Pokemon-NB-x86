@@ -858,7 +858,7 @@ une variable de la sauvegarde, de 0x8000 à 0xBFFF une variable temporaire (cont
 | 6B, 6C | valeur | faire apparaître un PNJ des événements de la zone (0x0216CE74), le retirer |
 | 6D | valeurs : personnage, x, y, z, direction | placer un personnage au centre d'une case (0x0216E014 ; y en cases), sans changer son entrée des événements. 0x0216DE24 le cherche par son numéro, héros compris : 0x0216DE70 l'appelle avec 0xFF pour trouver le héros. Dans la chambre, avant le combat contre Bianca, il pose le héros en (4, 6) |
 | 74 | | le PNJ se tourne vers le héros |
-| 85 | valeurs : dresseur, dresseur 2, ? | combat de dresseurs (0x0216E7A8) ; sans dresseur 2, le même si c'est un dresseur de combat double (0x0215A454). Le script attend la fin du combat (écran de combat posé sur le terrain) ; combats doubles pas encore faits : on affronte le premier dresseur |
+| 85 | valeurs : dresseur, dresseur 2, ? | combat de dresseurs (0x0216E7A8) ; sans dresseur 2, le même si c'est un dresseur de combat double (0x0215A454). Le script attend la fin du combat (écran de combat posé sur le terrain) ; avec un dresseur 2 différent, combat double contre les deux, chacun avec son équipe |
 | 8C | | après une défaite : l'événement 0x0215F5DC remplace le script (0x0215F678 le crée, puis la commande, 0x0215B34C, arrête la machine) : fondu au noir, équipe soignée, retour au dernier lieu de soin (la maison du héros tant qu'aucun Centre n'a été visité) |
 | 8D | variable | 0 si le joueur a perdu le dernier combat, sinon 1 : 0x0216EF38(résultat, 1) lit la table 0x02172568 (5 octets par résultat) ; colonne 1 nulle pour les résultats 0 et 2 (défaite) |
 | 8E | | transition de retour du combat (0x021BE8B8) |
@@ -1191,6 +1191,11 @@ avec Œil Composé, 50 / 5 / 1 dans les herbes sombres, 60 / 20 / 5 avec les deu
    (224) ou Encens Pur (320) tenus : deux tiers du taux de départ ; plafond 100 ;
 4. test (0x021AA39C) : compteur 0, pas de rencontre ; compteur 1 (premier pas), taux 1 ; rencontre
    si pourcent <= taux.
+
+Avant les étapes 3 et 4, dans les herbes sombres (groupe 1), un tirage « pourcent » < 40 décide
+d'un combat double si le joueur a plus d'un Pokémon en forme (0x021A92F0 : bit 0x20, compte des
+Pokémon qui ne sont pas des œufs et ont des PV par 0x0201AA6C) ; les deux Pokémon sont tirés
+l'un après l'autre (0x021A94A8).
 
 ## Les combats (`engine/battle/`)
 

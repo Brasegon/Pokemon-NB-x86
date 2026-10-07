@@ -478,11 +478,19 @@ func _check_encounter(tile: Vector2i) -> void:
 	if state.able_pokemon().is_empty():
 		return
 	var height := player.position.y
-	var wild := encounters.step(tile, field.behavior(tile, height), field.tile_flags(tile, height), _zone_encounters(), state.party[0])
+	var able := 0
+	for member in state.party:
+		able += 0 if member.is_fainted() else 1
+	var wild := encounters.step(tile, field.behavior(tile, height), field.tile_flags(tile, height), _zone_encounters(), state.party[0], able)
 	if wild.is_empty():
 		return
 	var pokemon := Pokemon.create(wild.species, wild.level, {"form": wild.form, "item": wild.item, "random": encounters.random})
-	var battle := Battle.wild(state, pokemon, {"random": encounters.random, "dark_grass": wild.group == TileBehaviors.Encounter.DARK_GRASS})
+	var options := {"random": encounters.random, "dark_grass": wild.group == TileBehaviors.Encounter.DARK_GRASS}
+	if wild.has("partner"):
+		# Herbes sombres : un second Pokémon sauvage, combat double.
+		var partner: Dictionary = wild.partner
+		options.partner = Pokemon.create(partner.species, partner.level, {"form": partner.form, "item": partner.item, "random": encounters.random})
+	var battle := Battle.wild(state, pokemon, options)
 	var result: Battle.Result = await _play_battle(battle)
 	if result == Battle.Result.LOSE:
 		_black_out()

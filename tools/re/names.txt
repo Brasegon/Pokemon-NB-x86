@@ -90,6 +90,8 @@
 0x0201A9A8        party_add                       ajoute un Pokémon à l'équipe
 0x0201AA30        party_capacity                  capacité de l'équipe (+0)
 0x0201AA34        party_count                     nombre de Pokémon de l'équipe (+4)
+0x0201AA6C        party_able_count                Pokémon en forme de l'équipe (ni œuf ni K.O.)
+0x0201AD34        pokemon_is_able                 le Pokémon peut combattre : pas un œuf (0x4C) et des PV (0xA0)
 0x0201ADC0        personal_load                   lit la fiche d'une espèce (a/0/1/6)
 0x0201ADEC        learnset_load                   ouvre la liste des capacités apprises (a/0/1/8)
 0x0201AE38        personal_get_param              champ d'une fiche d'espèce (switch de 44 cas)
@@ -303,7 +305,9 @@ ov21:0x021A81E4   door_wait                       attend la fin de l'animation d
 ov21:0x021A8218   door_open                       ouvre la porte (animation 0)
 ov21:0x021A8248   door_close                      ferme la porte (animation 1)
 ov21:0x021A8B58   field_menu                      bâtit le menu du terrain (fichier système 34)
+ov21:0x021A92F0   encounter_setup                 prépare une rencontre : combat double dans les herbes sombres (pourcent < 40)
 ov21:0x021A9450   encounter_rate_modifiers        applique les indicateurs du Pokémon de tête au taux
+ov21:0x021A94A8   encounter_pick_wild             tire les Pokémon sauvages de la rencontre (un ou deux)
 ov21:0x021A97C8   encounter_lead_flags            indicateurs du Pokémon de tête (talent, objet)
 ov21:0x021A99FC   encounter_group_slots           créneaux d'un groupe de rencontres
 ov21:0x021A9AA0   encounter_level                 niveau : min + pourcent % (max - min + 1)

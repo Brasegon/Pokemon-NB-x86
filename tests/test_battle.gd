@@ -504,6 +504,32 @@ func _test_wild_encounters() -> void:
 	_check(WildEncounters.modified_rate(8, illuminate) == 16 and WildEncounters.modified_rate(8, stench) == 4
 		and WildEncounters.modified_rate(9, cleanse) == 6 and WildEncounters.modified_rate(70, illuminate) == 100,
 		"taux : Lumiattirance x2, Puanteur / 2, Rune Purifiante 2/3, plafond 100")
+	# Herbes sombres (comportement 0x06) d'une zone qui en a : 40 % de combats doubles avec deux
+	# Pokémon en forme (0x021A92F0), jamais avec un seul.
+	var dark_table: EncounterTable = null
+	for zone_id in zones.count():
+		var candidate := EncounterTable.for_zone(zones.get_zone(zone_id), 0)
+		if candidate and candidate.rate(TileBehaviors.Encounter.DARK_GRASS) > 0:
+			dark_table = candidate
+			break
+	if dark_table == null:
+		_check(false, "une zone avec des herbes sombres")
+		return
+	var doubles := [0, 0]
+	var singles := [0, 0]
+	for able in [1, 2]:
+		var walker := WildEncounters.new(GameRandom.new(70 + able))
+		for i in 3000:
+			var met_wild := walker.step(Vector2i(20, 20 + (i % 2)), 0x06, wild_flag, dark_table, lead, able)
+			if met_wild.is_empty():
+				continue
+			if met_wild.has("partner"):
+				doubles[able - 1] += 1
+			else:
+				singles[able - 1] += 1
+	var share: int = doubles[1] * 100 / maxi(doubles[1] + singles[1], 1)
+	_check(doubles[0] == 0 and share > 30 and share < 50,
+		"herbes sombres : environ 40 %% de combats doubles avec deux Pokémon (%d %%), aucun avec un seul" % share)
 
 
 ## Démonstration de la professeure : jouée seule, capture réussie, partie du joueur intacte.

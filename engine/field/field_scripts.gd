@@ -440,11 +440,14 @@ func starter_answer() -> int:
 	return _starter_answer
 
 
-## Combat de dresseurs (commande 0x85). Les combats doubles ne sont pas encore là : on affronte le
-## premier dresseur (ou le second s'il est seul).
+## Combat de dresseurs (commande 0x85) : contre un dresseur (combat simple ou double selon sa fiche),
+## ou contre deux dresseurs à la fois, chacun avec son équipe (« dresseur 2 », combat double).
 func start_battle(trainer: int, partner: int, _flags: int) -> void:
 	battle_started.emit(trainer, partner)
-	_run_battle(Battle.against_trainer(state, trainer if trainer > 0 else partner))
+	if trainer > 0 and partner > 0 and partner != trainer:
+		_run_battle(Battle.against_trainer(state, trainer, {"partner": partner}))
+	else:
+		_run_battle(Battle.against_trainer(state, trainer if trainer > 0 else partner))
 
 
 ## Démonstration de capture de la professeure (commande 0x17D).
