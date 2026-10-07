@@ -83,8 +83,9 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 
 - [x] En-têtes de zones : scripts, textes, caméra (champs 1C et 20), décor des combats (bits 5-9 du
       champ 1E, pour la phase 4) ; carte, musique et nom du lieu : faits en phase 2
-- [ ] Météo : elle n'est pas dans l'en-tête de zone, sa table reste à retrouver (Renouet et la
-      Route 1 n'en ont pas)
+- [ ] Météo : retrouvée (calendrier `a/0/9/7` par jour de l'année, sinon les bits 0-5 du champ 1C
+      de l'en-tête de zone) et appliquée au début des combats ; son affichage sur le terrain reste à
+      faire (Renouet et la Route 1 n'en ont pas)
 - [x] Événements des zones (`a/1/2/5`) : objets à lire, PNJ, portes, déclencheurs
 - [x] Portes, tapis et escaliers : entrée dans les maisons et changement d'étage, comme le jeu
 - [x] Rebords à sauter (action et courbe de saut du jeu), comportements des cases : herbes, herbes
@@ -126,10 +127,15 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 - [x] Données : Pokémon (stats, types, talents, formes, apprentissage, évolutions, courbes
       d'expérience), capacités, objets, dresseurs et leurs équipes (PID et IV comme le jeu),
       rencontres ; création d'un Pokémon comme le jeu (PID, IV, nature, sexe, chromatique)
-- [x] Moteur de combat Gen 5 (combats simples) : générateur du jeu, formules de dégâts, précision,
-      critiques, crans, ordre des actions, statuts, météo, environ 150 talents, objets tenus,
-      capacités à part, capture, fuite, expérience, nouvelles capacités, argent
-- [x] IA des dresseurs : son code n'a pas été trouvé ; elle suit les indicateurs d'IA des fiches
+- [x] Moteur de combat Gen 5 : générateur du jeu, formules de dégâts, précision, critiques, crans,
+      ordre des actions, statuts, météo, capture, fuite, expérience, nouvelles capacités, argent ;
+      toutes les capacités à part (258), tous les talents (158) et tous les objets tenus (171),
+      d'après les tables de gestionnaires de l'overlay 93 ; objets du sac comme le jeu ; formes
+      (Morphéo, Darumacho, Meloetta...), Illusion, Morphing
+- [x] Combats doubles, triples et rotatifs (déplacement en triple, rotation, ordre des actions du
+      jeu), lancés aussi depuis le terrain
+- [x] IA des dresseurs du jeu : machine à scripts de l'overlay 96 (`a/1/7/1`, 120 commandes), objets
+      du sac, changements de Pokémon, remplaçant après un K.O.
 - [x] Interface de combat sur l'écran unique : décor 3D du jeu (fond, socles, caméra), sprites
       animés des Pokémon et des dresseurs, jauges de la ROM, panneau de commandes (Attaque, Sac,
       Pokémon, Fuite) en surimpression, choix des capacités, équipe, sac, Ball lancée, niveau
@@ -145,11 +151,25 @@ Le portage n'imite pas les deux écrans de la DS : tout se joue sur **un seul é
 - [x] Transition « VS » des rivaux et des champions sur le terrain : la coupure 3D de la ROM
       (modèles, animations de squelette, de visibilité et de couleurs, portraits et noms écrits,
       étincelles, bruitages)
-- [ ] Capture avec les effets du jeu (commandes de la Ball 0x2E-0x32 et 0x45), commandes de fonds
-      0x24-0x29 et 0x2B-0x2D ; transitions des autres dresseurs et des rencontres sauvages (effets
-      de rencontre selon le lieu)
-- [ ] Combats doubles, triples et rotatifs ; évolution après le combat ; « Utiliser un autre
-      Pokémon ? » ; surnom à la capture ; paroles des dresseurs en plein combat
+- [x] Autour du combat : PC des captures (24 boîtes de 30), « Utiliser un autre Pokémon ? » et
+      style de combat (options), évolution après le combat (écran d'évolution, Munja), paroles des
+      dresseurs en plein combat, temps du terrain au début des combats, Sombre Ball selon la période
+      de la journée
+
+Repoussé à plus tard :
+
+- [ ] Sur le terrain, les dresseurs qui repèrent le joueur (ligne de vue, « ! », approche, puis
+      combat)
+- [ ] Le visuel autour du combat : effets des Poké Balls à la capture (commandes 0x2E-0x32 et 0x45),
+      variantes d'intro des combats à plusieurs, effets du décor (commandes 0x24-0x29 et
+      0x2B-0x2D), transitions des autres dresseurs et des rencontres sauvages (effets de rencontre
+      selon le lieu), écran d'enregistrement au Pokédex, écran pour donner un surnom
+
+Points non vérifiés :
+
+- Larcin sur un Pokémon de dresseur : le portage l'empêche de voler l'objet ; le jeu le rend
+  peut-être après le combat.
+- Palettes des formes d'Arceus : non gérées (les sprites des formes le sont).
 
 ## Phase 5 — Les systèmes du jeu
 
